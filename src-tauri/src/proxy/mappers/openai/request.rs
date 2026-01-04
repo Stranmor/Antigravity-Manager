@@ -6,7 +6,7 @@ use super::streaming::get_thought_signature;
 pub fn transform_openai_request(request: &OpenAIRequest, project_id: &str, mapped_model: &str) -> Value {
     // 将 OpenAI 工具转为 Value 数组以便探测
     let tools_val = request.tools.as_ref().map(|list| {
-        list.iter().cloned().collect::<Vec<_>>()
+        list.to_vec()
     });
 
     // Resolve grounding config

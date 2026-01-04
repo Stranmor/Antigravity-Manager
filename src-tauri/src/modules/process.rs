@@ -605,7 +605,7 @@ pub fn close_antigravity(timeout_secs: u64) -> Result<(), String> {
                                     || name.contains("sandbox");
                                 if !is_helper_by_args && !is_helper_by_name {
                                     main_pid = Some(pid_u32);
-                                    crate::modules::logger::log_info(&"   => 识别为主进程 (匹配手动配置路径)".to_string());
+                                    crate::modules::logger::log_info("   => 识别为主进程 (匹配手动配置路径)");
                                     break;
                                 }
                             }
@@ -627,10 +627,10 @@ pub fn close_antigravity(timeout_secs: u64) -> Result<(), String> {
                     if !is_helper_by_args && !is_helper_by_name {
                         if main_pid.is_none() {
                             main_pid = Some(pid_u32);
-                            crate::modules::logger::log_info(&"   => 识别为主进程 (特征分析)".to_string());
+                            crate::modules::logger::log_info("   => 识别为主进程 (特征分析)");
                         }
                     } else {
-                        crate::modules::logger::log_info(&"   => 识别为辅助进程 (Helper/Args)".to_string());
+                        crate::modules::logger::log_info("   => 识别为辅助进程 (Helper/Args)");
                     }
                 }
             }

@@ -82,16 +82,14 @@ pub fn clear_logs() -> Result<(), String> {
     if log_dir.exists() {
         // 遍历目录下的所有文件并截断，而不是删除目录
         let entries = fs::read_dir(&log_dir).map_err(|e| format!("读取日志目录失败: {e}"))?;
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.is_file() {
-                    // 使用截断模式打开文件，将大小设为 0
-                    let _ = fs::OpenOptions::new()
-                        .write(true)
-                        .truncate(true)
-                        .open(path);
-                }
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                // 使用截断模式打开文件，将大小设为 0
+                let _ = fs::OpenOptions::new()
+                    .write(true)
+                    .truncate(true)
+                    .open(path);
             }
         }
     }
