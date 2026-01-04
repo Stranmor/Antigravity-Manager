@@ -1452,7 +1452,7 @@ print(response.text)`;
                                                 </p>
                                             </div>
                                             <button
-                                                onClick={handleAddHaikuOptimization}
+                                                onClick={onHandleAddHaikuOptimization}
                                                 className="btn btn-ghost btn-xs gap-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 border border-blue-200 dark:border-blue-800 whitespace-nowrap flex-shrink-0"
                                             >
                                                 <Plus size={12} />
@@ -1489,7 +1489,7 @@ print(response.text)`;
                                                     const k = kRaw ? kRaw.trim() : '';
                                                     const v = vRaw ? vRaw.trim() : '';
                                                     if (k && v) {
-                                                        handleMappingUpdate('custom', k, v);
+                                                        onHandleMappingUpdate('custom', k, v);
                                                         (document.getElementById('custom-key') as HTMLInputElement).value = '';
                                                         (document.getElementById('custom-val') as HTMLInputElement).value = '';
                                                     }
@@ -1524,7 +1524,7 @@ print(response.text)`;
                                                                     <td className="text-center">
                                                                         <button
                                                                             className="btn btn-ghost btn-xs text-error p-0 h-auto min-h-0"
-                                                                            onClick={() => handleRemoveCustomMapping(key)}
+                                                                            onClick={() => { onHandleRemoveCustomMapping(key); }}
                                                                         >
                                                                             <Trash2 size={12} />
                                                                         </button>
