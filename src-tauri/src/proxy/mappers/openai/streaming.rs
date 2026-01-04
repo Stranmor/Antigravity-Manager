@@ -4,9 +4,11 @@
 // - Pre-allocated buffers with capacity hints to minimize reallocations
 // - Inlined hot path functions for SSE parsing
 // - Reduced string allocations using capacity hints
+// - SIMD-accelerated newline detection via memchr
 
 use bytes::{Bytes, BytesMut};
 use futures::{Stream, StreamExt};
+use memchr::memchr;
 use serde_json::{json, Value};
 use std::pin::Pin;
 use std::sync::{Mutex, OnceLock};
@@ -90,7 +92,7 @@ pub fn create_openai_sse_stream(
                     buffer.extend_from_slice(&bytes);
                     
                     // Process complete lines from buffer
-                    while let Some(pos) = buffer.iter().position(|&b| b == b'\n') {
+                    while let Some(pos) = memchr(b'\n', &buffer) {
                         let line_raw = buffer.split_to(pos + 1);
                         if let Ok(line_str) = std::str::from_utf8(&line_raw) {
                             let line = line_str.trim();
@@ -247,7 +249,7 @@ pub fn create_legacy_sse_stream(
             match item {
                 Ok(bytes) => {
                     buffer.extend_from_slice(&bytes);
-                    while let Some(pos) = buffer.iter().position(|&b| b == b'\n') {
+                    while let Some(pos) = memchr(b'\n', &buffer) {
                         let line_raw = buffer.split_to(pos + 1);
                         if let Ok(line_str) = std::str::from_utf8(&line_raw) {
                             let line = line_str.trim();
@@ -363,7 +365,7 @@ pub fn create_codex_sse_stream(
             match item {
                 Ok(bytes) => {
                     buffer.extend_from_slice(&bytes);
-                    while let Some(pos) = buffer.iter().position(|&b| b == b'\n') {
+                    while let Some(pos) = memchr(b'\n', &buffer) {
                         let line_raw = buffer.split_to(pos + 1);
                         if let Ok(line_str) = std::str::from_utf8(&line_raw) {
                             let line = line_str.trim();
