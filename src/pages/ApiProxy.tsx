@@ -237,9 +237,9 @@ export default function ApiProxy() {
 
     // 初始化加载
     useEffect(() => {
-        loadConfig();
-        loadStatus();
-        const interval = setInterval(loadStatus, 3000);
+        void loadConfig();
+        void loadStatus();
+        const interval = setInterval(() => { void loadStatus(); }, 3000);
         return () => { clearInterval(interval); };
     }, []);
 
@@ -267,7 +267,7 @@ export default function ApiProxy() {
             setAppConfig(newConfig);
         } catch (error) {
             console.error('保存配置失败:', error);
-            showToast(`${t('common.error')}: ${error}`, 'error');
+            showToast(`${t('common.error')}: ${String(error)}`, 'error');
         }
     };
 
@@ -280,7 +280,7 @@ export default function ApiProxy() {
             newConfig.anthropic_mapping = { ...(newConfig.anthropic_mapping || {}), [key]: value };
         } else if (type === 'openai') {
             newConfig.openai_mapping = { ...(newConfig.openai_mapping || {}), [key]: value };
-        } else if (type === 'custom') {
+        } else {
             newConfig.custom_mapping = { ...(newConfig.custom_mapping || {}), [key]: value };
         }
 
@@ -322,7 +322,7 @@ export default function ApiProxy() {
             showToast(t('common.success'), 'success');
         } catch (error) {
             console.error('Failed to reset mapping:', error);
-            showToast(`${t('common.error')}: ${error}`, 'error');
+            showToast(`${t('common.error')}: ${String(error)}`, 'error');
         }
     };
 
@@ -346,6 +346,7 @@ export default function ApiProxy() {
     const handleRemoveCustomMapping = async (key: string) => {
         if (!appConfig || !appConfig.proxy.custom_mapping) return;
         const newCustom = { ...appConfig.proxy.custom_mapping };
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
         delete newCustom[key];
         const newConfig = { ...appConfig.proxy, custom_mapping: newCustom };
         try {
@@ -365,7 +366,7 @@ export default function ApiProxy() {
                 ...updates
             }
         };
-        saveConfig(newConfig);
+        void saveConfig(newConfig);
     };
 
     const updateSchedulingConfig = (updates: Partial<StickySessionConfig>) => {
@@ -380,7 +381,7 @@ export default function ApiProxy() {
                 scheduling: newScheduling
             }
         };
-        saveConfig(newAppConfig);
+        void saveConfig(newAppConfig);
     };
 
     const handleClearSessionBindings = () => {
@@ -394,7 +395,7 @@ export default function ApiProxy() {
             showToast(t('common.success'), 'success');
         } catch (error) {
             console.error('Failed to clear session bindings:', error);
-            showToast(`${t('common.error')}: ${error}`, 'error');
+            showToast(`${t('common.error')}: ${String(error)}`, 'error');
         }
     };
 
@@ -409,9 +410,9 @@ export default function ApiProxy() {
                 requestTimeout: appConfig.proxy.request_timeout,
             });
             setZaiAvailableModels(models);
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Failed to fetch z.ai models:', error);
-            setZaiModelsError(error.toString());
+            setZaiModelsError(error instanceof Error ? error.message : String(error));
         } finally {
             setZaiModelsLoading(false);
         }
@@ -429,7 +430,7 @@ export default function ApiProxy() {
                 }
             }
         };
-        saveConfig(newConfig);
+        void saveConfig(newConfig);
     };
 
     const upsertZaiModelMapping = (from: string, to: string) => {
@@ -447,13 +448,14 @@ export default function ApiProxy() {
                 }
             }
         };
-        saveConfig(newConfig);
+        void saveConfig(newConfig);
     };
 
     const removeZaiModelMapping = (from: string) => {
         if (!appConfig?.proxy.zai) return;
         const currentMapping = appConfig.proxy.zai.model_mapping || {};
         const newMapping = { ...currentMapping };
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
         delete newMapping[from];
 
         const newConfig = {
@@ -466,7 +468,7 @@ export default function ApiProxy() {
                 }
             }
         };
-        saveConfig(newConfig);
+        void saveConfig(newConfig);
     };
 
     const updateZaiGeneralConfig = (updates: Partial<NonNullable<ProxyConfig['zai']>>) => {
@@ -481,7 +483,7 @@ export default function ApiProxy() {
                 }
             }
         };
-        saveConfig(newConfig);
+        void saveConfig(newConfig);
     };
 
     const handleToggle = async () => {
