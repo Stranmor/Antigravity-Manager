@@ -92,7 +92,7 @@ function CurrentAccount({ account, onSwitch }: CurrentAccountProps) {
                                     geminiProModel.percentage >= 20 ? 'bg-gradient-to-r from-amber-400 to-amber-500' :
                                         'bg-gradient-to-r from-rose-400 to-rose-500'
                                     }`}
-                                style={{ width: `${geminiProModel.percentage}%` }}
+                                style={{ width: `${String(geminiProModel.percentage)}%` }}
                             ></div>
                         </div>
                     </div>

@@ -120,7 +120,7 @@ function BestAccounts({ accounts, currentAccountId, onSwitch }: BestAccountsProp
                                 targetId = bestClaudeRender.id;
                             }
 
-                            if (onSwitch && targetId) {
+                            if (onSwitch && targetId !== undefined) {
                                 onSwitch(targetId);
                             }
                         }}

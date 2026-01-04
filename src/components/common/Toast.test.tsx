@@ -54,7 +54,7 @@ describe('Toast', () => {
   });
 
   describe('auto-close behavior', () => {
-    it('calls onClose after the default duration', async () => {
+    it('calls onClose after the default duration', () => {
       const onClose = vi.fn();
       render(<Toast {...defaultProps} onClose={onClose} />);
 
@@ -71,7 +71,7 @@ describe('Toast', () => {
       expect(onClose).toHaveBeenCalledWith('test-toast');
     });
 
-    it('calls onClose after custom duration', async () => {
+    it('calls onClose after custom duration', () => {
       const onClose = vi.fn();
       render(<Toast {...defaultProps} onClose={onClose} duration={5000} />);
 

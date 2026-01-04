@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useConfigStore } from '../../stores/useConfigStore';
 import { useAccountStore } from '../../stores/useAccountStore';
 
@@ -10,6 +10,14 @@ function BackgroundTaskRunner() {
     const prevAutoRefreshRef = useRef(false);
     const prevAutoSyncRef = useRef(false);
 
+    // Stable callback refs
+    const refreshAllQuotasRef = useRef(refreshAllQuotas);
+    refreshAllQuotasRef.current = refreshAllQuotas;
+
+    const stableRefreshAllQuotas = useCallback(() => {
+        void refreshAllQuotasRef.current();
+    }, []);
+
     // Auto Refresh Quota Effect
     useEffect(() => {
         if (!config) return;
@@ -19,26 +27,22 @@ function BackgroundTaskRunner() {
 
         // Check if we just turned it on
         if (auto_refresh && !prevAutoRefreshRef.current) {
-            console.log('[BackgroundTask] Auto-refresh enabled, executing immediately...');
-            refreshAllQuotas();
+            stableRefreshAllQuotas();
         }
         prevAutoRefreshRef.current = auto_refresh;
 
         if (auto_refresh && refresh_interval > 0) {
-            console.log(`[BackgroundTask] Starting auto-refresh quota timer: ${refresh_interval} mins`);
             intervalId = setInterval(() => {
-                console.log('[BackgroundTask] Auto-refreshing all quotas...');
-                refreshAllQuotas();
+                stableRefreshAllQuotas();
             }, refresh_interval * 60 * 1000);
         }
 
         return () => {
             if (intervalId) {
-                console.log('[BackgroundTask] Clearing auto-refresh timer');
                 clearInterval(intervalId);
             }
         };
-    }, [config?.auto_refresh, config?.refresh_interval]);
+    }, [config?.auto_refresh, config?.refresh_interval, stableRefreshAllQuotas]);
 
     // Auto Sync Current Account Effect
     useEffect(() => {
@@ -48,24 +52,24 @@ function BackgroundTaskRunner() {
         const { auto_sync, sync_interval } = config;
         const { syncAccountFromDb } = useAccountStore.getState();
 
+        const stableSyncAccountFromDb = () => {
+            void syncAccountFromDb();
+        };
+
         // Check if we just turned it on
         if (auto_sync && !prevAutoSyncRef.current) {
-            console.log('[BackgroundTask] Auto-sync enabled, executing immediately...');
-            syncAccountFromDb();
+            stableSyncAccountFromDb();
         }
         prevAutoSyncRef.current = auto_sync;
 
         if (auto_sync && sync_interval > 0) {
-            console.log(`[BackgroundTask] Starting auto-sync account timer: ${sync_interval} seconds`);
             intervalId = setInterval(() => {
-                console.log('[BackgroundTask] Auto-syncing current account from DB...');
-                syncAccountFromDb();
+                stableSyncAccountFromDb();
             }, sync_interval * 1000);
         }
 
         return () => {
             if (intervalId) {
-                console.log('[BackgroundTask] Clearing auto-sync timer');
                 clearInterval(intervalId);
             }
         };

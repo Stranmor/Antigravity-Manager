@@ -24,7 +24,7 @@ const ToastContainer = () => {
     const [toasts, setToasts] = useState<ToastItem[]>([]);
 
     const addToast = useCallback((message: string, type: ToastType, duration?: number) => {
-        const id = `toast-${Date.now()}-${toastCounter++}`;
+        const id = `toast-${String(Date.now())}-${String(toastCounter++)}`;
         const newToast: ToastItem = { id, message, type, ...(duration !== undefined && { duration }) };
         setToasts(prev => [...prev, newToast]);
     }, []);

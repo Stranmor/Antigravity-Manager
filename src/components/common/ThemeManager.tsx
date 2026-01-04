@@ -1,5 +1,5 @@
 
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useConfigStore } from '../../stores/useConfigStore';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -11,42 +11,42 @@ export default function ThemeManager() {
         const init = async () => {
             await loadConfig();
             // Show window after a short delay to ensure React has painted
-            setTimeout(async () => {
-                await getCurrentWindow().show();
+            setTimeout(() => {
+                void getCurrentWindow().show();
             }, 100);
         };
-        init();
+        void init();
     }, [loadConfig]);
+
+    const applyTheme = useCallback(async (theme: string) => {
+        const root = document.documentElement;
+        const isDark = theme === 'dark';
+
+        // Set Tauri window background color
+        try {
+            const bgColor = isDark ? '#1d232a' : '#FAFBFC';
+            await getCurrentWindow().setBackgroundColor(bgColor);
+        } catch (e) {
+            console.error('Failed to set window background color:', e);
+        }
+
+        // Set DaisyUI theme
+        root.setAttribute('data-theme', theme);
+
+        // Set inline style for immediate visual feedback
+        root.style.backgroundColor = isDark ? '#1d232a' : '#FAFBFC';
+
+        // Set Tailwind dark mode class
+        if (isDark) {
+            root.classList.add('dark');
+        } else {
+            root.classList.remove('dark');
+        }
+    }, []);
 
     // Apply theme when config changes
     useEffect(() => {
         if (!config) return;
-
-        const applyTheme = async (theme: string) => {
-            const root = document.documentElement;
-            const isDark = theme === 'dark';
-
-            // Set Tauri window background color
-            try {
-                const bgColor = isDark ? '#1d232a' : '#FAFBFC';
-                await getCurrentWindow().setBackgroundColor(bgColor);
-            } catch (e) {
-                console.error('Failed to set window background color:', e);
-            }
-
-            // Set DaisyUI theme
-            root.setAttribute('data-theme', theme);
-
-            // Set inline style for immediate visual feedback
-            root.style.backgroundColor = isDark ? '#1d232a' : '#FAFBFC';
-
-            // Set Tailwind dark mode class
-            if (isDark) {
-                root.classList.add('dark');
-            } else {
-                root.classList.remove('dark');
-            }
-        };
 
         const theme = config.theme || 'system';
 
@@ -58,7 +58,7 @@ export default function ThemeManager() {
 
             const handleSystemChange = (e: MediaQueryListEvent | MediaQueryList) => {
                 const systemTheme = e.matches ? 'dark' : 'light';
-                applyTheme(systemTheme);
+                void applyTheme(systemTheme);
             };
 
             // Initial alignment
@@ -68,10 +68,10 @@ export default function ThemeManager() {
             mediaQuery.addEventListener('change', handleSystemChange);
             return () => { mediaQuery.removeEventListener('change', handleSystemChange); };
         } else {
-            applyTheme(theme);
+            void applyTheme(theme);
             return; // Explicit return for non-system theme path
         }
-    }, [config?.theme]);
+    }, [config?.theme, applyTheme]);
 
     return null; // This component handles side effects only
 }

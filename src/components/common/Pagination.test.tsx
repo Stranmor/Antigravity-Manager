@@ -15,7 +15,8 @@ vi.mock('react-i18next', () => ({
       };
 
       if (key === 'common.pagination_info' && params) {
-        return `Showing ${params.start} to ${params.end} of ${params.total} results`;
+        const p = params as { start: number; end: number; total: number };
+        return `Showing ${String(p.start)} to ${String(p.end)} of ${String(p.total)} results`;
       }
 
       return translations[key] || key;
