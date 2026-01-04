@@ -18,16 +18,18 @@ use rand::Rng;
 // === Buffer Capacity Constants ===
 // Pre-tuned for typical SSE chunk sizes to minimize reallocations
 const INITIAL_BUFFER_CAPACITY: usize = 8192;      // 8KB initial buffer for incoming data
+#[allow(dead_code)]  // Reserved for future content buffer pre-allocation
 const CONTENT_BUFFER_CAPACITY: usize = 1024;      // Content accumulator pre-allocation
 
 /// Map Gemini finish reason to OpenAI format (inlined for performance)
+#[allow(dead_code)]  // Reserved for streaming optimization refactor
 #[inline(always)]
 fn map_finish_reason(reason: &str) -> &'static str {
     match reason {
         "STOP" => "stop",
         "MAX_TOKENS" => "length",
         "SAFETY" => "content_filter",
-        _ => reason,
+        _ => "stop", // Default to "stop" for unknown finish reasons
     }
 }
 
@@ -116,7 +118,7 @@ pub fn create_openai_sse_stream(
                                     let candidate = candidates.and_then(|c| c.get(0));
                                     let parts = candidate.and_then(|c| c.get("content")).and_then(|c| c.get("parts")).and_then(|p| p.as_array());
 
-                                    let mut content_out = String::new();
+                                    let mut content_out = String::with_capacity(CONTENT_BUFFER_CAPACITY);
                                     
                                     if let Some(parts_list) = parts {
                                         for part in parts_list {
@@ -179,15 +181,10 @@ pub fn create_openai_sse_stream(
                                         }
                                     }
                                         
-                                    // Extract finish reason
+                                    // Extract finish reason using optimized mapper
                                     let finish_reason = candidate.and_then(|c| c.get("finishReason"))
                                         .and_then(|f| f.as_str())
-                                        .map(|f| match f {
-                                            "STOP" => "stop",
-                                            "MAX_TOKENS" => "length",
-                                            "SAFETY" => "content_filter",
-                                            _ => f,
-                                        });
+                                        .map(map_finish_reason);
 
                                     // Construct OpenAI SSE chunk
                                     let openai_chunk = json!({
@@ -229,7 +226,8 @@ pub fn create_legacy_sse_stream(
     mut gemini_stream: Pin<Box<dyn Stream<Item = Result<Bytes, reqwest::Error>> + Send>>,
     model: String,
 ) -> Pin<Box<dyn Stream<Item = Result<Bytes, String>> + Send>> {
-    let mut buffer = BytesMut::new();
+    // Pre-allocate buffer with capacity hint
+    let mut buffer = BytesMut::with_capacity(INITIAL_BUFFER_CAPACITY);
     
     // Generate constant alphanumeric ID (mimics OpenAI base62 format)
     // SAFETY: Using bytes array indexing which is always valid for ASCII charset
@@ -262,7 +260,7 @@ pub fn create_legacy_sse_stream(
                                 if let Ok(mut json) = serde_json::from_str::<Value>(json_part) {
                                     let actual_data = if let Some(inner) = json.get_mut("response").map(|v| v.take()) { inner } else { json };
                                     
-                                    let mut content_out = String::new();
+                                    let mut content_out = String::with_capacity(CONTENT_BUFFER_CAPACITY);
                                     if let Some(candidates) = actual_data.get("candidates").and_then(|c| c.as_array()) {
                                         if let Some(parts) = candidates.get(0).and_then(|c| c.get("content")).and_then(|c| c.get("parts")).and_then(|p| p.as_array()) {
                                             for part in parts {
@@ -288,12 +286,7 @@ pub fn create_legacy_sse_stream(
                                         .and_then(|c| c.get(0))
                                         .and_then(|c| c.get("finishReason"))
                                         .and_then(|f| f.as_str())
-                                        .map(|f| match f {
-                                            "STOP" => "stop",
-                                            "MAX_TOKENS" => "length",
-                                            "SAFETY" => "content_filter",
-                                            _ => f,
-                                        });
+                                        .map(map_finish_reason);
 
                                     // Construct LEGACY completion chunk - STRICT VERSION
                                     let legacy_chunk = json!({
@@ -385,17 +378,13 @@ pub fn create_codex_sse_stream(
                                 if let Some(candidates) = actual_data.get("candidates").and_then(|c| c.as_array()) {
                                     if let Some(candidate) = candidates.get(0) {
                                         if let Some(reason) = candidate.get("finishReason").and_then(|r| r.as_str()) {
-                                            last_finish_reason = match reason {
-                                                "STOP" => "stop".to_string(),
-                                                "MAX_TOKENS" => "length".to_string(),
-                                                _ => "stop".to_string(),
-                                            };
+                                            last_finish_reason = map_finish_reason(reason).to_string(); // Optimized
                                         }
                                     }
                                 }
 
                                 // text delta
-                                let mut delta_text = String::new();
+                                let mut delta_text = String::with_capacity(CONTENT_BUFFER_CAPACITY);
                                 if let Some(candidates) = actual_data.get("candidates").and_then(|c| c.as_array()) {
                                     if let Some(candidate) = candidates.get(0) {
                                         if let Some(parts) = candidate.get("content").and_then(|c| c.get("parts")).and_then(|p| p.as_array()) {

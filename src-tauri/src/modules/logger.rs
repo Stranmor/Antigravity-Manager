@@ -76,12 +76,12 @@ pub fn init_logger() {
     info!("日志系统已完成初始化 (终端控制台 + 文件持久化)");
 }
 
-/// 清理日志缓存 (采用截断模式以保持文件句柄有效)
+/// 清理日志缓存 (采用截断模式以保持 file 句柄有效)
 pub fn clear_logs() -> Result<(), String> {
     let log_dir = get_log_dir()?;
     if log_dir.exists() {
         // 遍历目录下的所有文件并截断，而不是删除目录
-        let entries = fs::read_dir(&log_dir).map_err(|e| format!("读取日志目录失败: {}", e))?;
+        let entries = fs::read_dir(&log_dir).map_err(|e| format!("读取日志目录失败: {e}"))?;
         for entry in entries {
             if let Ok(entry) = entry {
                 let path = entry.path();
