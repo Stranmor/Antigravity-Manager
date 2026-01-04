@@ -64,8 +64,10 @@ pub async fn start_proxy_service(
             monitor.set_enabled(config.enable_logging);
         }
     }
-    
-    let monitor = state.monitor.read().await.as_ref().unwrap().clone();
+
+    let monitor = state.monitor.read().await.as_ref()
+        .ok_or_else(|| "Proxy monitor not initialized".to_string())?
+        .clone();
     
     // 2. 初始化 Token 管理器
     let app_data_dir = crate::modules::account::get_data_dir()?;

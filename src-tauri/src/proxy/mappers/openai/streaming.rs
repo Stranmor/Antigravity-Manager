@@ -209,12 +209,13 @@ pub fn create_legacy_sse_stream(
     let mut buffer = BytesMut::new();
     
     // Generate constant alphanumeric ID (mimics OpenAI base62 format)
-    let charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    // SAFETY: Using bytes array indexing which is always valid for ASCII charset
+    let charset: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     let mut rng = rand::thread_rng();
     let random_str: String = (0..28)
         .map(|_| {
             let idx = rng.gen_range(0..charset.len());
-            charset.chars().nth(idx).unwrap()
+            charset[idx] as char
         })
         .collect();
     let stream_id = format!("cmpl-{}", random_str);
@@ -315,12 +316,13 @@ pub fn create_codex_sse_stream(
     let mut buffer = BytesMut::new();
     
     // Generate alphanumeric ID
-    let charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    // SAFETY: Using bytes array indexing which is always valid for ASCII charset
+    let charset: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     let mut rng = rand::thread_rng();
     let random_str: String = (0..24)
         .map(|_| {
             let idx = rng.gen_range(0..charset.len());
-            charset.chars().nth(idx).unwrap()
+            charset[idx] as char
         })
         .collect();
     let response_id = format!("resp-{}", random_str);

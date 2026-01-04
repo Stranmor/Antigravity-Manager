@@ -10,7 +10,9 @@ use parking_lot::Mutex;
 /// LRU cache for resolved model routes (thread-safe)
 /// Cache key is a hash of (original_model, custom_mapping_hash, openai_mapping_hash, anthropic_mapping_hash, apply_claude_family_mapping)
 static MODEL_ROUTE_CACHE: Lazy<Mutex<LruCache<u64, String>>> = Lazy::new(|| {
-    Mutex::new(LruCache::new(NonZeroUsize::new(100).unwrap()))
+    Mutex::new(LruCache::new(
+        NonZeroUsize::new(100).expect("MODEL_ROUTE_CACHE: Cache size must be non-zero")
+    ))
 });
 
 /// Compute a deterministic hash for a HashMap to use as part of cache key

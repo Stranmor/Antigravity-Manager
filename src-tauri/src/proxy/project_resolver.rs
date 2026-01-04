@@ -58,11 +58,12 @@ pub fn generate_mock_project_id() -> String {
     let noun = nouns[rng.gen_range(0..nouns.len())];
     
     // 生成5位随机字符（base36）
+    // SAFETY: Using bytes array indexing which is always valid for ASCII charset
+    let charset: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
     let random_num: String = (0..5)
         .map(|_| {
-            let chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-            let idx = rng.gen_range(0..chars.len());
-            chars.chars().nth(idx).unwrap()
+            let idx = rng.gen_range(0..charset.len());
+            charset[idx] as char
         })
         .collect();
     

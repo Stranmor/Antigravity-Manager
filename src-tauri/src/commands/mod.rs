@@ -725,8 +725,10 @@ pub async fn toggle_proxy_status(
     }
 
     // 3. 保存到磁盘
-    std::fs::write(&account_path, serde_json::to_string_pretty(&account_json).unwrap())
-        .map_err(|e| format!("写入账号文件失败: {}", e))?;
+    let json_content = serde_json::to_string_pretty(&account_json)
+        .map_err(|e| format!("Failed to serialize account data: {}", e))?;
+    std::fs::write(&account_path, json_content)
+        .map_err(|e| format!("Failed to write account file: {}", e))?;
 
     modules::logger::log_info(&format!(
         "账号反代状态已更新: {} ({})",

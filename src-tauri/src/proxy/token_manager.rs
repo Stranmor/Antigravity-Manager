@@ -213,8 +213,8 @@ impl TokenManager {
             let mut target_token: Option<ProxyToken> = None;
             
             // 模式 A: 粘性会话处理 (CacheFirst 或 Balance 且有 session_id)
-            if !rotate && session_id.is_some() && scheduling.mode != SchedulingMode::PerformanceFirst {
-                let sid = session_id.unwrap();
+            // SAFETY: We check session_id.is_some() before unwrapping
+            if let Some(sid) = session_id.filter(|_| !rotate && scheduling.mode != SchedulingMode::PerformanceFirst) {
                 
                 // 1. 检查会话是否已绑定账号
                 if let Some(bound_id) = self.session_accounts.get(sid).map(|v| v.clone()) {
@@ -435,8 +435,10 @@ impl TokenManager {
         content["disabled_at"] = serde_json::Value::Number(now.into());
         content["disabled_reason"] = serde_json::Value::String(truncate_reason(reason, 800));
 
-        tokio::fs::write(&path, serde_json::to_string_pretty(&content).unwrap()).await
-            .map_err(|e| format!("写入文件失败: {}", e))?;
+        let json_content = serde_json::to_string_pretty(&content)
+            .map_err(|e| format!("Failed to serialize account data: {}", e))?;
+        tokio::fs::write(&path, json_content).await
+            .map_err(|e| format!("Failed to write account file: {}", e))?;
 
         tracing::warn!("Account disabled: {} ({:?})", account_id, path);
         Ok(())
@@ -455,8 +457,10 @@ impl TokenManager {
 
         content["token"]["project_id"] = serde_json::Value::String(project_id.to_string());
 
-        tokio::fs::write(path, serde_json::to_string_pretty(&content).unwrap()).await
-            .map_err(|e| format!("写入文件失败: {}", e))?;
+        let json_content = serde_json::to_string_pretty(&content)
+            .map_err(|e| format!("Failed to serialize project_id data: {}", e))?;
+        tokio::fs::write(path, json_content).await
+            .map_err(|e| format!("Failed to write account file: {}", e))?;
         
         tracing::debug!("已保存 project_id 到账号 {}", account_id);
         Ok(())
@@ -479,8 +483,10 @@ impl TokenManager {
         content["token"]["expires_in"] = serde_json::Value::Number(token_response.expires_in.into());
         content["token"]["expiry_timestamp"] = serde_json::Value::Number((now + token_response.expires_in).into());
 
-        tokio::fs::write(path, serde_json::to_string_pretty(&content).unwrap()).await
-            .map_err(|e| format!("写入文件失败: {}", e))?;
+        let json_content = serde_json::to_string_pretty(&content)
+            .map_err(|e| format!("Failed to serialize token data: {}", e))?;
+        tokio::fs::write(path, json_content).await
+            .map_err(|e| format!("Failed to write account file: {}", e))?;
         
         tracing::debug!("已保存刷新后的 token 到账号 {}", account_id);
         Ok(())

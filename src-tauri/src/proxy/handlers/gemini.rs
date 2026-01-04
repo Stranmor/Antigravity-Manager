@@ -168,7 +168,7 @@ pub async fn handle_generate(
                     .header("Connection", "keep-alive")
                     .header(crate::proxy::middleware::monitor::X_RESOLVED_MODEL_HEADER, mapped_model.as_str())
                     .body(body)
-                    .unwrap()
+                    .expect("Failed to build SSE response - invalid headers")
                     .into_response());
             }
 
