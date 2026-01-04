@@ -76,9 +76,9 @@ function Dashboard() {
         try {
             await switchAccount(accountId);
             showToast(t('dashboard.toast.switch_success'), 'success');
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('切换账号失败:', error);
-            showToast(`${t('dashboard.toast.switch_error')}: ${error}`, 'error');
+            showToast(`${t('dashboard.toast.switch_error')}: ${String(error)}`, 'error');
         } finally {
             setTimeout(() => {
                 isSwitchingRef.current = false;
@@ -102,9 +102,9 @@ function Dashboard() {
             // 刷新成功后重新获取最新数据
             await fetchCurrentAccount();
             showToast(t('dashboard.toast.refresh_success'), 'success');
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('[Dashboard] Refresh failed:', error);
-            showToast(`${t('dashboard.toast.refresh_error')}: ${error}`, 'error');
+            showToast(`${t('dashboard.toast.refresh_error')}: ${String(error)}`, 'error');
         } finally {
             setIsRefreshing(false);
         }
@@ -122,7 +122,7 @@ function Dashboard() {
                     name: 'JSON',
                     extensions: ['json']
                 }],
-                defaultPath: `antigravity_accounts_${new Date().toISOString().split('T')[0]}.json`
+                defaultPath: `antigravity_accounts_${new Date().toISOString().split('T')[0] ?? ''}.json`
             });
 
             if (!path) return;
@@ -137,15 +137,19 @@ function Dashboard() {
             await invoke('save_text_file', { path, content });
 
             showToast(t('dashboard.toast.export_success', { path }), 'success');
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('Export failed:', error);
-            showToast(`${t('dashboard.toast.export_error')}: ${error}`, 'error');
+            showToast(`${t('dashboard.toast.export_error')}: ${String(error)}`, 'error');
         }
     };
 
     const handleExport = () => {
         void exportAccountsToJson(accounts);
     };
+
+    // Wrapper handlers for async functions
+    const onRefreshClick = () => { void handleRefreshCurrent(); };
+    const onSwitchHandler = (accountId: string) => { void handleSwitch(accountId); };
 
     return (
         <div className="h-full w-full overflow-y-auto">
@@ -169,7 +173,7 @@ function Dashboard() {
                         <AddAccountDialog onAdd={handleAddAccount} />
                         <button
                             className={`px-3 py-1.5 bg-blue-500 text-white text-xs font-medium rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-1.5 shadow-sm ${isRefreshing || !currentAccount ? 'opacity-70 cursor-not-allowed' : ''}`}
-                            onClick={handleRefreshCurrent}
+                            onClick={onRefreshClick}
                             disabled={isRefreshing || !currentAccount}
                         >
                             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -256,7 +260,7 @@ function Dashboard() {
                     <BestAccounts
                         accounts={accounts}
                         currentAccountId={currentAccount?.id}
-                        onSwitch={handleSwitch}
+                        onSwitch={onSwitchHandler}
                     />
                 </div>
 
