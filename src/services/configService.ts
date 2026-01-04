@@ -6,5 +6,5 @@ export async function loadConfig(): Promise<AppConfig> {
 }
 
 export async function saveConfig(config: AppConfig): Promise<void> {
-    return await invoke('save_config', { config });
+    await invoke('save_config', { config });
 }

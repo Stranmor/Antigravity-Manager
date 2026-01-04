@@ -66,7 +66,7 @@ export default function ThemeManager() {
 
             // Listen for changes
             mediaQuery.addEventListener('change', handleSystemChange);
-            return () => mediaQuery.removeEventListener('change', handleSystemChange);
+            return () => { mediaQuery.removeEventListener('change', handleSystemChange); };
         } else {
             applyTheme(theme);
             return; // Explicit return for non-system theme path

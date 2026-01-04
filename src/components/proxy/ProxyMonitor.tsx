@@ -162,7 +162,7 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
                             placeholder={t('monitor.filters.placeholder')}
                             className="input input-sm input-bordered w-full pl-9 text-xs"
                             value={filter}
-                            onChange={(e) => setFilter(e.target.value)}
+                            onChange={(e) => { setFilter(e.target.value); }}
                         />
                     </div>
 
@@ -180,11 +180,11 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
                 <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[10px] font-bold text-gray-400 uppercase">{t('monitor.filters.quick_filters')}</span>
                     {quickFilters.map(q => (
-                        <button key={q.label} onClick={() => setFilter(q.value)} className={`px-2 py-0.5 rounded-full text-[10px] border ${filter === q.value ? 'bg-blue-500 text-white' : 'bg-white dark:bg-base-200 text-gray-500'}`}>
+                        <button key={q.label} onClick={() => { setFilter(q.value); }} className={`px-2 py-0.5 rounded-full text-[10px] border ${filter === q.value ? 'bg-blue-500 text-white' : 'bg-white dark:bg-base-200 text-gray-500'}`}>
                             {q.label}
                         </button>
                     ))}
-                    {filter && <button onClick={() => setFilter('')} className="text-[10px] text-blue-500"> {t('monitor.filters.reset')} </button>}
+                    {filter && <button onClick={() => { setFilter(''); }} className="text-[10px] text-blue-500"> {t('monitor.filters.reset')} </button>}
                 </div>
             </div>
 
@@ -203,7 +203,7 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
                     </thead>
                     <tbody className="font-mono text-gray-700 dark:text-gray-300">
                         {filteredLogs.map(log => (
-                            <tr key={log.id} className="hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer" onClick={() => setSelectedLog(log)}>
+                            <tr key={log.id} className="hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer" onClick={() => { setSelectedLog(log); }}>
                                 <td><span className={`badge badge-xs text-white border-none ${log.status >= 200 && log.status < 400 ? 'badge-success' : 'badge-error'}`}>{log.status}</span></td>
                                 <td className="font-bold">{log.method}</td>
                                 <td className="truncate max-w-[180px]" title={log.resolved_model ? `${log.model} → ${log.resolved_model}` : log.model}>
@@ -231,8 +231,8 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
             </div>
 
             {selectedLog && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setSelectedLog(null)}>
-                    <div className="bg-white dark:bg-base-100 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-gray-200 dark:border-base-300" onClick={e => e.stopPropagation()}>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => { setSelectedLog(null); }}>
+                    <div className="bg-white dark:bg-base-100 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-gray-200 dark:border-base-300" onClick={e => { e.stopPropagation(); }}>
                         {/* Modal Header */}
                         <div className="px-4 py-3 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between bg-gray-50 dark:bg-slate-900">
                             <div className="flex items-center gap-3">
@@ -240,7 +240,7 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
                                 <span className="font-mono font-bold text-gray-900 dark:text-white text-sm">{selectedLog.method}</span>
                                 <span className="text-xs text-gray-500 dark:text-slate-400 font-mono truncate max-w-md hidden sm:inline">{selectedLog.url}</span>
                             </div>
-                            <button onClick={() => setSelectedLog(null)} className="btn btn-ghost btn-sm btn-circle text-gray-500 dark:text-slate-400 hover:dark:bg-slate-800"><X size={18} /></button>
+                            <button onClick={() => { setSelectedLog(null); }} className="btn btn-ghost btn-sm btn-circle text-gray-500 dark:text-slate-400 hover:dark:bg-slate-800"><X size={18} /></button>
                         </div>
 
                         {/* Modal Content */}
@@ -307,7 +307,7 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
                 confirmText={t('common.delete')}
                 isDestructive={true}
                 onConfirm={executeClearLogs}
-                onCancel={() => setIsClearConfirmOpen(false)}
+                onCancel={() => { setIsClearConfirmOpen(false); }}
             />
         </div>
     );

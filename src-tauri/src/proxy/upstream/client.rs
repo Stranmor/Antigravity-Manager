@@ -44,13 +44,13 @@ impl UpstreamClient {
     }
 
     /// 构建 v1internal URL
-    /// 
+    ///
     /// 构建 API 请求地址
     fn build_url(base_url: &str, method: &str, query_string: Option<&str>) -> String {
         if let Some(qs) = query_string {
-            format!("{}:{}?{}", base_url, method, qs)
+            format!("{base_url}:{method}?{qs}")
         } else {
-            format!("{}:{}", base_url, method)
+            format!("{base_url}:{method}")
         }
     }
 
@@ -86,7 +86,7 @@ impl UpstreamClient {
         );
         headers.insert(
             header::AUTHORIZATION,
-            header::HeaderValue::from_str(&format!("Bearer {}", access_token))
+            header::HeaderValue::from_str(&format!("Bearer {access_token}"))
                 .map_err(|e| e.to_string())?,
         );
         headers.insert(
@@ -115,14 +115,12 @@ impl UpstreamClient {
                     if status.is_success() {
                         if idx > 0 {
                             tracing::info!(
-                                "✓ Upstream fallback succeeded | Endpoint: {} | Status: {} | Attempt: {}/{}",
-                                base_url,
-                                status,
+                                "✓ Upstream fallback succeeded | Endpoint: {base_url} | Status: {status} | Attempt: {}/{}",
                                 idx + 1,
                                 V1_INTERNAL_BASE_URL_FALLBACKS.len()
                             );
                         } else {
-                            tracing::debug!("✓ Upstream request succeeded | Endpoint: {} | Status: {}", base_url, status);
+                            tracing::debug!("✓ Upstream request succeeded | Endpoint: {base_url} | Status: {status}");
                         }
                         return Ok(resp);
                     }
@@ -130,12 +128,9 @@ impl UpstreamClient {
                     // 如果有下一个端点且当前错误可重试，则切换
                     if has_next && Self::should_try_next_endpoint(status) {
                         tracing::warn!(
-                            "Upstream endpoint returned {} at {} (method={}), trying next endpoint",
-                            status,
-                            base_url,
-                            method
+                            "Upstream endpoint returned {status} at {base_url} (method={method}), trying next endpoint"
                         );
-                        last_err = Some(format!("Upstream {} returned {}", base_url, status));
+                        last_err = Some(format!("Upstream {base_url} returned {status}"));
                         continue;
                     }
 
@@ -143,8 +138,8 @@ impl UpstreamClient {
                     return Ok(resp);
                 }
                 Err(e) => {
-                    let msg = format!("HTTP request failed at {}: {}", base_url, e);
-                    tracing::debug!("{}", msg);
+                    let msg = format!("HTTP request failed at {base_url}: {e}");
+                    tracing::debug!("{msg}");
                     last_err = Some(msg);
 
                     // 如果是最后一个端点，退出循环
@@ -191,7 +186,7 @@ impl UpstreamClient {
         );
         headers.insert(
             header::AUTHORIZATION,
-            header::HeaderValue::from_str(&format!("Bearer {}", access_token))
+            header::HeaderValue::from_str(&format!("Bearer {access_token}"))
                 .map_err(|e| e.to_string())?,
         );
         headers.insert(
@@ -219,17 +214,15 @@ impl UpstreamClient {
                     if status.is_success() {
                         if idx > 0 {
                             tracing::info!(
-                                "✓ Upstream fallback succeeded for fetchAvailableModels | Endpoint: {} | Status: {}",
-                                base_url,
-                                status
+                                "✓ Upstream fallback succeeded for fetchAvailableModels | Endpoint: {base_url} | Status: {status}"
                             );
                         } else {
-                            tracing::debug!("✓ fetchAvailableModels succeeded | Endpoint: {}", base_url);
+                            tracing::debug!("✓ fetchAvailableModels succeeded | Endpoint: {base_url}");
                         }
                         let json: Value = resp
                             .json()
                             .await
-                            .map_err(|e| format!("Parse json failed: {}", e))?;
+                            .map_err(|e| format!("Parse json failed: {e}"))?;
                         return Ok(json);
                     }
 
@@ -237,20 +230,18 @@ impl UpstreamClient {
                     let has_next = idx + 1 < V1_INTERNAL_BASE_URL_FALLBACKS.len();
                     if has_next && Self::should_try_next_endpoint(status) {
                         tracing::warn!(
-                            "fetchAvailableModels returned {} at {}, trying next endpoint",
-                            status,
-                            base_url
+                            "fetchAvailableModels returned {status} at {base_url}, trying next endpoint"
                         );
-                        last_err = Some(format!("Upstream error: {}", status));
+                        last_err = Some(format!("Upstream error: {status}"));
                         continue;
                     }
 
                     // 不可重试的错误或已是最后一个端点
-                    return Err(format!("Upstream error: {}", status));
+                    return Err(format!("Upstream error: {status}"));
                 }
                 Err(e) => {
-                    let msg = format!("Request failed at {}: {}", base_url, e);
-                    tracing::debug!("{}", msg);
+                    let msg = format!("Request failed at {base_url}: {e}");
+                    tracing::debug!("{msg}");
                     last_err = Some(msg);
 
                     // 如果是最后一个端点，退出循环

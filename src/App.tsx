@@ -48,13 +48,13 @@ function App() {
   const { i18n } = useTranslation();
 
   useEffect(() => {
-    loadConfig();
+    void loadConfig();
   }, [loadConfig]);
 
   // Sync language from config
   useEffect(() => {
     if (config?.language) {
-      i18n.changeLanguage(config.language);
+      void i18n.changeLanguage(config.language);
     }
   }, [config?.language, i18n]);
 
@@ -66,8 +66,8 @@ function App() {
     unlistenPromises.push(
       listen('tray://account-switched', () => {
         console.log('[App] Tray account switched, refreshing...');
-        fetchCurrentAccount();
-        fetchAccounts();
+        void fetchCurrentAccount();
+        void fetchAccounts();
       })
     );
 
@@ -75,15 +75,15 @@ function App() {
     unlistenPromises.push(
       listen('tray://refresh-current', () => {
         console.log('[App] Tray refresh triggered, refreshing...');
-        fetchCurrentAccount();
-        fetchAccounts();
+        void fetchCurrentAccount();
+        void fetchAccounts();
       })
     );
 
     // Cleanup
     return () => {
-      Promise.all(unlistenPromises).then(unlisteners => {
-        unlisteners.forEach(unlisten => unlisten());
+      void Promise.all(unlistenPromises).then(unlisteners => {
+        unlisteners.forEach(unlisten => { unlisten(); });
       });
     };
   }, [fetchCurrentAccount, fetchAccounts]);

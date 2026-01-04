@@ -11,7 +11,7 @@ const NetworkMonitor: React.FC = () => {
         return (
             <div className="fixed bottom-4 right-4 z-50">
                 <button
-                    onClick={() => setIsOpen(true)}
+                    onClick={() => { setIsOpen(true); }}
                     className="btn btn-circle btn-primary shadow-lg"
                     title="Open Network Monitor"
                 >
@@ -52,7 +52,7 @@ const NetworkMonitor: React.FC = () => {
                         <Trash2 size={16} />
                     </button>
                     <button
-                        onClick={() => setIsOpen(false)}
+                        onClick={() => { setIsOpen(false); }}
                         className="btn btn-sm btn-circle btn-ghost"
                     >
                         <X size={20} />
@@ -78,7 +78,7 @@ const NetworkMonitor: React.FC = () => {
                                 <tr
                                     key={req.id}
                                     className={`cursor-pointer hover:bg-base-200 ${selectedRequest?.id === req.id ? 'bg-primary/10' : ''}`}
-                                    onClick={() => setSelectedRequest(req)}
+                                    onClick={() => { setSelectedRequest(req); }}
                                 >
                                     <td>
                                         <BadgeStatus status={req.status} />
@@ -109,7 +109,7 @@ const NetworkMonitor: React.FC = () => {
                 {selectedRequest && (
                     <div className="flex-1 md:w-1/2 overflow-y-auto bg-base-100 flex flex-col absolute inset-0 md:static z-10 w-full">
                         <div className="flex items-center justify-between p-2 border-b border-base-300 bg-base-200/30 md:hidden">
-                            <button onClick={() => setSelectedRequest(null)} className="btn btn-sm btn-ghost">
+                            <button onClick={() => { setSelectedRequest(null); }} className="btn btn-sm btn-ghost">
                                 <ChevronDown size={16} className="rotate-90" /> Back
                             </button>
                             <span className="font-mono text-xs">{selectedRequest.cmd}</span>

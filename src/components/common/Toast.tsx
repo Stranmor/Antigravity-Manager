@@ -16,14 +16,14 @@ const Toast = ({ id, message, type, duration = 3000, onClose }: ToastProps) => {
 
     useEffect(() => {
         // Exciting entrance
-        requestAnimationFrame(() => setIsVisible(true));
+        requestAnimationFrame(() => { setIsVisible(true); });
 
         if (duration > 0) {
             const timer = setTimeout(() => {
                 setIsVisible(false);
-                setTimeout(() => onClose(id), 300); // Wait for transition
+                setTimeout(() => { onClose(id); }, 300); // Wait for transition
             }, duration);
-            return () => clearTimeout(timer);
+            return () => { clearTimeout(timer); };
         }
         return; // Explicit return when duration <= 0
     }, [duration, id, onClose]);
@@ -54,7 +54,7 @@ const Toast = ({ id, message, type, duration = 3000, onClose }: ToastProps) => {
             {getIcon()}
             <p className="flex-1 text-sm font-medium text-gray-700 dark:text-base-content">{message}</p>
             <button
-                onClick={() => { setIsVisible(false); setTimeout(() => onClose(id), 300); }}
+                onClick={() => { setIsVisible(false); setTimeout(() => { onClose(id); }, 300); }}
                 className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
             >
                 <X className="w-4 h-4" />

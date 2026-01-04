@@ -53,7 +53,7 @@ function Accounts() {
     useEffect(() => {
         if (!containerRef.current) return;
         const resizeObserver = new ResizeObserver((entries) => {
-            for (let entry of entries) {
+            for (const entry of entries) {
                 setContainerSize({
                     width: entry.contentRect.width,
                     height: entry.contentRect.height
@@ -61,7 +61,7 @@ function Accounts() {
             }
         });
         resizeObserver.observe(containerRef.current);
-        return () => resizeObserver.disconnect();
+        return () => { resizeObserver.disconnect(); };
     }, []);
 
     // Pagination State
@@ -463,7 +463,7 @@ function Accounts() {
                         placeholder={t('accounts.search_placeholder')}
                         className="w-full pl-9 pr-4 py-2 bg-white dark:bg-base-100 text-sm text-gray-900 dark:text-base-content border border-gray-200 dark:border-base-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder:text-gray-400 dark:placeholder:text-gray-500"
                         value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onChange={(e) => { setSearchQuery(e.target.value); }}
                     />
                 </div>
 
@@ -476,7 +476,7 @@ function Accounts() {
                                 ? "bg-white dark:bg-base-100 text-blue-600 dark:text-blue-400 shadow-sm"
                                 : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-base-content"
                         )}
-                        onClick={() => setViewMode('list')}
+                        onClick={() => { setViewMode('list'); }}
                         title={t('accounts.views.list')}
                     >
                         <List className="w-4 h-4" />
@@ -488,7 +488,7 @@ function Accounts() {
                                 ? "bg-white dark:bg-base-100 text-blue-600 dark:text-blue-400 shadow-sm"
                                 : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-base-content"
                         )}
-                        onClick={() => setViewMode('grid')}
+                        onClick={() => { setViewMode('grid'); }}
                         title={t('accounts.views.grid')}
                     >
                         <LayoutGrid className="w-4 h-4" />
@@ -504,7 +504,7 @@ function Accounts() {
                                 ? "bg-white dark:bg-base-100 text-blue-600 dark:text-blue-400 shadow-sm ring-1 ring-black/5"
                                 : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-base-content hover:bg-white/40"
                         )}
-                        onClick={() => setFilter('all')}
+                        onClick={() => { setFilter('all'); }}
                     >
                         {t('accounts.all')}
                         <span className={cn(
@@ -526,7 +526,7 @@ function Accounts() {
                                 ? "bg-white dark:bg-base-100 text-blue-600 dark:text-blue-400 shadow-sm ring-1 ring-black/5"
                                 : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-base-content hover:bg-white/40"
                         )}
-                        onClick={() => setFilter('pro')}
+                        onClick={() => { setFilter('pro'); }}
                     >
                         {t('accounts.pro')}
                         <span className={cn(
@@ -546,7 +546,7 @@ function Accounts() {
                                 ? "bg-white dark:bg-base-100 text-blue-600 dark:text-blue-400 shadow-sm ring-1 ring-black/5"
                                 : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-base-content hover:bg-white/40"
                         )}
-                        onClick={() => setFilter('ultra')}
+                        onClick={() => { setFilter('ultra'); }}
                     >
                         {t('accounts.ultra')}
                         <span className={cn(
@@ -566,7 +566,7 @@ function Accounts() {
                                 ? "bg-white dark:bg-base-100 text-blue-600 dark:text-blue-400 shadow-sm ring-1 ring-black/5"
                                 : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-base-content hover:bg-white/40"
                         )}
-                        onClick={() => setFilter('free')}
+                        onClick={() => { setFilter('free'); }}
                     >
                         {t('accounts.free')}
                         <span className={cn(
@@ -658,7 +658,7 @@ function Accounts() {
                                 onViewDetails={handleViewDetails}
                                 onExport={handleExportOne}
                                 onDelete={handleDelete}
-                                onToggleProxy={(id) => handleToggleProxy(id, !!accounts.find(a => a.id === id)?.proxy_disabled)}
+                                onToggleProxy={(id) => { handleToggleProxy(id, !!accounts.find(a => a.id === id)?.proxy_disabled); }}
                                 onReorder={reorderAccounts}
                             />
                         </div>
@@ -677,7 +677,7 @@ function Accounts() {
                             onViewDetails={handleViewDetails}
                             onExport={handleExportOne}
                             onDelete={handleDelete}
-                            onToggleProxy={(id) => handleToggleProxy(id, !!accounts.find(a => a.id === id)?.proxy_disabled)}
+                            onToggleProxy={(id) => { handleToggleProxy(id, !!accounts.find(a => a.id === id)?.proxy_disabled); }}
                         />
                     </div>
                 )}
@@ -705,7 +705,7 @@ function Accounts() {
 
             <AccountDetailsDialog
                 account={detailsAccount}
-                onClose={() => setDetailsAccount(null)}
+                onClose={() => { setDetailsAccount(null); }}
             />
 
             <ModalDialog
@@ -733,13 +733,13 @@ function Accounts() {
                 confirmText={t('common.refresh')}
                 isDestructive={false}
                 onConfirm={executeRefresh}
-                onCancel={() => setIsRefreshConfirmOpen(false)}
+                onCancel={() => { setIsRefreshConfirmOpen(false); }}
             />
 
             {toggleProxyConfirm && (
                 <ModalDialog
                     isOpen={!!toggleProxyConfirm}
-                    onCancel={() => setToggleProxyConfirm(null)}
+                    onCancel={() => { setToggleProxyConfirm(null); }}
                     onConfirm={executeToggleProxy}
                     title={toggleProxyConfirm.enable ? t('accounts.dialog.enable_proxy_title') : t('accounts.dialog.disable_proxy_title')}
                     message={toggleProxyConfirm.enable ? t('accounts.dialog.enable_proxy_msg') : t('accounts.dialog.disable_proxy_msg')}

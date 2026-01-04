@@ -17,11 +17,11 @@ impl tracing_subscriber::fmt::time::FormatTime for LocalTimer {
 pub fn get_log_dir() -> Result<PathBuf, String> {
     let data_dir = get_data_dir()?;
     let log_dir = data_dir.join("logs");
-    
+
     if !log_dir.exists() {
-        fs::create_dir_all(&log_dir).map_err(|e| format!("创建日志目录失败: {}", e))?;
+        fs::create_dir_all(&log_dir).map_err(|e| format!("创建日志目录失败: {e}"))?;
     }
-    
+
     Ok(log_dir)
 }
 
@@ -29,11 +29,11 @@ pub fn get_log_dir() -> Result<PathBuf, String> {
 pub fn init_logger() {
     // 捕获 log 宏日志
     let _ = tracing_log::LogTracer::init();
-    
+
     let log_dir = match get_log_dir() {
         Ok(dir) => dir,
         Err(e) => {
-            eprintln!("无法初始化日志目录: {}", e);
+            eprintln!("无法初始化日志目录: {e}");
             return;
         }
     };

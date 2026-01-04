@@ -28,18 +28,18 @@ export const useNetworkMonitorStore = create<NetworkMonitorState>((set) => ({
   isOpen: false,
   isRecording: true,
   
-  addRequest: (request) => set((state) => {
+  addRequest: (request) => { set((state) => {
     if (!state.isRecording) return state;
     return { requests: [request, ...state.requests].slice(0, 1000) }; // Keep last 1000 requests
-  }),
+  }); },
 
-  updateRequest: (id, updates) => set((state) => ({
+  updateRequest: (id, updates) => { set((state) => ({
     requests: state.requests.map((req) => 
       req.id === id ? { ...req, ...updates } : req
     ),
-  })),
+  })); },
 
-  clearRequests: () => set({ requests: [] }),
-  setIsOpen: (isOpen) => set({ isOpen }),
-  toggleRecording: () => set((state) => ({ isRecording: !state.isRecording })),
+  clearRequests: () => { set({ requests: [] }); },
+  setIsOpen: (isOpen) => { set({ isOpen }); },
+  toggleRecording: () => { set((state) => ({ isRecording: !state.isRecording })); },
 }));

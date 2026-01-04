@@ -200,6 +200,7 @@ impl AxumServer {
             .layer(DefaultBodyLimit::max(100 * 1024 * 1024))
             .layer(axum::middleware::from_fn_with_state(state.clone(), crate::proxy::middleware::monitor::monitor_middleware))
             .layer(TraceLayer::new_for_http())
+            .layer(axum::middleware::from_fn(crate::proxy::middleware::request_id_middleware))
             .layer(axum::middleware::from_fn_with_state(
                 security_state.clone(),
                 crate::proxy::middleware::auth_middleware,
@@ -208,12 +209,12 @@ impl AxumServer {
             .with_state(state);
 
         // 绑定地址
-        let addr = format!("{}:{}", host, port);
+        let addr = format!("{host}:{port}");
         let listener = tokio::net::TcpListener::bind(&addr)
             .await
-            .map_err(|e| format!("地址 {} 绑定失败: {}", addr, e))?;
+            .map_err(|e| format!("地址 {addr} 绑定失败: {e}"))?;
 
-        tracing::info!("反代服务器启动在 http://{}", addr);
+        tracing::info!("反代服务器启动在 http://{addr}");
 
         // 创建关闭通道
         let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();

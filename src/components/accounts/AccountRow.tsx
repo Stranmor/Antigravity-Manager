@@ -61,8 +61,8 @@ function AccountRow({ account, selected, onSelect, isCurrent, isRefreshing, isSw
                     type="checkbox"
                     className="checkbox checkbox-xs rounded border-2 border-gray-400 dark:border-gray-500 checked:border-blue-600 checked:bg-blue-600 [--chkbg:theme(colors.blue.600)] [--chkfg:white]"
                     checked={selected}
-                    onChange={() => onSelect()}
-                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => { onSelect(); }}
+                    onClick={(e) => { e.stopPropagation(); }}
                 />
             </td>
 

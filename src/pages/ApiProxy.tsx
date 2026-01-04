@@ -87,12 +87,12 @@ function CollapsibleCard({
                     {rightElement}
 
                     {enabled !== undefined && onToggle && (
-                        <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center" onClick={(e) => { e.stopPropagation(); }}>
                             <input
                                 type="checkbox"
                                 className="toggle toggle-sm bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 checked:bg-blue-500 checked:border-blue-500"
                                 checked={enabled}
-                                onChange={(e) => onToggle(e.target.checked)}
+                                onChange={(e) => { onToggle(e.target.checked); }}
                             />
                         </div>
                     )}
@@ -240,7 +240,7 @@ export default function ApiProxy() {
         loadConfig();
         loadStatus();
         const interval = setInterval(loadStatus, 3000);
-        return () => clearInterval(interval);
+        return () => { clearInterval(interval); };
     }, []);
 
     const loadConfig = async () => {
@@ -521,7 +521,7 @@ export default function ApiProxy() {
     const copyToClipboard = (text: string, label: string) => {
         navigator.clipboard.writeText(text).then(() => {
             setCopied(label);
-            setTimeout(() => setCopied(null), 2000);
+            setTimeout(() => { setCopied(null); }, 2000);
         });
     };
 
@@ -538,7 +538,7 @@ export default function ApiProxy() {
  
  client = Anthropic(
      # 推荐使用 127.0.0.1
-     base_url="${`http://127.0.0.1:${port}`}",
+     base_url="http://127.0.0.1:${port}",
      api_key="${apiKey}"
  )
  
@@ -690,7 +690,7 @@ print(response.text)`;
                                     <input
                                         type="number"
                                         value={appConfig.proxy.port}
-                                        onChange={(e) => updateProxyConfig({ port: parseInt(e.target.value) })}
+                                        onChange={(e) => { updateProxyConfig({ port: parseInt(e.target.value) }); }}
                                         min={8000}
                                         max={65535}
                                         disabled={status.running}
@@ -734,7 +734,7 @@ print(response.text)`;
                                             type="checkbox"
                                             className="toggle toggle-sm bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 checked:bg-blue-500 checked:border-blue-500 disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-800"
                                             checked={appConfig.proxy.auto_start}
-                                            onChange={(e) => updateProxyConfig({ auto_start: e.target.checked })}
+                                            onChange={(e) => { updateProxyConfig({ auto_start: e.target.checked }); }}
                                         />
                                         <span className="text-xs font-medium text-gray-900 dark:text-base-content inline-flex items-center gap-1">
                                             {t('proxy.config.auto_start')}
@@ -767,7 +767,7 @@ print(response.text)`;
                                                 type="checkbox"
                                                 className="toggle toggle-sm bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 checked:bg-blue-500 checked:border-blue-500"
                                                 checked={appConfig.proxy.allow_lan_access || false}
-                                                onChange={(e) => updateProxyConfig({ allow_lan_access: e.target.checked })}
+                                                onChange={(e) => { updateProxyConfig({ allow_lan_access: e.target.checked }); }}
                                             />
                                         </div>
                                         <p className="text-[10px] text-gray-500 dark:text-gray-400">
@@ -835,9 +835,9 @@ print(response.text)`;
                                             <select
                                                 value={appConfig.proxy.auth_mode || 'off'}
                                                 onChange={(e) =>
-                                                    updateProxyConfig({
+                                                    { updateProxyConfig({
                                                         auth_mode: e.target.value as ProxyConfig['auth_mode'],
-                                                    })
+                                                    }); }
                                                 }
                                                 className="w-full px-2.5 py-1.5 border border-gray-300 dark:border-base-200 rounded-lg bg-white dark:bg-base-200 text-xs text-gray-900 dark:text-base-content focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                             >
@@ -881,7 +881,7 @@ print(response.text)`;
                                         <RefreshCw size={14} />
                                     </button>
                                     <button
-                                        onClick={() => copyToClipboard(appConfig.proxy.api_key, 'api_key')}
+                                        onClick={() => { copyToClipboard(appConfig.proxy.api_key, 'api_key'); }}
                                         className="px-2.5 py-1.5 border border-gray-300 dark:border-base-200 rounded-lg bg-white dark:bg-base-200 hover:bg-gray-50 dark:hover:bg-base-300 transition-colors"
                                         title={t('proxy.config.btn_copy')}
                                     >
@@ -918,7 +918,7 @@ print(response.text)`;
                                 title={t('proxy.config.zai.title')}
                                 icon={<Zap size={18} className="text-amber-500" />}
                                 enabled={!!appConfig.proxy.zai?.enabled}
-                                onToggle={(checked) => updateZaiGeneralConfig({ enabled: checked })}
+                                onToggle={(checked) => { updateZaiGeneralConfig({ enabled: checked }); }}
                             >
                                 <div className="space-y-4">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -929,7 +929,7 @@ print(response.text)`;
                                             <input
                                                 type="text"
                                                 value={appConfig.proxy.zai?.base_url || 'https://api.z.ai/api/anthropic'}
-                                                onChange={(e) => updateZaiGeneralConfig({ base_url: e.target.value })}
+                                                onChange={(e) => { updateZaiGeneralConfig({ base_url: e.target.value }); }}
                                                 className="input input-sm input-bordered w-full font-mono text-xs"
                                             />
                                         </div>
@@ -940,7 +940,7 @@ print(response.text)`;
                                             <select
                                                 className="select select-sm select-bordered w-full text-xs"
                                                 value={appConfig.proxy.zai?.dispatch_mode || 'off'}
-                                                onChange={(e) => updateZaiGeneralConfig({ dispatch_mode: e.target.value as any })}
+                                                onChange={(e) => { updateZaiGeneralConfig({ dispatch_mode: e.target.value as any }); }}
                                             >
                                                 <option value="off">{t('proxy.config.zai.modes.off')}</option>
                                                 <option value="exclusive">{t('proxy.config.zai.modes.exclusive')}</option>
@@ -963,7 +963,7 @@ print(response.text)`;
                                         <input
                                             type="password"
                                             value={appConfig.proxy.zai?.api_key || ''}
-                                            onChange={(e) => updateZaiGeneralConfig({ api_key: e.target.value })}
+                                            onChange={(e) => { updateZaiGeneralConfig({ api_key: e.target.value }); }}
                                             placeholder="sk-..."
                                             className="input input-sm input-bordered w-full font-mono text-xs"
                                         />
@@ -1004,7 +1004,7 @@ print(response.text)`;
                                                             type="text"
                                                             className="input input-xs input-bordered w-full font-mono"
                                                             value={appConfig.proxy.zai?.models?.[family as keyof typeof appConfig.proxy.zai.models] || ''}
-                                                            onChange={(e) => updateZaiDefaultModels({ [family]: e.target.value })}
+                                                            onChange={(e) => { updateZaiDefaultModels({ [family]: e.target.value }); }}
                                                         />
                                                     </div>
                                                 </div>
@@ -1037,10 +1037,10 @@ print(response.text)`;
                                                                 type="text"
                                                                 className="input input-xs input-bordered w-full font-mono h-6"
                                                                 value={to}
-                                                                onChange={(e) => upsertZaiModelMapping(from, e.target.value)}
+                                                                onChange={(e) => { upsertZaiModelMapping(from, e.target.value); }}
                                                             />
                                                         </div>
-                                                        <button onClick={() => removeZaiModelMapping(from)} className="text-gray-400 hover:text-red-500"><Trash2 size={12} /></button>
+                                                        <button onClick={() => { removeZaiModelMapping(from); }} className="text-gray-400 hover:text-red-500"><Trash2 size={12} /></button>
                                                     </div>
                                                 ))}
 
@@ -1049,13 +1049,13 @@ print(response.text)`;
                                                         className="input input-xs input-bordered flex-1 font-mono"
                                                         placeholder="From (e.g. claude-3-opus)"
                                                         value={zaiNewMappingFrom}
-                                                        onChange={e => setZaiNewMappingFrom(e.target.value)}
+                                                        onChange={e => { setZaiNewMappingFrom(e.target.value); }}
                                                     />
                                                     <input
                                                         className="input input-xs input-bordered flex-1 font-mono"
                                                         placeholder="To (e.g. glm-4)"
                                                         value={zaiNewMappingTo}
-                                                        onChange={e => setZaiNewMappingTo(e.target.value)}
+                                                        onChange={e => { setZaiNewMappingTo(e.target.value); }}
                                                     />
                                                     <button
                                                         className="btn btn-xs btn-primary"
@@ -1083,7 +1083,7 @@ print(response.text)`;
                                 title={t('proxy.config.zai.mcp.title')}
                                 icon={<Puzzle size={18} className="text-blue-500" />}
                                 enabled={!!appConfig.proxy.zai?.mcp?.enabled}
-                                onToggle={(checked) => updateZaiGeneralConfig({ mcp: { ...(appConfig.proxy.zai?.mcp || {}), enabled: checked } as any })}
+                                onToggle={(checked) => { updateZaiGeneralConfig({ mcp: { ...(appConfig.proxy.zai?.mcp || {}), enabled: checked } as any }); }}
                                 rightElement={
                                     <div className="flex gap-2 text-[10px] text-gray-400">
                                         {['web_search', 'web_reader', 'vision'].map(f =>
@@ -1103,7 +1103,7 @@ print(response.text)`;
                                                 type="checkbox"
                                                 className="checkbox checkbox-xs checkbox-primary rounded-md"
                                                 checked={!!appConfig.proxy.zai?.mcp?.web_search_enabled}
-                                                onChange={(e) => updateZaiGeneralConfig({ mcp: { ...(appConfig.proxy.zai?.mcp || {}), web_search_enabled: e.target.checked } as any })}
+                                                onChange={(e) => { updateZaiGeneralConfig({ mcp: { ...(appConfig.proxy.zai?.mcp || {}), web_search_enabled: e.target.checked } as any }); }}
                                             />
                                             <span className="text-xs">{t('proxy.config.zai.mcp.web_search')}</span>
                                         </label>
@@ -1112,7 +1112,7 @@ print(response.text)`;
                                                 type="checkbox"
                                                 className="checkbox checkbox-xs checkbox-primary rounded-md"
                                                 checked={!!appConfig.proxy.zai?.mcp?.web_reader_enabled}
-                                                onChange={(e) => updateZaiGeneralConfig({ mcp: { ...(appConfig.proxy.zai?.mcp || {}), web_reader_enabled: e.target.checked } as any })}
+                                                onChange={(e) => { updateZaiGeneralConfig({ mcp: { ...(appConfig.proxy.zai?.mcp || {}), web_reader_enabled: e.target.checked } as any }); }}
                                             />
                                             <span className="text-xs">{t('proxy.config.zai.mcp.web_reader')}</span>
                                         </label>
@@ -1121,7 +1121,7 @@ print(response.text)`;
                                                 type="checkbox"
                                                 className="checkbox checkbox-xs checkbox-primary rounded-md"
                                                 checked={!!appConfig.proxy.zai?.mcp?.vision_enabled}
-                                                onChange={(e) => updateZaiGeneralConfig({ mcp: { ...(appConfig.proxy.zai?.mcp || {}), vision_enabled: e.target.checked } as any })}
+                                                onChange={(e) => { updateZaiGeneralConfig({ mcp: { ...(appConfig.proxy.zai?.mcp || {}), vision_enabled: e.target.checked } as any }); }}
                                             />
                                             <span className="text-xs">{t('proxy.config.zai.mcp.vision')}</span>
                                         </label>
@@ -1177,7 +1177,7 @@ print(response.text)`;
                                                             type="radio"
                                                             className="radio radio-xs radio-primary mt-1"
                                                             checked={(appConfig.proxy.scheduling?.mode || 'Balance') === mode}
-                                                            onChange={() => updateSchedulingConfig({ mode })}
+                                                            onChange={() => { updateSchedulingConfig({ mode }); }}
                                                         />
                                                         <div className="space-y-1">
                                                             <div className="text-xs font-bold text-gray-900 dark:text-base-content">
@@ -1215,7 +1215,7 @@ print(response.text)`;
                                                     disabled={(appConfig.proxy.scheduling?.mode || 'Balance') !== 'CacheFirst'}
                                                     className="range range-indigo range-xs"
                                                     value={appConfig.proxy.scheduling?.max_wait_seconds || 60}
-                                                    onChange={(e) => updateSchedulingConfig({ max_wait_seconds: parseInt(e.target.value) })}
+                                                    onChange={(e) => { updateSchedulingConfig({ max_wait_seconds: parseInt(e.target.value) }); }}
                                                 />
                                                 <div className="flex justify-between px-1 mt-1 text-[10px] text-gray-400 font-mono">
                                                     <span>0s</span>
@@ -1560,7 +1560,7 @@ print(response.text)`;
                                     {/* OpenAI Card */}
                                     <div
                                         className={`p-3 rounded-xl border-2 transition-all cursor-pointer ${selectedProtocol === 'openai' ? 'border-blue-500 bg-blue-50/30 dark:bg-blue-900/10' : 'border-gray-100 dark:border-base-200 hover:border-blue-200'}`}
-                                        onClick={() => setSelectedProtocol('openai')}
+                                        onClick={() => { setSelectedProtocol('openai'); }}
                                     >
                                         <div className="flex items-center justify-between mb-2">
                                             <span className="text-xs font-bold text-blue-600">{t('proxy.multi_protocol.openai_label')}</span>
@@ -1593,7 +1593,7 @@ print(response.text)`;
                                     {/* Anthropic Card */}
                                     <div
                                         className={`p-3 rounded-xl border-2 transition-all cursor-pointer ${selectedProtocol === 'anthropic' ? 'border-purple-500 bg-purple-50/30 dark:bg-purple-900/10' : 'border-gray-100 dark:border-base-200 hover:border-purple-200'}`}
-                                        onClick={() => setSelectedProtocol('anthropic')}
+                                        onClick={() => { setSelectedProtocol('anthropic'); }}
                                     >
                                         <div className="flex items-center justify-between mb-2">
                                             <span className="text-xs font-bold text-purple-600">{t('proxy.multi_protocol.anthropic_label')}</span>
@@ -1607,7 +1607,7 @@ print(response.text)`;
                                     {/* Gemini Card */}
                                     <div
                                         className={`p-3 rounded-xl border-2 transition-all cursor-pointer ${selectedProtocol === 'gemini' ? 'border-green-500 bg-green-50/30 dark:bg-green-900/10' : 'border-gray-100 dark:border-base-200 hover:border-green-200'}`}
-                                        onClick={() => setSelectedProtocol('gemini')}
+                                        onClick={() => { setSelectedProtocol('gemini'); }}
                                     >
                                         <div className="flex items-center justify-between mb-2">
                                             <span className="text-xs font-bold text-green-600">{t('proxy.multi_protocol.gemini_label')}</span>
@@ -1653,7 +1653,7 @@ print(response.text)`;
                                                     <tr
                                                         key={m.id}
                                                         className={`hover:bg-blue-50/50 dark:hover:bg-blue-900/10 cursor-pointer transition-colors ${selectedModelId === m.id ? 'bg-blue-50/80 dark:bg-blue-900/20' : ''}`}
-                                                        onClick={() => setSelectedModelId(m.id)}
+                                                        onClick={() => { setSelectedModelId(m.id); }}
                                                     >
                                                         <td className="pl-4 text-blue-500">{m.icon}</td>
                                                         <td className="font-bold text-xs">{m.name}</td>
@@ -1695,7 +1695,7 @@ print(response.text)`;
                                             </pre>
                                         </div>
                                         <button
-                                            onClick={() => copyToClipboard(getPythonExample(selectedModelId), 'example-code')}
+                                            onClick={() => { copyToClipboard(getPythonExample(selectedModelId), 'example-code'); }}
                                             className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors text-white opacity-0 group-hover:opacity-100"
                                         >
                                             {copied === 'example-code' ? <CheckCircle size={16} /> : <Copy size={16} />}
@@ -1717,7 +1717,7 @@ print(response.text)`;
                     type="confirm"
                     isDestructive={true}
                     onConfirm={executeResetMapping}
-                    onCancel={() => setIsResetConfirmOpen(false)}
+                    onCancel={() => { setIsResetConfirmOpen(false); }}
                 />
 
                 <ModalDialog
@@ -1727,7 +1727,7 @@ print(response.text)`;
                     type="confirm"
                     isDestructive={true}
                     onConfirm={executeGenerateApiKey}
-                    onCancel={() => setIsRegenerateKeyConfirmOpen(false)}
+                    onCancel={() => { setIsRegenerateKeyConfirmOpen(false); }}
                 />
 
                 <ModalDialog
@@ -1737,7 +1737,7 @@ print(response.text)`;
                     type="confirm"
                     isDestructive={true}
                     onConfirm={executeClearSessionBindings}
-                    onCancel={() => setIsClearBindingsConfirmOpen(false)}
+                    onCancel={() => { setIsClearBindingsConfirmOpen(false); }}
                 />
             </div >
         </div>

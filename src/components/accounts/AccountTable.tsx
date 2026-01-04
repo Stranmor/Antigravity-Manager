@@ -192,7 +192,7 @@ function SortableAccountRow({
                     className="checkbox checkbox-xs rounded border-2 border-gray-400 dark:border-gray-500 checked:border-blue-600 checked:bg-blue-600 [--chkbg:theme(colors.blue.600)] [--chkfg:white]"
                     checked={selected}
                     onChange={onSelect}
-                    onClick={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); }}
                 />
             </td>
             <AccountRowContent
@@ -618,13 +618,13 @@ function AccountTable({
                                     isCurrent={account.id === currentAccountId}
                                     isSwitching={account.id === switchingAccountId}
                                     isDragging={account.id === activeId}
-                                    onSelect={() => onToggleSelect(account.id)}
-                                    onSwitch={() => onSwitch(account.id)}
-                                    onRefresh={() => onRefresh(account.id)}
-                                    onViewDetails={() => onViewDetails(account.id)}
-                                    onExport={() => onExport(account.id)}
-                                    onDelete={() => onDelete(account.id)}
-                                    onToggleProxy={() => onToggleProxy(account.id)}
+                                    onSelect={() => { onToggleSelect(account.id); }}
+                                    onSwitch={() => { onSwitch(account.id); }}
+                                    onRefresh={() => { onRefresh(account.id); }}
+                                    onViewDetails={() => { onViewDetails(account.id); }}
+                                    onExport={() => { onExport(account.id); }}
+                                    onDelete={() => { onDelete(account.id); }}
+                                    onToggleProxy={() => { onToggleProxy(account.id); }}
                                 />
                             ))}
                         </tbody>

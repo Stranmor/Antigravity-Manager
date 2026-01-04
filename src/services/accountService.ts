@@ -23,15 +23,15 @@ export async function addAccount(email: string, refreshToken: string): Promise<A
 }
 
 export async function deleteAccount(accountId: string): Promise<void> {
-    return await invoke('delete_account', { accountId });
+    await invoke('delete_account', { accountId });
 }
 
 export async function deleteAccounts(accountIds: string[]): Promise<void> {
-    return await invoke('delete_accounts', { accountIds });
+    await invoke('delete_accounts', { accountIds });
 }
 
 export async function switchAccount(accountId: string): Promise<void> {
-    return await invoke('switch_account', { accountId });
+    await invoke('switch_account', { accountId });
 }
 
 export async function fetchAccountQuota(accountId: string): Promise<QuotaData> {
@@ -86,7 +86,7 @@ export async function completeOAuthLogin(): Promise<Account> {
 
 export async function cancelOAuthLogin(): Promise<void> {
     ensureTauriEnvironment();
-    return await invoke('cancel_oauth_login');
+    await invoke('cancel_oauth_login');
 }
 
 // 导入
@@ -107,7 +107,7 @@ export async function syncAccountFromDb(): Promise<Account | null> {
 }
 
 export async function toggleProxyStatus(accountId: string, enable: boolean, reason?: string): Promise<void> {
-    return await invoke('toggle_proxy_status', { accountId, enable, reason });
+    await invoke('toggle_proxy_status', { accountId, enable, reason });
 }
 
 /**
@@ -115,5 +115,5 @@ export async function toggleProxyStatus(accountId: string, enable: boolean, reas
  * @param accountIds 按新顺序排列的账号ID数组
  */
 export async function reorderAccounts(accountIds: string[]): Promise<void> {
-    return await invoke('reorder_accounts', { accountIds });
+    await invoke('reorder_accounts', { accountIds });
 }

@@ -7,6 +7,7 @@ use axum::{
 use std::time::Instant;
 use crate::proxy::server::AppState;
 use crate::proxy::monitor::ProxyRequestLog;
+use crate::proxy::middleware::RequestId;
 use serde_json::Value;
 use futures::StreamExt;
 
@@ -29,6 +30,13 @@ pub async fn monitor_middleware(
     if uri.contains("event_logging") {
         return next.run(request).await;
     }
+
+    // Use request ID from extensions (set by request_id_middleware)
+    let request_id = request
+        .extensions()
+        .get::<RequestId>()
+        .map(|id| id.as_str().to_string())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
     let mut model = if uri.contains("/v1beta/models/") {
         uri.split("/v1beta/models/")
@@ -87,7 +95,7 @@ pub async fn monitor_middleware(
 
     let monitor = state.monitor.clone();
     let mut log = ProxyRequestLog {
-        id: uuid::Uuid::new_v4().to_string(),
+        id: request_id.clone(),
         timestamp: chrono::Utc::now().timestamp_millis(),
         method,
         url: uri,

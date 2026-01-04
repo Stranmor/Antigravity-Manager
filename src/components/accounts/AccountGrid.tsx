@@ -35,15 +35,15 @@ function AccountGrid({ accounts, selectedIds, refreshingIds, onToggleSelect, cur
                     account={account}
                     selected={selectedIds.has(account.id)}
                     isRefreshing={refreshingIds.has(account.id)}
-                    onSelect={() => onToggleSelect(account.id)}
+                    onSelect={() => { onToggleSelect(account.id); }}
                     isCurrent={account.id === currentAccountId}
                     isSwitching={account.id === switchingAccountId}
-                    onSwitch={() => onSwitch(account.id)}
-                    onRefresh={() => onRefresh(account.id)}
-                    onViewDetails={() => onViewDetails(account.id)}
-                    onExport={() => onExport(account.id)}
-                    onDelete={() => onDelete(account.id)}
-                    onToggleProxy={() => onToggleProxy(account.id)}
+                    onSwitch={() => { onSwitch(account.id); }}
+                    onRefresh={() => { onRefresh(account.id); }}
+                    onViewDetails={() => { onViewDetails(account.id); }}
+                    onExport={() => { onExport(account.id); }}
+                    onDelete={() => { onDelete(account.id); }}
+                    onToggleProxy={() => { onToggleProxy(account.id); }}
                 />
             ))}
         </div>

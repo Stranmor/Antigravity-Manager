@@ -73,28 +73,28 @@ async fn fetch_project_id(access_token: &str, email: &str) -> (Option<String>, O
             if res.status().is_success() {
                 if let Ok(data) = res.json::<LoadProjectResponse>().await {
                     let project_id = data.project_id.clone();
-                    
+
                     // 核心逻辑：优先从 paid_tier 获取订阅 ID，这比 current_tier 更能反映真实账户权益
                     let subscription_tier = data.paid_tier
                         .and_then(|t| t.id)
                         .or_else(|| data.current_tier.and_then(|t| t.id));
-                    
+
                     if let Some(ref tier) = subscription_tier {
                         crate::modules::logger::log_info(&format!(
-                            "📊 [{}] 订阅识别成功: {}", email, tier
+                            "📊 [{email}] 订阅识别成功: {tier}"
                         ));
                     }
-                    
+
                     return (project_id, subscription_tier);
                 }
             } else {
                 crate::modules::logger::log_warn(&format!(
-                    "⚠️  [{}] loadCodeAssist 失败: Status: {}", email, res.status()
+                    "⚠️  [{email}] loadCodeAssist 失败: Status: {}", res.status()
                 ));
             }
         }
         Err(e) => {
-            crate::modules::logger::log_error(&format!("❌ [{}] loadCodeAssist 网络错误: {}", email, e));
+            crate::modules::logger::log_error(&format!("❌ [{email}] loadCodeAssist 网络错误: {e}"));
         }
     }
     
@@ -136,30 +136,28 @@ pub async fn fetch_quota_inner(access_token: &str, email: &str) -> crate::error:
         {
             Ok(response) => {
                 // 将 HTTP 错误状态转换为 AppError
-                if let Err(_) = response.error_for_status_ref() {
+                if response.error_for_status_ref().is_err() {
                     let status = response.status();
-                    
+
                     // ✅ 特殊处理 403 Forbidden - 直接返回,不重试
                     if status == reqwest::StatusCode::FORBIDDEN {
-                        crate::modules::logger::log_warn(&format!(
-                            "账号无权限 (403 Forbidden),标记为 forbidden 状态"
-                        ));
+                        crate::modules::logger::log_warn("账号无权限 (403 Forbidden),标记为 forbidden 状态");
                         let mut q = QuotaData::new();
                         q.is_forbidden = true;
                         q.subscription_tier = subscription_tier.clone();
                         return Ok((q, project_id.clone()));
                     }
-                    
+
                     // 其他错误继续重试逻辑
                     if attempt < max_retries {
                          let text = response.text().await.unwrap_or_default();
-                         crate::modules::logger::log_warn(&format!("API 错误: {} - {} (尝试 {}/{})", status, text, attempt, max_retries));
-                         last_error = Some(AppError::Unknown(format!("HTTP {} - {}", status, text)));
+                         crate::modules::logger::log_warn(&format!("API 错误: {status} - {text} (尝试 {attempt}/{max_retries})"));
+                         last_error = Some(AppError::Unknown(format!("HTTP {status} - {text}")));
                          tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                          continue;
                     } else {
                          let text = response.text().await.unwrap_or_default();
-                         return Err(AppError::Unknown(format!("API 错误: {} - {}", status, text)));
+                         return Err(AppError::Unknown(format!("API 错误: {status} - {text}")));
                     }
                 }
 
@@ -194,7 +192,7 @@ pub async fn fetch_quota_inner(access_token: &str, email: &str) -> crate::error:
                 return Ok((quota_data, project_id.clone()));
             },
             Err(e) => {
-                crate::modules::logger::log_warn(&format!("请求失败: {} (尝试 {}/{})", e, attempt, max_retries));
+                crate::modules::logger::log_warn(&format!("请求失败: {e} (尝试 {attempt}/{max_retries})"));
                 last_error = Some(AppError::Network(e));
                 if attempt < max_retries {
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;

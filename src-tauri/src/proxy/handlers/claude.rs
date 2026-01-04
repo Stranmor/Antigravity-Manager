@@ -322,7 +322,6 @@ fn should_rotate_account(status_code: u16) -> bool {
 // ===== 退避策略模块结束 =====
 
 /// 处理 Claude messages 请求
-/// 
 /// 处理 Chat 消息请求流程
 pub async fn handle_messages(
     State(state): State<AppState>,
@@ -771,9 +770,9 @@ pub async fn handle_messages(
         let retry_after = response.headers().get("Retry-After").and_then(|h| h.to_str().ok()).map(|s| s.to_string());
         
         // 2. 获取错误文本并转移 Response 所有权
-        let error_text = response.text().await.unwrap_or_else(|_| format!("HTTP {}", status));
-        last_error = format!("HTTP {}: {}", status_code, error_text);
-        debug!("[{}] Upstream Error Response: {}", trace_id, error_text);
+        let error_text = response.text().await.unwrap_or_else(|_| format!("HTTP {status}"));
+        last_error = format!("HTTP {status_code}: {error_text}");
+        debug!("[{trace_id}] Upstream Error Response: {error_text}");
         
         // 3. 标记限流状态（用于 UI 显示）
         if status_code == 429 || status_code == 529 || status_code == 503 || status_code == 500 {

@@ -53,8 +53,8 @@ function Settings() {
 
         // 获取真实数据目录路径
         invoke<string>('get_data_dir_path')
-            .then(path => setDataDirPath(path))
-            .catch(err => console.error('Failed to get data dir:', err));
+            .then(path => { setDataDirPath(path); })
+            .catch(err => { console.error('Failed to get data dir:', err); });
     }, [loadConfig]);
 
     useEffect(() => {
@@ -174,7 +174,7 @@ function Settings() {
                                 ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
                                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                                 }`}
-                            onClick={() => setActiveTab('general')}
+                            onClick={() => { setActiveTab('general'); }}
                         >
                             {t('settings.tabs.general')}
                         </button>
@@ -183,7 +183,7 @@ function Settings() {
                                 ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
                                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                                 }`}
-                            onClick={() => setActiveTab('account')}
+                            onClick={() => { setActiveTab('account'); }}
                         >
                             {t('settings.tabs.account')}
                         </button>
@@ -192,7 +192,7 @@ function Settings() {
                                 ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
                                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                                 }`}
-                            onClick={() => setActiveTab('proxy')}
+                            onClick={() => { setActiveTab('proxy'); }}
                         >
                             {t('settings.tabs.proxy')}
                         </button>
@@ -201,7 +201,7 @@ function Settings() {
                                 ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
                                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                                 }`}
-                            onClick={() => setActiveTab('advanced')}
+                            onClick={() => { setActiveTab('advanced'); }}
                         >
                             {t('settings.tabs.advanced')}
                         </button>
@@ -210,7 +210,7 @@ function Settings() {
                                 ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
                                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                                 }`}
-                            onClick={() => setActiveTab('about')}
+                            onClick={() => { setActiveTab('about'); }}
                         >
                             {t('settings.tabs.about')}
                         </button>
@@ -238,7 +238,7 @@ function Settings() {
                                 <select
                                     className="w-full px-4 py-4 border border-gray-200 dark:border-base-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 dark:text-base-content bg-gray-50 dark:bg-base-200"
                                     value={formData.language}
-                                    onChange={(e) => setFormData({ ...formData, language: e.target.value })}
+                                    onChange={(e) => { setFormData({ ...formData, language: e.target.value }); }}
                                 >
                                     <option value="zh">简体中文</option>
                                     <option value="en">English</option>
@@ -251,7 +251,7 @@ function Settings() {
                                 <select
                                     className="w-full px-4 py-4 border border-gray-200 dark:border-base-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 dark:text-base-content bg-gray-50 dark:bg-base-200"
                                     value={formData.theme}
-                                    onChange={(e) => setFormData({ ...formData, theme: e.target.value })}
+                                    onChange={(e) => { setFormData({ ...formData, theme: e.target.value }); }}
                                 >
                                     <option value="light">{t('settings.general.theme_light')}</option>
                                     <option value="dark">{t('settings.general.theme_dark')}</option>
@@ -300,7 +300,7 @@ function Settings() {
                                         type="checkbox"
                                         className="sr-only peer"
                                         checked={formData.auto_refresh}
-                                        onChange={(e) => setFormData({ ...formData, auto_refresh: e.target.checked })}
+                                        onChange={(e) => { setFormData({ ...formData, auto_refresh: e.target.checked }); }}
                                     />
                                     <div className="w-11 h-6 bg-gray-200 dark:bg-base-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
                                 </label>
@@ -316,7 +316,7 @@ function Settings() {
                                         min="1"
                                         max="60"
                                         value={formData.refresh_interval}
-                                        onChange={(e) => setFormData({ ...formData, refresh_interval: parseInt(e.target.value) })}
+                                        onChange={(e) => { setFormData({ ...formData, refresh_interval: parseInt(e.target.value) }); }}
                                     />
                                 </div>
                             )}
@@ -332,7 +332,7 @@ function Settings() {
                                         type="checkbox"
                                         className="sr-only peer"
                                         checked={formData.auto_sync}
-                                        onChange={(e) => setFormData({ ...formData, auto_sync: e.target.checked })}
+                                        onChange={(e) => { setFormData({ ...formData, auto_sync: e.target.checked }); }}
                                     />
                                     <div className="w-11 h-6 bg-gray-200 dark:bg-base-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
                                 </label>
@@ -348,7 +348,7 @@ function Settings() {
                                         min="1"
                                         max="60"
                                         value={formData.sync_interval}
-                                        onChange={(e) => setFormData({ ...formData, sync_interval: parseInt(e.target.value) })}
+                                        onChange={(e) => { setFormData({ ...formData, sync_interval: parseInt(e.target.value) }); }}
                                     />
                                 </div>
                             )}
@@ -373,7 +373,7 @@ function Settings() {
                                     {formData.default_export_path && (
                                         <button
                                             className="px-4 py-2 border border-gray-200 dark:border-base-300 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
-                                            onClick={() => setFormData({ ...formData, default_export_path: undefined })}
+                                            onClick={() => { setFormData({ ...formData, default_export_path: undefined }); }}
                                         >
                                             {t('common.clear')}
                                         </button>
@@ -419,12 +419,12 @@ function Settings() {
                                         className="flex-1 px-4 py-4 border border-gray-200 dark:border-base-300 rounded-lg bg-gray-50 dark:bg-base-200 text-gray-900 dark:text-base-content font-medium"
                                         value={formData.antigravity_executable || ''}
                                         placeholder={t('settings.advanced.antigravity_path_placeholder')}
-                                        onChange={(e) => setFormData({ ...formData, antigravity_executable: e.target.value })}
+                                        onChange={(e) => { setFormData({ ...formData, antigravity_executable: e.target.value }); }}
                                     />
                                     {formData.antigravity_executable && (
                                         <button
                                             className="px-4 py-2 border border-gray-200 dark:border-base-300 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
-                                            onClick={() => setFormData({ ...formData, antigravity_executable: undefined })}
+                                            onClick={() => { setFormData({ ...formData, antigravity_executable: undefined }); }}
                                         >
                                             {t('common.clear')}
                                         </button>
@@ -494,7 +494,7 @@ function Settings() {
                                 <div className="flex items-center gap-4">
                                     <button
                                         className="px-4 py-2 border border-gray-300 dark:border-base-300 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-base-200 transition-colors"
-                                        onClick={() => setIsClearLogsOpen(true)}
+                                        onClick={() => { setIsClearLogsOpen(true); }}
                                     >
                                         {t('settings.advanced.clear_logs')}
                                     </button>
@@ -525,7 +525,7 @@ function Settings() {
                                                     type="checkbox"
                                                     className="sr-only"
                                                     checked={formData.proxy?.upstream_proxy?.enabled || false}
-                                                    onChange={(e) => setFormData({
+                                                    onChange={(e) => { setFormData({
                                                         ...formData,
                                                         proxy: {
                                                             ...formData.proxy,
@@ -534,7 +534,7 @@ function Settings() {
                                                                 enabled: e.target.checked
                                                             }
                                                         }
-                                                    })}
+                                                    }); }}
                                                 />
                                                 <div className={`block w-14 h-8 rounded-full transition-colors ${formData.proxy?.upstream_proxy?.enabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-base-300'}`}></div>
                                                 <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${formData.proxy?.upstream_proxy?.enabled ? 'transform translate-x-6' : ''}`}></div>
@@ -552,7 +552,7 @@ function Settings() {
                                         <input
                                             type="text"
                                             value={formData.proxy?.upstream_proxy?.url || ''}
-                                            onChange={(e) => setFormData({
+                                            onChange={(e) => { setFormData({
                                                 ...formData,
                                                 proxy: {
                                                     ...formData.proxy,
@@ -561,7 +561,7 @@ function Settings() {
                                                         url: e.target.value
                                                     }
                                                 }
-                                            })}
+                                            }); }}
                                             placeholder={t('proxy.config.upstream_proxy.url_placeholder')}
                                             className="w-full px-4 py-4 border border-gray-200 dark:border-base-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 dark:text-base-content bg-gray-50 dark:bg-base-200"
                                         />
@@ -711,7 +711,7 @@ function Settings() {
                     cancelText={t('common.cancel')}
                     isDestructive={true}
                     onConfirm={confirmClearLogs}
-                    onCancel={() => setIsClearLogsOpen(false)}
+                    onCancel={() => { setIsClearLogsOpen(false); }}
                 />
             </div>
         </div>

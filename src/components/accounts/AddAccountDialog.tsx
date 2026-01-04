@@ -89,7 +89,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                     }, 1500);
                 } catch (error) {
                     setStatus('error');
-                    let errorMsg = String(error);
+                    const errorMsg = String(error);
                     if (errorMsg.includes('Refresh Token') || errorMsg.includes('refresh_token')) {
                         setMessage(errorMsg);
                     } else if (errorMsg.includes('Tauri') || errorMsg.includes('环境')) {
@@ -167,7 +167,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
             setStatus('error');
 
             // 改进错误信息显示
-            let errorMsg = String(error);
+            const errorMsg = String(error);
 
             // 如果是 refresh_token 缺失错误,显示完整信息(包含解决方案)
             if (errorMsg.includes('Refresh Token') || errorMsg.includes('refresh_token')) {
@@ -284,7 +284,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
             try {
                 await navigator.clipboard.writeText(oauthUrl);
                 setOauthUrlCopied(true);
-                window.setTimeout(() => setOauthUrlCopied(false), 1500);
+                window.setTimeout(() => { setOauthUrlCopied(false); }, 1500);
             } catch (err) {
                 console.error('Failed to copy: ', err);
             }
@@ -348,7 +348,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
         <>
             <button
                 className="px-4 py-2 bg-white dark:bg-base-100 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-base-200 transition-colors flex items-center gap-2 shadow-sm border border-gray-200/50 dark:border-base-300"
-                onClick={() => setIsOpen(true)}
+                onClick={() => { setIsOpen(true); }}
             >
                 <Plus className="w-4 h-4" />
                 {t('accounts.add_account')}
@@ -369,7 +369,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                                     ? 'bg-white dark:bg-base-100 shadow-sm text-blue-600 dark:text-blue-400'
                                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-base-300'
                                     } `}
-                                onClick={() => setActiveTab('oauth')}
+                                onClick={() => { setActiveTab('oauth'); }}
                             >
                                 {t('accounts.add.tabs.oauth')}
                             </button>
@@ -378,7 +378,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                                     ? 'bg-white dark:bg-base-100 shadow-sm text-blue-600 dark:text-blue-400'
                                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-base-300'
                                     } `}
-                                onClick={() => setActiveTab('token')}
+                                onClick={() => { setActiveTab('token'); }}
                             >
                                 {t('accounts.add.tabs.token')}
                             </button>
@@ -387,7 +387,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                                     ? 'bg-white dark:bg-base-100 shadow-sm text-blue-600 dark:text-blue-400'
                                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-base-300'
                                     } `}
-                                onClick={() => setActiveTab('import')}
+                                onClick={() => { setActiveTab('import'); }}
                             >
                                 {t('accounts.add.tabs.import')}
                             </button>
@@ -470,7 +470,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                                             className="textarea textarea-bordered w-full h-32 font-mono text-xs leading-relaxed focus:outline-none focus:border-blue-500 transition-colors bg-white dark:bg-base-100 text-gray-900 dark:text-base-content border-gray-300 dark:border-base-300 placeholder:text-gray-400"
                                             placeholder={t('accounts.add.token.placeholder')}
                                             value={refreshToken}
-                                            onChange={(e) => setRefreshToken(e.target.value)}
+                                            onChange={(e) => { setRefreshToken(e.target.value); }}
                                             disabled={status === 'loading' || status === 'success'}
                                         />
                                         <p className="text-[10px] text-gray-400 mt-2">
@@ -557,7 +557,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                             )}
                         </div>
                     </div>
-                    <div className="modal-backdrop bg-black/40 backdrop-blur-sm fixed inset-0 z-[-1]" onClick={() => setIsOpen(false)}></div>
+                    <div className="modal-backdrop bg-black/40 backdrop-blur-sm fixed inset-0 z-[-1]" onClick={() => { setIsOpen(false); }}></div>
                 </dialog>,
                 document.body
             )}

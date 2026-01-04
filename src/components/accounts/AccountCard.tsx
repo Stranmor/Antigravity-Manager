@@ -62,8 +62,8 @@ function AccountCard({ account, selected, onSelect, isCurrent, isRefreshing, isS
                     type="checkbox"
                     className="mt-1 checkbox checkbox-xs rounded border-2 border-gray-400 dark:border-gray-500 checked:border-blue-600 checked:bg-blue-600 [--chkbg:theme(colors.blue.600)] [--chkfg:white]"
                     checked={selected}
-                    onChange={() => onSelect()}
-                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => { onSelect(); }}
+                    onClick={(e) => { e.stopPropagation(); }}
                 />
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -140,7 +140,7 @@ function AccountCard({ account, selected, onSelect, isCurrent, isRefreshing, isS
                                 {geminiProModel && (
                                     <div
                                         className={`absolute inset-y-0 left-0 transition-all duration-700 ease-out opacity-15 dark:opacity-20 ${getColorClass(geminiProModel.percentage)}`}
-                                        style={{ width: `${geminiProModel.percentage}%` }}
+                                        style={{ width: `${String(geminiProModel.percentage)}%` }}
                                     />
                                 )}
                                 <div className="relative z-10 w-full flex items-center text-[9px] font-mono leading-none whitespace-nowrap">
@@ -169,7 +169,7 @@ function AccountCard({ account, selected, onSelect, isCurrent, isRefreshing, isS
                                 {geminiFlashModel && (
                                     <div
                                         className={`absolute inset-y-0 left-0 transition-all duration-700 ease-out opacity-15 dark:opacity-20 ${getColorClass(geminiFlashModel.percentage)}`}
-                                        style={{ width: `${geminiFlashModel.percentage}%` }}
+                                        style={{ width: `${String(geminiFlashModel.percentage)}%` }}
                                     />
                                 )}
                                 <div className="relative z-10 w-full flex items-center text-[9px] font-mono leading-none whitespace-nowrap">
@@ -198,7 +198,7 @@ function AccountCard({ account, selected, onSelect, isCurrent, isRefreshing, isS
                                 {geminiImageModel && (
                                     <div
                                         className={`absolute inset-y-0 left-0 transition-all duration-700 ease-out opacity-15 dark:opacity-20 ${getColorClass(geminiImageModel.percentage)}`}
-                                        style={{ width: `${geminiImageModel.percentage}%` }}
+                                        style={{ width: `${String(geminiImageModel.percentage)}%` }}
                                     />
                                 )}
                                 <div className="relative z-10 w-full flex items-center text-[9px] font-mono leading-none whitespace-nowrap">
@@ -227,7 +227,7 @@ function AccountCard({ account, selected, onSelect, isCurrent, isRefreshing, isS
                                 {claudeModel && (
                                     <div
                                         className={`absolute inset-y-0 left-0 transition-all duration-700 ease-out opacity-15 dark:opacity-20 ${getColorClass(claudeModel.percentage)}`}
-                                        style={{ width: `${claudeModel.percentage}%` }}
+                                        style={{ width: `${String(claudeModel.percentage)}%` }}
                                     />
                                 )}
                                 <div className="relative z-10 w-full flex items-center text-[9px] font-mono leading-none whitespace-nowrap">

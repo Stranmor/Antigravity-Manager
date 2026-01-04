@@ -37,7 +37,7 @@ export default function AccountDetailsDialog({ account, onClose }: AccountDetail
 
                 {/* Content */}
                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto">
-                    {account.quota?.models?.map((model: ModelQuota) => (
+                    {account.quota?.models.map((model: ModelQuota) => (
                         <div key={model.name} className="p-4 rounded-xl border border-gray-100 dark:border-base-200 bg-white dark:bg-base-100 hover:border-blue-100 dark:hover:border-blue-900 hover:shadow-sm transition-all group">
                             <div className="flex justify-between items-start mb-3">
                                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">
@@ -60,7 +60,7 @@ export default function AccountDetailsDialog({ account, onClose }: AccountDetail
                                         model.percentage >= 20 ? 'bg-orange-400' :
                                             'bg-red-500'
                                         }`}
-                                    style={{ width: `${model.percentage}%` }}
+                                    style={{ width: `${String(model.percentage)}%` }}
                                 ></div>
                             </div>
 

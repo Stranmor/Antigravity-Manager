@@ -34,7 +34,7 @@ describe('useConfigStore', () => {
   describe('loadConfig', () => {
     it('sets loading to true while loading', async () => {
       mockRequest.mockImplementation(
-        () => new Promise((resolve) => setTimeout(() => resolve({}), 100))
+        () => new Promise((resolve) => setTimeout(() => { resolve({}); }, 100))
       );
 
       const promise = useConfigStore.getState().loadConfig();
