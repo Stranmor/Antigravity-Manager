@@ -1007,7 +1007,7 @@ print(response.text)`;
                                                             <select
                                                                 className="select select-xs select-bordered max-w-[80px]"
                                                                 value=""
-                                                                onChange={(e) => e.target.value && updateZaiDefaultModels({ [family]: e.target.value })}
+                                                                onChange={(e) => { if (e.target.value) { updateZaiDefaultModels({ [family]: e.target.value }); } }}
                                                             >
                                                                 <option value="">Select</option>
                                                                 {zaiModelOptions.map(m => <option key={m} value={m}>{m}</option>)}
@@ -1040,7 +1040,7 @@ print(response.text)`;
                                                                 <select
                                                                     className="select select-xs select-ghost h-6 min-h-0 px-1"
                                                                     value=""
-                                                                    onChange={(e) => e.target.value && upsertZaiModelMapping(from, e.target.value)}
+                                                                    onChange={(e) => { if (e.target.value) { upsertZaiModelMapping(from, e.target.value); } }}
                                                                 >
                                                                     <option value="">▼</option>
                                                                     {zaiModelOptions.map(m => <option key={m} value={m}>{m}</option>)}
