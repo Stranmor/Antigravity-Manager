@@ -626,6 +626,17 @@ print(response.text)`;
         return true;
     });
 
+    // Wrapper handlers for async functions to avoid no-misused-promises
+    const onRefreshZaiModels = () => { void refreshZaiModels(); };
+    const onExecuteResetMapping = () => { void executeResetMapping(); };
+    const onExecuteGenerateApiKey = () => { void executeGenerateApiKey(); };
+    const onExecuteClearSessionBindings = () => { void executeClearSessionBindings(); };
+    const onHandleAddHaikuOptimization = () => { void handleAddHaikuOptimization(); };
+    const onHandleMappingUpdate = (type: 'anthropic' | 'openai' | 'custom', key: string, value: string) => {
+        void handleMappingUpdate(type, key, value);
+    };
+    const onHandleRemoveCustomMapping = (key: string) => { void handleRemoveCustomMapping(key); };
+
     return (
         <div className="h-full w-full overflow-y-auto overflow-x-hidden">
             <div className="p-5 space-y-4 max-w-7xl mx-auto">
@@ -978,7 +989,7 @@ print(response.text)`;
                                                 {t('proxy.config.zai.models.title')}
                                             </h4>
                                             <button
-                                                onClick={refreshZaiModels}
+                                                onClick={onRefreshZaiModels}
                                                 disabled={zaiModelsLoading || !appConfig.proxy.zai?.api_key}
                                                 className="btn btn-ghost btn-xs gap-1"
                                             >
@@ -1284,7 +1295,7 @@ print(response.text)`;
                                             <select
                                                 className="select select-sm select-bordered w-full font-mono text-[11px] bg-white/80 dark:bg-base-100/80 backdrop-blur-sm"
                                                 value={appConfig.proxy.anthropic_mapping?.["claude-4.5-series"] || ""}
-                                                onChange={(e) => handleMappingUpdate('anthropic', 'claude-4.5-series', e.target.value)}
+                                                onChange={(e) => { onHandleMappingUpdate('anthropic', 'claude-4.5-series', e.target.value); }}
                                             >
                                                 <option value="gemini-3-pro-high">gemini-3-pro-high{t('proxy.router.default_suffix', ' (Default)')}</option>
                                                 <optgroup label="Claude 4.5">
@@ -1320,7 +1331,7 @@ print(response.text)`;
                                             <select
                                                 className="select select-sm select-bordered w-full font-mono text-[11px] bg-white/80 dark:bg-base-100/80 backdrop-blur-sm"
                                                 value={appConfig.proxy.anthropic_mapping?.["claude-3.5-series"] || ""}
-                                                onChange={(e) => handleMappingUpdate('anthropic', 'claude-3.5-series', e.target.value)}
+                                                onChange={(e) => { onHandleMappingUpdate('anthropic', 'claude-3.5-series', e.target.value); }}
                                             >
                                                 <option value="claude-sonnet-4-5-thinking">claude-sonnet-4-5-thinking{t('proxy.router.default_suffix', ' (Default)')}</option>
                                                 <optgroup label="Claude 4.5">
@@ -1356,7 +1367,7 @@ print(response.text)`;
                                             <select
                                                 className="select select-sm select-bordered w-full font-mono text-[11px] bg-white/80 dark:bg-base-100/80 backdrop-blur-sm"
                                                 value={appConfig.proxy.openai_mapping?.["gpt-4-series"] || ""}
-                                                onChange={(e) => handleMappingUpdate('openai', 'gpt-4-series', e.target.value)}
+                                                onChange={(e) => { onHandleMappingUpdate('openai', 'gpt-4-series', e.target.value); }}
                                             >
                                                 <option value="gemini-3-pro-high">gemini-3-pro-high{t('proxy.router.default_suffix', ' (Default)')}</option>
                                                 <optgroup label="Gemini 3 (推荐)">
@@ -1382,7 +1393,7 @@ print(response.text)`;
                                             <select
                                                 className="select select-sm select-bordered w-full font-mono text-[11px] bg-white/80 dark:bg-base-100/80 backdrop-blur-sm"
                                                 value={appConfig.proxy.openai_mapping?.["gpt-4o-series"] || ""}
-                                                onChange={(e) => handleMappingUpdate('openai', 'gpt-4o-series', e.target.value)}
+                                                onChange={(e) => { onHandleMappingUpdate('openai', 'gpt-4o-series', e.target.value); }}
                                             >
                                                 <option value="gemini-3-flash">gemini-3-flash{t('proxy.router.default_suffix', ' (Default)')}</option>
                                                 <optgroup label="Gemini 3 (推荐)">
@@ -1408,7 +1419,7 @@ print(response.text)`;
                                             <select
                                                 className="select select-sm select-bordered w-full font-mono text-[11px] bg-white/80 dark:bg-base-100/80 backdrop-blur-sm"
                                                 value={appConfig.proxy.openai_mapping?.["gpt-5-series"] || ""}
-                                                onChange={(e) => handleMappingUpdate('openai', 'gpt-5-series', e.target.value)}
+                                                onChange={(e) => { onHandleMappingUpdate('openai', 'gpt-5-series', e.target.value); }}
                                             >
                                                 <option value="gemini-3-flash">gemini-3-flash{t('proxy.router.default_suffix', ' (Default)')}</option>
                                                 <optgroup label="Gemini 3 (推荐)">
@@ -1718,7 +1729,7 @@ print(response.text)`;
                     message={t('proxy.dialog.reset_mapping_msg') || '确定要重置所有模型映射为系统默认吗？'}
                     type="confirm"
                     isDestructive={true}
-                    onConfirm={executeResetMapping}
+                    onConfirm={onExecuteResetMapping}
                     onCancel={() => { setIsResetConfirmOpen(false); }}
                 />
 
@@ -1728,7 +1739,7 @@ print(response.text)`;
                     message={t('proxy.dialog.regenerate_key_msg') || t('proxy.dialog.confirm_regenerate')}
                     type="confirm"
                     isDestructive={true}
-                    onConfirm={executeGenerateApiKey}
+                    onConfirm={onExecuteGenerateApiKey}
                     onCancel={() => { setIsRegenerateKeyConfirmOpen(false); }}
                 />
 
@@ -1738,7 +1749,7 @@ print(response.text)`;
                     message={t('proxy.dialog.clear_bindings_msg') || '确定要清除所有会话与账号的绑定映射吗？'}
                     type="confirm"
                     isDestructive={true}
-                    onConfirm={executeClearSessionBindings}
+                    onConfirm={onExecuteClearSessionBindings}
                     onCancel={() => { setIsClearBindingsConfirmOpen(false); }}
                 />
             </div >
