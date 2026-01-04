@@ -104,9 +104,10 @@ pub async fn handle_generate(
                 use axum::response::Response;
                 use bytes::{Bytes, BytesMut};
                 use futures::StreamExt;
-                
+                use memchr::memchr;
+
                 let mut response_stream = response.bytes_stream();
-                let mut buffer = BytesMut::new();
+                let mut buffer = BytesMut::with_capacity(8192); // Pre-allocate 8KB buffer
 
                 let stream = async_stream::stream! {
                     while let Some(item) = response_stream.next().await {
@@ -114,7 +115,8 @@ pub async fn handle_generate(
                             Ok(bytes) => {
                                 debug!("[Gemini-SSE] Received chunk: {} bytes", bytes.len());
                                 buffer.extend_from_slice(&bytes);
-                                while let Some(pos) = buffer.iter().position(|&b| b == b'\n') {
+                                // Use SIMD-accelerated memchr for faster newline detection
+                                while let Some(pos) = memchr(b'\n', &buffer) {
                                     let line_raw = buffer.split_to(pos + 1);
                                     if let Ok(line_str) = std::str::from_utf8(&line_raw) {
                                         let line = line_str.trim();

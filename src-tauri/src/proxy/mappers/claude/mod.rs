@@ -16,7 +16,7 @@ use bytes::Bytes;
 use futures::Stream;
 use std::pin::Pin;
 
-/// 创建从 Gemini SSE 流到 Claude SSE 流的转换
+/// Create Claude SSE stream from Gemini SSE stream
 pub fn create_claude_sse_stream(
     mut gemini_stream: Pin<Box<dyn Stream<Item = Result<Bytes, reqwest::Error>> + Send>>,
     trace_id: String,
@@ -25,18 +25,20 @@ pub fn create_claude_sse_stream(
     use async_stream::stream;
     use bytes::BytesMut;
     use futures::StreamExt;
+    use memchr::memchr;
 
     Box::pin(stream! {
         let mut state = StreamingState::new();
-        let mut buffer = BytesMut::new();
+        // Pre-allocate 8KB buffer for incoming SSE data
+        let mut buffer = BytesMut::with_capacity(8192);
 
         while let Some(chunk_result) = gemini_stream.next().await {
             match chunk_result {
                 Ok(chunk) => {
                     buffer.extend_from_slice(&chunk);
 
-                    // Process complete lines
-                    while let Some(pos) = buffer.iter().position(|&b| b == b'\n') {
+                    // Process complete lines using SIMD-accelerated memchr
+                    while let Some(pos) = memchr(b'\n', &buffer) {
                         let line_raw = buffer.split_to(pos + 1);
                         if let Ok(line_str) = std::str::from_utf8(&line_raw) {
                             let line = line_str.trim();
