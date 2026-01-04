@@ -2,6 +2,7 @@
 use axum::{extract::Json, extract::State, http::StatusCode, response::IntoResponse};
 use base64::Engine as _;
 use serde_json::{json, Value};
+use tokio::time::{sleep, Duration};
 use tracing::{debug, error, info}; // Import Engine trait for encode method
 
 use crate::proxy::mappers::openai::{
@@ -12,6 +13,27 @@ use crate::proxy::server::AppState;
 use crate::proxy::handlers::common::WithResolvedModel;
 
 const MAX_RETRY_ATTEMPTS: usize = 3;
+
+// ===== 529 Overloaded Retry Configuration =====
+// 529 errors indicate server overload - NOT account-specific limits
+// We should retry aggressively with the SAME account until success
+const MAX_OVERLOAD_RETRIES: usize = 30;      // Max retries for 529 errors (independent of account pool)
+const OVERLOAD_BASE_DELAY_MS: u64 = 2000;    // Base delay: 2 seconds
+const OVERLOAD_MAX_DELAY_MS: u64 = 60000;    // Max delay cap: 60 seconds
+
+// ===== Jitter Configuration =====
+// Jitter helps prevent thundering herd problem in retry scenarios
+const JITTER_FACTOR: f64 = 0.2;  // ±20% jitter
+
+/// Apply jitter to a delay value to prevent thundering herd
+/// Returns delay ± JITTER_FACTOR (e.g., 1000ms ± 20% = 800-1200ms)
+fn apply_jitter(delay_ms: u64) -> u64 {
+    use rand::Rng;
+    let jitter_range = (delay_ms as f64 * JITTER_FACTOR) as i64;
+    let jitter: i64 = rand::thread_rng().gen_range(-jitter_range..=jitter_range);
+    ((delay_ms as i64) + jitter).max(1) as u64
+}
+
 use crate::proxy::session_manager::SessionManager;
 
 pub async fn handle_chat_completions(
@@ -47,7 +69,25 @@ pub async fn handle_chat_completions(
 
     let mut last_error = String::new();
 
-    for attempt in 0..max_attempts {
+    // [529 RESILIENCE] Separate counter for 529 overload retries
+    // This allows unlimited retries for server overload (same account)
+    // while still respecting account rotation limits for other errors
+    let mut overload_retry_count: usize = 0;
+    #[allow(unused)]  // Reserved for future logging/metrics of overload patterns
+    let mut current_overload_account: Option<String> = None;
+
+    // Generate trace ID for logging
+    let trace_id: String = rand::Rng::sample_iter(rand::thread_rng(), &rand::distributions::Alphanumeric)
+        .take(6)
+        .map(char::from)
+        .collect::<String>().to_lowercase();
+
+    // Use manual loop instead of `for` to allow 529 retries without consuming attempt quota
+    let mut attempt: usize = 0;
+    loop {
+        if attempt >= max_attempts {
+            break;
+        }
         // 2. 预解析模型路由与配置
         let mapped_model = crate::proxy::common::model_mapping::resolve_model_route(
             &openai_req.model,
@@ -172,25 +212,66 @@ pub async fn handle_chat_completions(
             // 记录限流信息 (全局同步)
             token_manager.mark_rate_limited(&email, status_code, retry_after.as_deref(), &error_text);
 
+            // [529 RESILIENCE] Special handling for 529 Overloaded errors
+            // 529 means the upstream server is overloaded - this is NOT account-specific
+            // We retry aggressively with exponential backoff until success or max retries
+            if status_code == 529 || (status_code == 503 && error_text.contains("overloaded")) {
+                overload_retry_count += 1;
+                let _ = current_overload_account.insert(email.clone());  // Reserved for future metrics
+
+                if overload_retry_count <= MAX_OVERLOAD_RETRIES {
+                    // Exponential backoff with jitter: 2s, 4s, 8s, 16s, ... capped at 60s
+                    let base_delay = OVERLOAD_BASE_DELAY_MS * 2_u64.pow((overload_retry_count - 1).min(5) as u32);
+                    let capped_delay = base_delay.min(OVERLOAD_MAX_DELAY_MS);
+                    let jittered_delay = apply_jitter(capped_delay);
+
+                    tracing::warn!(
+                        "[{}] 🔄 529 Overloaded - retry {}/{} in {}ms (account: {}, NOT rotating)",
+                        trace_id,
+                        overload_retry_count,
+                        MAX_OVERLOAD_RETRIES,
+                        jittered_delay,
+                        email
+                    );
+
+                    sleep(Duration::from_millis(jittered_delay)).await;
+
+                    // CRITICAL: Do NOT increment `attempt` - 529 retries are "free"
+                    // This allows us to keep retrying without exhausting the account pool
+                    continue;
+                } else {
+                    tracing::error!(
+                        "[{}] ❌ 529 Overloaded - exhausted {} retries, giving up",
+                        trace_id,
+                        MAX_OVERLOAD_RETRIES
+                    );
+                    // Fall through to normal error handling after max retries
+                }
+            }
+
             // 1. 优先尝试解析 RetryInfo (由 Google Cloud 直接下发)
             if let Some(delay_ms) = crate::proxy::upstream::retry::parse_retry_delay(&error_text) {
                 let actual_delay = delay_ms.saturating_add(200).min(10_000);
+                let jittered_delay = apply_jitter(actual_delay);
                 tracing::warn!(
-                    "OpenAI Upstream {} on {} attempt {}/{}, waiting {}ms then retrying",
+                    "[{}] OpenAI Upstream {} on {} attempt {}/{}, waiting {}ms then retrying",
+                    trace_id,
                     status_code,
                     email,
                     attempt + 1,
                     max_attempts,
-                    actual_delay
+                    jittered_delay
                 );
-                tokio::time::sleep(tokio::time::Duration::from_millis(actual_delay)).await;
+                sleep(Duration::from_millis(jittered_delay)).await;
+                attempt += 1;
                 continue;
             }
 
             // 2. 只有明确包含 "QUOTA_EXHAUSTED" 才停止，避免误判频率提示 (如 "check quota")
             if error_text.contains("QUOTA_EXHAUSTED") {
                 error!(
-                    "OpenAI Quota exhausted (429) on account {} attempt {}/{}, stopping to protect pool.",
+                    "[{}] OpenAI Quota exhausted (429) on account {} attempt {}/{}, stopping to protect pool.",
+                    trace_id,
                     email,
                     attempt + 1,
                     max_attempts
@@ -200,39 +281,50 @@ pub async fn handle_chat_completions(
 
             // 3. 其他限流或服务器过载情况，轮换账号
             tracing::warn!(
-                "OpenAI Upstream {} on {} attempt {}/{}, rotating account",
+                "[{}] OpenAI Upstream {} on {} attempt {}/{}, rotating account",
+                trace_id,
                 status_code,
                 email,
                 attempt + 1,
                 max_attempts
             );
+            attempt += 1;
             continue;
         }
 
         // 只有 403 (权限/地区限制) 和 401 (认证失效) 触发账号轮换
         if status_code == 403 || status_code == 401 {
             tracing::warn!(
-                "OpenAI Upstream {} on account {} attempt {}/{}, rotating account",
+                "[{}] OpenAI Upstream {} on account {} attempt {}/{}, rotating account",
+                trace_id,
                 status_code,
                 email,
                 attempt + 1,
                 max_attempts
             );
+            attempt += 1;
             continue;
         }
 
         // 404 等由于模型配置或路径错误的 HTTP 异常，直接报错，不进行无效轮换
         error!(
-            "OpenAI Upstream non-retryable error {} on account {}: {}",
-            status_code, email, error_text
+            "[{}] OpenAI Upstream non-retryable error {} on account {}: {}",
+            trace_id, status_code, email, error_text
         );
         return Err((status, error_text));
     }
 
+    // Include 529 retry info in final error message if applicable
+    let retry_info = if overload_retry_count > 0 {
+        format!(" (including {} overload retries)", overload_retry_count)
+    } else {
+        String::new()
+    };
+
     // 所有尝试均失败
     Err((
         StatusCode::TOO_MANY_REQUESTS,
-        format!("All accounts exhausted. Last error: {}", last_error),
+        format!("All {} attempts failed{}. Last error: {}", max_attempts, retry_info, last_error),
     ))
 }
 
@@ -521,7 +613,23 @@ pub async fn handle_completions(
 
     let mut last_error = String::new();
 
-    for _attempt in 0..max_attempts {
+    // [529 RESILIENCE] Separate counter for 529 overload retries
+    let mut overload_retry_count: usize = 0;
+    #[allow(unused)]  // Reserved for future logging/metrics of overload patterns
+    let mut current_overload_account: Option<String> = None;
+
+    // Generate trace ID for logging
+    let trace_id: String = rand::Rng::sample_iter(rand::thread_rng(), &rand::distributions::Alphanumeric)
+        .take(6)
+        .map(char::from)
+        .collect::<String>().to_lowercase();
+
+    // Use manual loop for 529 resilience
+    let mut attempt: usize = 0;
+    loop {
+        if attempt >= max_attempts {
+            break;
+        }
         let mapped_model = crate::proxy::common::model_mapping::resolve_model_route(
             &openai_req.model,
             &*state.custom_mapping.read().await,
@@ -641,18 +749,61 @@ pub async fn handle_completions(
 
         // Handle errors and retry
         let status_code = status.as_u16();
+        let retry_after = response.headers().get("Retry-After").and_then(|h| h.to_str().ok()).map(|s| s.to_string());
         let error_text = response.text().await.unwrap_or_default();
         last_error = format!("HTTP {}: {}", status_code, error_text);
 
+        // [529 RESILIENCE] Special handling for 529/503 overloaded errors
+        if status_code == 529 || status_code == 503 || status_code == 500 {
+            token_manager.mark_rate_limited(&email, status_code, retry_after.as_deref(), &error_text);
+
+            if status_code == 529 || (status_code == 503 && error_text.contains("overloaded")) {
+                overload_retry_count += 1;
+                let _ = current_overload_account.insert(email.clone());  // Reserved for future metrics
+
+                if overload_retry_count <= MAX_OVERLOAD_RETRIES {
+                    let base_delay = OVERLOAD_BASE_DELAY_MS * 2_u64.pow((overload_retry_count - 1).min(5) as u32);
+                    let capped_delay = base_delay.min(OVERLOAD_MAX_DELAY_MS);
+                    let jittered_delay = apply_jitter(capped_delay);
+
+                    tracing::warn!(
+                        "[{}] 🔄 529 Overloaded (Codex) - retry {}/{} in {}ms (account: {}, NOT rotating)",
+                        trace_id,
+                        overload_retry_count,
+                        MAX_OVERLOAD_RETRIES,
+                        jittered_delay,
+                        email
+                    );
+
+                    sleep(Duration::from_millis(jittered_delay)).await;
+                    continue;
+                } else {
+                    tracing::error!(
+                        "[{}] ❌ 529 Overloaded (Codex) - exhausted {} retries, giving up",
+                        trace_id,
+                        MAX_OVERLOAD_RETRIES
+                    );
+                }
+            }
+        }
+
         if status_code == 429 || status_code == 403 || status_code == 401 {
+            attempt += 1;
             continue;
         }
         return Err((status, error_text));
     }
 
+    // Include 529 retry info in final error message
+    let retry_info = if overload_retry_count > 0 {
+        format!(" (including {} overload retries)", overload_retry_count)
+    } else {
+        String::new()
+    };
+
     Err((
         StatusCode::TOO_MANY_REQUESTS,
-        format!("All attempts failed. Last error: {}", last_error),
+        format!("All {} attempts failed{}. Last error: {}", max_attempts, retry_info, last_error),
     ))
 }
 

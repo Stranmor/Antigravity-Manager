@@ -213,11 +213,11 @@ pub fn resolve_model_route(
         }
         
         // [NEW] Haiku 智能降级策略
-        // 将所有 Haiku 模型自动降级到 gemini-2.5-flash-lite (最轻量/便宜的模型)
+        // 将所有 Haiku 模型自动降级到 gemini-3-flash (最新的 Flash 模型)
         // [FIX] 仅在 CLI 模式下生效 (apply_claude_family_mapping == true)
         if apply_claude_family_mapping && lower_model.contains("haiku") {
-            crate::modules::logger::log_info(&format!("[Router] Haiku 智能降级 (CLI): {} -> gemini-2.5-flash-lite", original_model));
-            return "gemini-2.5-flash-lite".to_string();
+            crate::modules::logger::log_info(&format!("[Router] Haiku 智能降级 (CLI): {} -> gemini-3-flash", original_model));
+            return "gemini-3-flash".to_string();
         }
 
         let family_key = if lower_model.contains("4-5") || lower_model.contains("4.5") {

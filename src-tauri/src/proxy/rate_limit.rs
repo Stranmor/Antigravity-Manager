@@ -58,7 +58,8 @@ pub struct RateLimitInfo {
     /// 检测时间
     #[allow(dead_code)]
     pub detected_at: SystemTime,
-    /// 限流原因
+    /// 限流原因 (logged during detection, reserved for future adaptive retry logic)
+    #[allow(dead_code)]
     pub reason: RateLimitReason,
 }
 

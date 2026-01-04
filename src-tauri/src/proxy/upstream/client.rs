@@ -179,8 +179,10 @@ impl UpstreamClient {
     // 已移除弃用的辅助方法 (parse_duration_ms)
 
     /// 获取可用模型列表
-    /// 
+    ///
     /// 获取远端模型列表，支持多端点自动 Fallback
+    /// Reserved for future model discovery API
+    #[allow(dead_code)]
     pub async fn fetch_available_models(&self, access_token: &str) -> Result<Value, String> {
         let mut headers = header::HeaderMap::new();
         headers.insert(

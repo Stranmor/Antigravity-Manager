@@ -1,17 +1,24 @@
 use crate::proxy::TokenManager;
 use axum::{
-    extract::DefaultBodyLimit,
+    extract::{DefaultBodyLimit, State},
     http::StatusCode,
     response::{IntoResponse, Json, Response},
     routing::{any, get, post},
     Router,
 };
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::oneshot;
 use tower_http::trace::TraceLayer;
 use tracing::{debug, error};
 use tokio::sync::RwLock;
 use std::sync::atomic::AtomicUsize;
+
+/// Server start time for uptime calculation
+static SERVER_START_TIME: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+
+/// Application version from Cargo.toml
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Axum 应用状态
 #[derive(Clone)]
@@ -94,6 +101,9 @@ impl AxumServer {
         monitor: Arc<crate::proxy::monitor::ProxyMonitor>,
 
     ) -> Result<(Self, tokio::task::JoinHandle<()>), String> {
+        // Initialize server start time for uptime tracking
+        let _ = SERVER_START_TIME.get_or_init(Instant::now);
+
         let mapping_state = Arc::new(tokio::sync::RwLock::new(anthropic_mapping));
         let openai_mapping_state = Arc::new(tokio::sync::RwLock::new(openai_mapping));
         let custom_mapping_state = Arc::new(tokio::sync::RwLock::new(custom_mapping));
@@ -185,6 +195,8 @@ impl AxumServer {
             .route("/v1/api/event_logging/batch", post(silent_ok_handler))
             .route("/v1/api/event_logging", post(silent_ok_handler))
             .route("/healthz", get(health_check_handler))
+            .route("/health", get(health_check_handler))
+            .route("/api/health", get(health_check_handler))
             .layer(DefaultBodyLimit::max(100 * 1024 * 1024))
             .layer(axum::middleware::from_fn_with_state(state.clone(), crate::proxy::middleware::monitor::monitor_middleware))
             .layer(TraceLayer::new_for_http())
@@ -266,10 +278,32 @@ impl AxumServer {
 
 // ===== API 处理器 (旧代码已移除，由 src/proxy/handlers/* 接管) =====
 
-/// 健康检查处理器
-async fn health_check_handler() -> Response {
+/// 健康检查处理器 (增强版)
+/// 返回详细的服务状态信息，无需认证
+async fn health_check_handler(State(state): State<AppState>) -> Response {
+    let start_time = SERVER_START_TIME.get_or_init(Instant::now);
+    let uptime_seconds = start_time.elapsed().as_secs();
+
+    let accounts_total = state.token_manager.len();
+    let accounts_available = state.token_manager.available_count();
+
+    // Determine health status based on account availability
+    let status = if accounts_total == 0 {
+        "unhealthy"
+    } else if accounts_available == 0 {
+        "degraded"
+    } else if accounts_available < accounts_total / 2 {
+        "degraded"
+    } else {
+        "ok"
+    };
+
     Json(serde_json::json!({
-        "status": "ok"
+        "status": status,
+        "accounts_total": accounts_total,
+        "accounts_available": accounts_available,
+        "uptime_seconds": uptime_seconds,
+        "version": APP_VERSION
     }))
     .into_response()
 }

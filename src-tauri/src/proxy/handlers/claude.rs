@@ -511,7 +511,7 @@ pub async fn handle_messages(
     // This allows unlimited retries for server overload (same account)
     // while still respecting account rotation limits for other errors
     let mut overload_retry_count: usize = 0;
-    #[allow(unused_assignments)]  // Used for potential future logging/metrics
+    #[allow(unused)]  // Reserved for future logging/metrics of overload patterns
     let mut current_overload_account: Option<String> = None;
 
     // Use manual loop instead of `for` to allow 529 retries without consuming attempt quota
@@ -836,7 +836,7 @@ pub async fn handle_messages(
         // We retry aggressively with exponential backoff until success or max retries
         if status_code == 529 || (status_code == 503 && error_text.contains("overloaded")) {
             overload_retry_count += 1;
-            current_overload_account = Some(email.clone());
+            let _ = current_overload_account.insert(email.clone());  // Reserved for future metrics
 
             if overload_retry_count <= MAX_OVERLOAD_RETRIES {
                 // Exponential backoff with jitter: 2s, 4s, 8s, 16s, ... capped at 60s

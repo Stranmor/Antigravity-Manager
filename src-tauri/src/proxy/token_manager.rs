@@ -490,6 +490,14 @@ impl TokenManager {
     pub fn len(&self) -> usize {
         self.tokens.len()
     }
+
+    /// 获取可用账号数量 (不含限流中的账号)
+    pub fn available_count(&self) -> usize {
+        self.tokens
+            .iter()
+            .filter(|entry| !self.rate_limit_tracker.is_rate_limited(entry.key()))
+            .count()
+    }
     
     // ===== 限流管理方法 =====
     

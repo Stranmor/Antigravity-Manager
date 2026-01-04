@@ -702,6 +702,7 @@ pub fn close_antigravity(timeout_secs: u64) -> Result<(), String> {
 }
 
 /// 启动 Antigravity
+#[allow(unused_mut)]  // path_str and path need mut only on macOS
 pub fn start_antigravity() -> Result<(), String> {
     crate::modules::logger::log_info("正在启动 Antigravity...");
 
