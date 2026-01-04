@@ -65,7 +65,6 @@ function App() {
     // 监听托盘切换账号事件
     unlistenPromises.push(
       listen('tray://account-switched', () => {
-        console.log('[App] Tray account switched, refreshing...');
         void fetchCurrentAccount();
         void fetchAccounts();
       })
@@ -74,7 +73,6 @@ function App() {
     // 监听托盘刷新事件
     unlistenPromises.push(
       listen('tray://refresh-current', () => {
-        console.log('[App] Tray refresh triggered, refreshing...');
         void fetchCurrentAccount();
         void fetchAccounts();
       })

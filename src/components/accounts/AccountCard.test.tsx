@@ -29,6 +29,18 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+// Default quota for reuse in tests
+const defaultQuota = {
+  models: [
+    { name: 'gemini-3-pro-high', percentage: 75, reset_time: '2025-01-16T12:00:00Z' },
+    { name: 'gemini-3-flash', percentage: 50, reset_time: '2025-01-16T12:00:00Z' },
+    { name: 'gemini-3-pro-image', percentage: 25, reset_time: '2025-01-16T12:00:00Z' },
+    { name: 'claude-sonnet-4-5-thinking', percentage: 10, reset_time: '2025-01-16T12:00:00Z' },
+  ],
+  last_updated: Date.now(),
+  subscription_tier: 'FREE' as const,
+};
+
 const createMockAccount = (overrides?: Partial<Account>): Account => ({
   id: 'test-id-1',
   email: 'test@example.com',
@@ -39,16 +51,7 @@ const createMockAccount = (overrides?: Partial<Account>): Account => ({
     expiry_timestamp: Date.now() + 3600000,
     token_type: 'Bearer',
   },
-  quota: {
-    models: [
-      { name: 'gemini-3-pro-high', percentage: 75, reset_time: '2025-01-16T12:00:00Z' },
-      { name: 'gemini-3-flash', percentage: 50, reset_time: '2025-01-16T12:00:00Z' },
-      { name: 'gemini-3-pro-image', percentage: 25, reset_time: '2025-01-16T12:00:00Z' },
-      { name: 'claude-sonnet-4-5-thinking', percentage: 10, reset_time: '2025-01-16T12:00:00Z' },
-    ],
-    last_updated: Date.now(),
-    subscription_tier: 'FREE',
-  },
+  quota: defaultQuota,
   created_at: Date.now() / 1000,
   last_used: Date.now() / 1000,
   ...overrides,
@@ -102,7 +105,7 @@ describe('AccountCard', () => {
     it('renders forbidden badge when quota is forbidden', () => {
       const forbiddenAccount = createMockAccount({
         quota: {
-          ...createMockAccount().quota!,
+          ...defaultQuota,
           is_forbidden: true,
         },
       });
@@ -120,7 +123,7 @@ describe('AccountCard', () => {
     it('renders PRO badge for pro tier', () => {
       const proAccount = createMockAccount({
         quota: {
-          ...createMockAccount().quota!,
+          ...defaultQuota,
           subscription_tier: 'PRO',
         },
       });
@@ -131,7 +134,7 @@ describe('AccountCard', () => {
     it('renders ULTRA badge for ultra tier', () => {
       const ultraAccount = createMockAccount({
         quota: {
-          ...createMockAccount().quota!,
+          ...defaultQuota,
           subscription_tier: 'ULTRA',
         },
       });
@@ -254,7 +257,7 @@ describe('AccountCard', () => {
     it('displays forbidden message when account is forbidden', () => {
       const forbiddenAccount = createMockAccount({
         quota: {
-          ...createMockAccount().quota!,
+          ...defaultQuota,
           is_forbidden: true,
         },
       });

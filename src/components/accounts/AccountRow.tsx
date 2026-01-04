@@ -154,7 +154,7 @@ function AccountRow({ account, selected, onSelect, isCurrent, isRefreshing, isSw
                             {geminiProModel && (
                                 <div
                                     className={`absolute inset-y-0 left-0 transition-all duration-700 ease-out opacity-15 dark:opacity-20 ${getColorClass(geminiProModel.percentage)}`}
-                                    style={{ width: `${geminiProModel.percentage}%` }}
+                                    style={{ width: `${String(geminiProModel.percentage)}%` }}
                                 />
                             )}
                             <div className="relative z-10 w-full flex items-center text-[10px] font-mono leading-none">
@@ -173,7 +173,7 @@ function AccountRow({ account, selected, onSelect, isCurrent, isRefreshing, isSw
                                     getQuotaColor(geminiProModel?.percentage || 0) === 'success' ? 'text-emerald-600 dark:text-emerald-400' :
                                         getQuotaColor(geminiProModel?.percentage || 0) === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'
                                 )}>
-                                    {geminiProModel ? `${geminiProModel.percentage}%` : '-'}
+                                    {geminiProModel ? `${String(geminiProModel.percentage)}%` : '-'}
                                 </span>
                             </div>
                         </div>
@@ -183,7 +183,7 @@ function AccountRow({ account, selected, onSelect, isCurrent, isRefreshing, isSw
                             {geminiFlashModel && (
                                 <div
                                     className={`absolute inset-y-0 left-0 transition-all duration-700 ease-out opacity-15 dark:opacity-20 ${getColorClass(geminiFlashModel.percentage)}`}
-                                    style={{ width: `${geminiFlashModel.percentage}%` }}
+                                    style={{ width: `${String(geminiFlashModel.percentage)}%` }}
                                 />
                             )}
                             <div className="relative z-10 w-full flex items-center text-[10px] font-mono leading-none">
@@ -202,7 +202,7 @@ function AccountRow({ account, selected, onSelect, isCurrent, isRefreshing, isSw
                                     getQuotaColor(geminiFlashModel?.percentage || 0) === 'success' ? 'text-emerald-600 dark:text-emerald-400' :
                                         getQuotaColor(geminiFlashModel?.percentage || 0) === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'
                                 )}>
-                                    {geminiFlashModel ? `${geminiFlashModel.percentage}%` : '-'}
+                                    {geminiFlashModel ? `${String(geminiFlashModel.percentage)}%` : '-'}
                                 </span>
                             </div>
                         </div>
@@ -212,7 +212,7 @@ function AccountRow({ account, selected, onSelect, isCurrent, isRefreshing, isSw
                             {geminiImageModel && (
                                 <div
                                     className={`absolute inset-y-0 left-0 transition-all duration-700 ease-out opacity-15 dark:opacity-20 ${getColorClass(geminiImageModel.percentage)}`}
-                                    style={{ width: `${geminiImageModel.percentage}%` }}
+                                    style={{ width: `${String(geminiImageModel.percentage)}%` }}
                                 />
                             )}
                             <div className="relative z-10 w-full flex items-center text-[10px] font-mono leading-none">
@@ -231,7 +231,7 @@ function AccountRow({ account, selected, onSelect, isCurrent, isRefreshing, isSw
                                     getQuotaColor(geminiImageModel?.percentage || 0) === 'success' ? 'text-emerald-600 dark:text-emerald-400' :
                                         getQuotaColor(geminiImageModel?.percentage || 0) === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'
                                 )}>
-                                    {geminiImageModel ? `${geminiImageModel.percentage}%` : '-'}
+                                    {geminiImageModel ? `${String(geminiImageModel.percentage)}%` : '-'}
                                 </span>
                             </div>
                         </div>
@@ -241,7 +241,7 @@ function AccountRow({ account, selected, onSelect, isCurrent, isRefreshing, isSw
                             {claudeModel && (
                                 <div
                                     className={`absolute inset-y-0 left-0 transition-all duration-700 ease-out opacity-15 dark:opacity-20 ${getColorClass(claudeModel.percentage)}`}
-                                    style={{ width: `${claudeModel.percentage}%` }}
+                                    style={{ width: `${String(claudeModel.percentage)}%` }}
                                 />
                             )}
                             <div className="relative z-10 w-full flex items-center text-[10px] font-mono leading-none">
@@ -260,7 +260,7 @@ function AccountRow({ account, selected, onSelect, isCurrent, isRefreshing, isSw
                                     getQuotaColor(claudeModel?.percentage || 0) === 'success' ? 'text-emerald-600 dark:text-emerald-400' :
                                         getQuotaColor(claudeModel?.percentage || 0) === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'
                                 )}>
-                                    {claudeModel ? `${claudeModel.percentage}%` : '-'}
+                                    {claudeModel ? `${String(claudeModel.percentage)}%` : '-'}
                                 </span>
                             </div>
                         </div>

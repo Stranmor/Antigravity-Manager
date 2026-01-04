@@ -57,7 +57,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
             });
         };
 
-        setupListener();
+        void setupListener();
 
         return () => {
             if (unlisten) unlisten();
@@ -69,7 +69,8 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
         let unlisten: (() => void) | undefined;
 
         const setupListener = async () => {
-            unlisten = await listen('oauth-callback-received', async () => {
+            unlisten = await listen('oauth-callback-received', () => {
+                void (async () => {
                 if (!isOpenRef.current) return;
                 if (activeTabRef.current !== 'oauth') return;
                 if (statusRef.current === 'loading' || statusRef.current === 'success') return;
@@ -87,7 +88,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                         setIsOpen(false);
                         resetState();
                     }, 1500);
-                } catch (error) {
+                } catch (error: unknown) {
                     setStatus('error');
                     const errorMsg = String(error);
                     if (errorMsg.includes('Refresh Token') || errorMsg.includes('refresh_token')) {
@@ -98,10 +99,11 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                         setMessage(`${t('accounts.add.tabs.oauth')} ${t('common.error')}: ${errorMsg}`);
                     }
                 }
+                })();
             });
         };
 
-        setupListener();
+        void setupListener();
 
         return () => {
             if (unlisten) unlisten();
@@ -145,7 +147,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
 
     const handleAction = async (
         actionName: string,
-        actionFn: () => Promise<any>,
+        actionFn: () => Promise<unknown>,
         options?: { clearOauthUrl?: boolean }
     ) => {
         setStatus('loading');
@@ -198,21 +200,22 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
         try {
             // 尝试解析为 JSON
             if (input.startsWith('[') && input.endsWith(']')) {
-                const parsed = JSON.parse(input);
+                const parsed: unknown = JSON.parse(input);
                 if (Array.isArray(parsed)) {
                     tokens = parsed
-                        .map((item: any) => item.refresh_token)
-                        .filter((t: any) => typeof t === 'string' && t.startsWith('1//'));
+                        .filter((item): item is { refresh_token: string } =>
+                            typeof item === 'object' && item !== null && 'refresh_token' in item)
+                        .map((item) => item.refresh_token)
+                        .filter((t) => typeof t === 'string' && t.startsWith('1//'));
                 }
             }
-        } catch (e) {
+        } catch {
             // JSON 解析失败,忽略
-            console.debug('JSON parse failed, falling back to regex', e);
         }
 
         // 2. 如果 JSON 解析没有结果,尝试正则提取 (或者输入不是 JSON)
         if (tokens.length === 0) {
-            const regex = /1\/\/[a-zA-Z0-9_\-]+/g;
+            const regex = /1\/\/[a-zA-Z0-9_-]+/g;
             const matches = input.match(regex);
             if (matches) {
                 tokens = matches;
