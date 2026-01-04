@@ -121,7 +121,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                 // Set directly (also emitted via event), to avoid any race if event is missed.
                 if (typeof url === 'string' && url.length > 0) setOauthUrl(url);
             })
-            .catch((e) => {
+            .catch((e: unknown) => {
                 console.error('Failed to prepare OAuth URL:', e);
             });
     }, [isOpen, activeTab, oauthUrl]);
@@ -238,7 +238,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
         for (let i = 0; i < tokens.length; i++) {
             const currentToken = tokens[i];
             if (!currentToken) continue; // Skip if undefined (type guard for noUncheckedIndexedAccess)
-            setMessage(t('accounts.add.token.batch_progress', { current: i + 1, total: tokens.length }));
+            setMessage(t('accounts.add.token.batch_progress', { current: String(i + 1), total: String(tokens.length) }));
 
             try {
                 await onAdd("", currentToken);
@@ -274,12 +274,12 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
     const handleOAuth = () => {
         // Default flow: opens the default browser and completes automatically.
         // (If user opened the URL manually, completion is also triggered by oauth-callback-received.)
-        handleAction(t('accounts.add.tabs.oauth'), startOAuthLogin, { clearOauthUrl: false });
+        void handleAction(t('accounts.add.tabs.oauth'), startOAuthLogin, { clearOauthUrl: false });
     };
 
     const handleCompleteOAuth = () => {
         // Manual flow: user already authorized in their preferred browser, just finish the flow.
-        handleAction(t('accounts.add.tabs.oauth'), completeOAuthLogin, { clearOauthUrl: false });
+        void handleAction(t('accounts.add.tabs.oauth'), completeOAuthLogin, { clearOauthUrl: false });
     };
 
     const handleCopyUrl = async () => {
@@ -295,11 +295,11 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
     };
 
     const handleImportDb = () => {
-        handleAction(t('accounts.add.tabs.import'), importFromDb);
+        void handleAction(t('accounts.add.tabs.import'), importFromDb);
     };
 
     const handleImportV1 = () => {
-        handleAction(t('accounts.add.import.btn_v1'), importV1Accounts);
+        void handleAction(t('accounts.add.import.btn_v1'), importV1Accounts);
     };
 
     const handleImportCustomDb = async () => {
@@ -316,7 +316,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
             });
 
             if (selected && typeof selected === 'string') {
-                handleAction(t('accounts.add.import.btn_custom_db') || 'Import Custom DB', () => importFromCustomDb(selected));
+                void handleAction(t('accounts.add.import.btn_custom_db') || 'Import Custom DB', () => importFromCustomDb(selected));
             }
         } catch (err) {
             console.error('Failed to open dialog:', err);
