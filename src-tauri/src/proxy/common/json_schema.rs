@@ -94,9 +94,13 @@ fn clean_json_schema_recursive(value: &mut Value) {
             ];
 
             for (field, label) in validation_fields {
-                if let Some(val) = map.remove(field) {
-                    // 仅当值是简单类型时才迁移
-                    if val.is_string() || val.is_number() || val.is_boolean() {
+                // Only remove if the field contains a simple validation value (string/number/bool)
+                // Do NOT remove if it's an object or array (e.g., a property named "pattern")
+                let should_remove = map.get(field)
+                    .is_some_and(|v| v.is_string() || v.is_number() || v.is_boolean());
+
+                if should_remove {
+                    if let Some(val) = map.remove(field) {
                         constraints.push(format!("{label}: {val}"));
                     }
                 }
@@ -251,14 +255,14 @@ mod tests {
         assert_eq!(schema["properties"]["pattern"]["type"], "object");
 
         // 4. 验证内部的 pattern 校验字段被正确移除并转为描述
-        assert!(schema["properties"]["pattern"]["properties"]["regex"]
-            .get("pattern")
-            .is_none());
+        let regex_obj = &schema["properties"]["pattern"]["properties"]["regex"];
+        assert!(regex_obj.get("pattern").is_none(), "pattern field should be removed");
+        // Note: The pattern value is JSON-serialized, so quotes are included
         assert!(
-            schema["properties"]["pattern"]["properties"]["regex"]["description"]
+            regex_obj["description"]
                 .as_str()
                 .unwrap()
-                .contains("pattern: ^[a-z]+$")
+                .contains(r#"pattern: "^[a-z]+$""#)
         );
 
         // 5. 验证联合类型被降级为单一类型 (Protobuf 兼容性)
