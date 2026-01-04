@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Github, User, MessageCircle, ExternalLink, RefreshCw, Sparkles } from 'lucide-react';
+import { Save, Code, User, MessageCircle, ExternalLink, RefreshCw, Sparkles } from 'lucide-react';
 import { request as invoke } from '../utils/request';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useConfigStore } from '../stores/useConfigStore';
@@ -49,12 +49,12 @@ function Settings() {
     } | null>(null);
 
     useEffect(() => {
-        loadConfig();
+        void loadConfig();
 
         // 获取真实数据目录路径
-        invoke<string>('get_data_dir_path')
+        void invoke<string>('get_data_dir_path')
             .then(path => { setDataDirPath(path); })
-            .catch(err => { console.error('Failed to get data dir:', err); });
+            .catch((err: unknown) => { console.error('Failed to get data dir:', err); });
     }, [loadConfig]);
 
     useEffect(() => {
@@ -67,8 +67,8 @@ function Settings() {
         try {
             await saveConfig(formData);
             showToast(t('common.saved'), 'success');
-        } catch (error) {
-            showToast(`${t('common.error')}: ${error}`, 'error');
+        } catch (error: unknown) {
+            showToast(`${t('common.error')}: ${String(error)}`, 'error');
         }
     };
 
@@ -76,8 +76,8 @@ function Settings() {
         try {
             await invoke('clear_log_cache');
             showToast(t('settings.advanced.logs_cleared'), 'success');
-        } catch (error) {
-            showToast(`${t('common.error')}: ${error}`, 'error');
+        } catch (error: unknown) {
+            showToast(`${t('common.error')}: ${String(error)}`, 'error');
         }
         setIsClearLogsOpen(false);
     };
@@ -85,14 +85,14 @@ function Settings() {
     const handleOpenDataDir = async () => {
         try {
             await invoke('open_data_folder');
-        } catch (error) {
-            showToast(`${t('common.error')}: ${error}`, 'error');
+        } catch (error: unknown) {
+            showToast(`${t('common.error')}: ${String(error)}`, 'error');
         }
     };
 
     const handleSelectExportPath = async () => {
         try {
-            // @ts-ignore
+            // @ts-expect-error - Tauri dialog types incomplete
             const selected = await open({
                 directory: true,
                 multiple: false,
@@ -101,8 +101,8 @@ function Settings() {
             if (selected && typeof selected === 'string') {
                 setFormData({ ...formData, default_export_path: selected });
             }
-        } catch (error) {
-            showToast(`${t('common.error')}: ${error}`, 'error');
+        } catch (error: unknown) {
+            showToast(`${t('common.error')}: ${String(error)}`, 'error');
         }
     };
 
@@ -116,8 +116,8 @@ function Settings() {
             if (selected && typeof selected === 'string') {
                 setFormData({ ...formData, antigravity_executable: selected });
             }
-        } catch (error) {
-            showToast(`${t('common.error')}: ${error}`, 'error');
+        } catch (error: unknown) {
+            showToast(`${t('common.error')}: ${String(error)}`, 'error');
         }
     };
 
@@ -127,8 +127,8 @@ function Settings() {
             const path = await invoke<string>('get_antigravity_path', { bypassConfig: true });
             setFormData({ ...formData, antigravity_executable: path });
             showToast(t('settings.advanced.antigravity_path_detected'), 'success');
-        } catch (error) {
-            showToast(`${t('common.error')}: ${error}`, 'error');
+        } catch (error: unknown) {
+            showToast(`${t('common.error')}: ${String(error)}`, 'error');
         }
     };
 
@@ -155,12 +155,21 @@ function Settings() {
             } else {
                 showToast(t('settings.about.latest_version'), 'success');
             }
-        } catch (error) {
-            showToast(`${t('settings.about.update_check_failed')}: ${error}`, 'error');
+        } catch (error: unknown) {
+            showToast(`${t('settings.about.update_check_failed')}: ${String(error)}`, 'error');
         } finally {
             setIsCheckingUpdate(false);
         }
     };
+
+    // Wrapper handlers for async onClick
+    const onSaveClick = () => { void handleSave(); };
+    const onClearLogsConfirm = () => { void confirmClearLogs(); };
+    const onOpenDataDirClick = () => { void handleOpenDataDir(); };
+    const onSelectExportPathClick = () => { void handleSelectExportPath(); };
+    const onSelectAntigravityPathClick = () => { void handleSelectAntigravityPath(); };
+    const onDetectAntigravityPathClick = () => { void handleDetectAntigravityPath(); };
+    const onCheckUpdateClick = () => { void handleCheckUpdate(); };
 
     return (
         <div className="h-full w-full overflow-y-auto">
@@ -218,7 +227,7 @@ function Settings() {
 
                     <button
                         className="px-4 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2 shadow-sm"
-                        onClick={handleSave}
+                        onClick={onSaveClick}
                     >
                         <Save className="w-4 h-4" />
                         {t('settings.save')}
@@ -265,15 +274,17 @@ function Settings() {
                                 <select
                                     className="w-full px-4 py-4 border border-gray-200 dark:border-base-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 dark:text-base-content bg-gray-50 dark:bg-base-200"
                                     value={formData.auto_launch ? 'enabled' : 'disabled'}
-                                    onChange={async (e) => {
+                                    onChange={(e) => {
                                         const enabled = e.target.value === 'enabled';
-                                        try {
-                                            await invoke('toggle_auto_launch', { enable: enabled });
-                                            setFormData({ ...formData, auto_launch: enabled });
-                                            showToast(enabled ? '已启用开机自动启动' : '已禁用开机自动启动', 'success');
-                                        } catch (error) {
-                                            showToast(`${t('common.error')}: ${error}`, 'error');
-                                        }
+                                        void (async () => {
+                                            try {
+                                                await invoke('toggle_auto_launch', { enable: enabled });
+                                                setFormData({ ...formData, auto_launch: enabled });
+                                                showToast(enabled ? '已启用开机自动启动' : '已禁用开机自动启动', 'success');
+                                            } catch (error: unknown) {
+                                                showToast(`${t('common.error')}: ${String(error)}`, 'error');
+                                            }
+                                        })();
                                     }}
                                 >
                                     <option value="disabled">{t('settings.general.auto_launch_disabled')}</option>
@@ -380,7 +391,7 @@ function Settings() {
                                     )}
                                     <button
                                         className="px-4 py-2 border border-gray-200 dark:border-base-300 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-base-200 hover:text-gray-900 dark:hover:text-base-content transition-colors"
-                                        onClick={handleSelectExportPath}
+                                        onClick={onSelectExportPathClick}
                                     >
                                         {t('settings.advanced.select_btn')}
                                     </button>
@@ -400,7 +411,7 @@ function Settings() {
                                     />
                                     <button
                                         className="px-4 py-2 border border-gray-200 dark:border-base-300 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-base-200 hover:text-gray-900 dark:hover:text-base-content transition-colors"
-                                        onClick={handleOpenDataDir}
+                                        onClick={onOpenDataDirClick}
                                     >
                                         {t('settings.advanced.open_btn')}
                                     </button>
@@ -431,13 +442,13 @@ function Settings() {
                                     )}
                                     <button
                                         className="px-4 py-2 border border-gray-200 dark:border-base-300 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-base-200 transition-colors"
-                                        onClick={handleDetectAntigravityPath}
+                                        onClick={onDetectAntigravityPathClick}
                                     >
                                         {t('settings.advanced.detect_btn')}
                                     </button>
                                     <button
                                         className="px-4 py-2 border border-gray-200 dark:border-base-300 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-base-200 transition-colors"
-                                        onClick={handleSelectAntigravityPath}
+                                        onClick={onSelectAntigravityPathClick}
                                     >
                                         {t('settings.advanced.select_btn')}
                                     </button>
@@ -465,14 +476,16 @@ function Settings() {
                                     />
                                     <button
                                         className="px-4 py-2 border border-gray-200 dark:border-base-300 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-base-200 transition-colors"
-                                        onClick={async () => {
-                                            try {
-                                                const args = await invoke<string[]>('get_antigravity_args');
-                                                setFormData({ ...formData, antigravity_args: args });
-                                                showToast(t('settings.advanced.antigravity_args_detected'), 'success');
-                                            } catch (error) {
-                                                showToast(`${t('settings.advanced.antigravity_args_detect_error')}: ${error}`, 'error');
-                                            }
+                                        onClick={() => {
+                                            void (async () => {
+                                                try {
+                                                    const args = await invoke<string[]>('get_antigravity_args');
+                                                    setFormData({ ...formData, antigravity_args: args });
+                                                    showToast(t('settings.advanced.antigravity_args_detected'), 'success');
+                                                } catch (error: unknown) {
+                                                    showToast(`${t('settings.advanced.antigravity_args_detect_error')}: ${String(error)}`, 'error');
+                                                }
+                                            })();
                                         }}
                                     >
                                         {t('settings.advanced.detect_args_btn')}
@@ -631,7 +644,7 @@ function Settings() {
                                         className="bg-white dark:bg-base-100 p-4 rounded-2xl border border-gray-100 dark:border-base-300 shadow-sm hover:shadow-md hover:border-gray-300 dark:hover:border-gray-600 transition-all group flex flex-col items-center text-center gap-3 cursor-pointer"
                                     >
                                         <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-xl group-hover:scale-110 transition-transform duration-300">
-                                            <Github className="w-6 h-6 text-gray-900 dark:text-white" />
+                                            <Code className="w-6 h-6 text-gray-900 dark:text-white" />
                                         </div>
                                         <div>
                                             <div className="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-1">{t('settings.about.github')}</div>
@@ -659,7 +672,7 @@ function Settings() {
                                 {/* Check for Updates */}
                                 <div className="flex flex-col items-center gap-3">
                                     <button
-                                        onClick={handleCheckUpdate}
+                                        onClick={onCheckUpdateClick}
                                         disabled={isCheckingUpdate}
                                         className="px-6 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white rounded-lg transition-all flex items-center gap-2 shadow-sm hover:shadow-md disabled:cursor-not-allowed"
                                     >
@@ -710,7 +723,7 @@ function Settings() {
                     confirmText={t('common.clear')}
                     cancelText={t('common.cancel')}
                     isDestructive={true}
-                    onConfirm={confirmClearLogs}
+                    onConfirm={onClearLogsConfirm}
                     onCancel={() => { setIsClearLogsOpen(false); }}
                 />
             </div>
