@@ -497,8 +497,8 @@ export default function ApiProxy() {
                 await invoke('start_proxy_service', { config: appConfig.proxy });
             }
             await loadStatus();
-        } catch (error: any) {
-            showToast(t('proxy.dialog.operate_failed', { error: error.toString() }), 'error');
+        } catch (error: unknown) {
+            showToast(t('proxy.dialog.operate_failed', { error: error instanceof Error ? error.message : String(error) }), 'error');
         } finally {
             setLoading(false);
         }
@@ -514,14 +514,14 @@ export default function ApiProxy() {
             const newKey = await invoke<string>('generate_api_key');
             updateProxyConfig({ api_key: newKey });
             showToast(t('common.success'), 'success');
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('生成 API Key 失败:', error);
-            showToast(t('proxy.dialog.operate_failed', { error: error.toString() }), 'error');
+            showToast(t('proxy.dialog.operate_failed', { error: error instanceof Error ? error.message : String(error) }), 'error');
         }
     };
 
     const copyToClipboard = (text: string, label: string) => {
-        navigator.clipboard.writeText(text).then(() => {
+        void navigator.clipboard.writeText(text).then(() => {
             setCopied(label);
             setTimeout(() => { setCopied(null); }, 2000);
         });
@@ -531,7 +531,7 @@ export default function ApiProxy() {
     const getPythonExample = (modelId: string) => {
         const port = status.running ? status.port : (appConfig?.proxy.port || 8045);
         // 推荐使用 127.0.0.1 以避免部分环境 IPv6 解析延迟问题
-        const baseUrl = `http://127.0.0.1:${port}/v1`;
+        const baseUrl = `http://127.0.0.1:${String(port)}/v1`;
         const apiKey = appConfig?.proxy.api_key || 'YOUR_API_KEY';
 
         // 1. Anthropic Protocol
@@ -540,7 +540,7 @@ export default function ApiProxy() {
  
  client = Anthropic(
      # 推荐使用 127.0.0.1
-     base_url="http://127.0.0.1:${port}",
+     base_url="http://127.0.0.1:${String(port)}",
      api_key="${apiKey}"
  )
  
@@ -556,7 +556,7 @@ export default function ApiProxy() {
 
         // 2. Gemini Protocol (Native)
         if (selectedProtocol === 'gemini') {
-            const rawBaseUrl = `http://127.0.0.1:${port}`;
+            const rawBaseUrl = `http://127.0.0.1:${String(port)}`;
             return `# 需要安装: pip install google-generativeai
 import google.generativeai as genai
 
@@ -645,7 +645,7 @@ print(response.text)`;
                                     <div className={`w-2 h-2 rounded-full ${status.running ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
                                     <span className={`text-xs font-medium ${status.running ? 'text-green-600' : 'text-gray-500'}`}>
                                         {status.running
-                                            ? `${t('proxy.status.running')} (${status.active_accounts} ${t('common.accounts') || 'Accounts'})`
+                                            ? `${t('proxy.status.running')} (${String(status.active_accounts)} ${t('common.accounts') || 'Accounts'})`
                                             : t('proxy.status.stopped')}
                                     </span>
                                 </div>
@@ -655,7 +655,7 @@ print(response.text)`;
                             <div className="flex items-center gap-2">
                                 {status.running && (
                                     <button
-                                        onClick={() => navigate('/monitor')}
+                                    onClick={() => { void navigate('/monitor'); }}
                                         className="px-3 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-2 border bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-blue-600"
                                     >
                                         <Activity size={14} />
@@ -663,7 +663,7 @@ print(response.text)`;
                                     </button>
                                 )}
                                 <button
-                                    onClick={handleToggle}
+                                    onClick={() => { void handleToggle(); }}
                                     disabled={loading || !appConfig}
                                     className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-2 ${status.running
                                         ? 'bg-red-50 to-red-600 text-red-600 hover:bg-red-100 border border-red-200'
