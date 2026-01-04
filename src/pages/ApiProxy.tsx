@@ -1428,14 +1428,14 @@ print(response.text)`;
                                         </h3>
                                     </div>
 
-                                    {/* 💡 Haiku 优化提示 */}
+                                    {/* 💡 Haiku optimization tip */}
                                     <div className="mb-4 p-3 bg-blue-50/50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-800/30">
                                         <div className="flex items-center justify-between gap-3">
                                             <div className="flex items-center gap-2 flex-1">
                                                 <Sparkles size={14} className="text-blue-500 flex-shrink-0" />
                                                 <p className="text-[11px] text-gray-600 dark:text-gray-400">
-                                                    <span className="font-medium text-blue-600 dark:text-blue-400">💰 省钱提示:</span>
-                                                    {' '}Claude CLI 默认使用 <code className="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-[10px] font-mono">claude-haiku-4-5-20251001</code> 处理后台任务,建议映射到廉价 Flash 模型可节省约 95% 成本
+                                                    <span className="font-medium text-blue-600 dark:text-blue-400">{t('proxy.router.haiku_tip.title')}</span>
+                                                    {' '}{t('proxy.router.haiku_tip.text', { model: 'claude-haiku-4-5-20251001' })}
                                                 </p>
                                             </div>
                                             <button
@@ -1443,7 +1443,7 @@ print(response.text)`;
                                                 className="btn btn-ghost btn-xs gap-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 border border-blue-200 dark:border-blue-800 whitespace-nowrap flex-shrink-0"
                                             >
                                                 <Plus size={12} />
-                                                一键优化
+                                                {t('proxy.router.haiku_tip.btn')}
                                             </button>
                                         </div>
                                     </div>
