@@ -62,3 +62,5 @@ tracing-appender = "0.2.4"
 tracing-log = "0.2.0"
 tauri-plugin-autostart = "2.5.1"
 sha2 = "0.10"
+lru = "0.12"                            # LRU cache for model routing
+parking_lot = "0.12"                    # Fast synchronization primitives

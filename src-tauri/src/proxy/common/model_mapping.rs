@@ -1,6 +1,56 @@
 // 模型名称映射
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
+use lru::LruCache;
 use once_cell::sync::Lazy;
+use parking_lot::Mutex;
+
+/// LRU cache for resolved model routes (thread-safe)
+/// Cache key is a hash of (original_model, custom_mapping_hash, openai_mapping_hash, anthropic_mapping_hash, apply_claude_family_mapping)
+static MODEL_ROUTE_CACHE: Lazy<Mutex<LruCache<u64, String>>> = Lazy::new(|| {
+    Mutex::new(LruCache::new(NonZeroUsize::new(100).unwrap()))
+});
+
+/// Compute a deterministic hash for a HashMap to use as part of cache key
+fn hash_mapping(mapping: &HashMap<String, String>) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    // Sort keys for deterministic hashing
+    let mut keys: Vec<_> = mapping.keys().collect();
+    keys.sort();
+    for key in keys {
+        key.hash(&mut hasher);
+        if let Some(value) = mapping.get(key) {
+            value.hash(&mut hasher);
+        }
+    }
+    hasher.finish()
+}
+
+/// Compute composite cache key from all inputs
+fn compute_cache_key(
+    original_model: &str,
+    custom_mapping: &HashMap<String, String>,
+    openai_mapping: &HashMap<String, String>,
+    anthropic_mapping: &HashMap<String, String>,
+    apply_claude_family_mapping: bool,
+) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    original_model.hash(&mut hasher);
+    hash_mapping(custom_mapping).hash(&mut hasher);
+    hash_mapping(openai_mapping).hash(&mut hasher);
+    hash_mapping(anthropic_mapping).hash(&mut hasher);
+    apply_claude_family_mapping.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Invalidate the model route cache (call when mappings are updated)
+#[allow(dead_code)] // Public API for cache invalidation
+pub fn invalidate_model_cache() {
+    MODEL_ROUTE_CACHE.lock().clear();
+    crate::modules::logger::log_info("[Cache] Model route cache invalidated");
+}
 
 static CLAUDE_TO_GEMINI: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
     let mut m = HashMap::new();
@@ -147,12 +197,58 @@ pub async fn get_all_dynamic_models(
 
 /// 核心模型路由解析引擎
 /// 优先级：Custom Mapping (精确) > Group Mapping (家族) > System Mapping (内置插件)
-/// 
+///
 /// # 参数
 /// - `apply_claude_family_mapping`: 是否对 Claude 模型应用家族映射
 ///   - `true`: CLI 请求，应用家族映射（如 claude-sonnet-4-5 -> gemini-3-pro-high）
 ///   - `false`: 非 CLI 请求（如 Cherry Studio），跳过家族映射，直接穿透
+///
+/// # Performance
+/// Uses LRU cache (100 entries) for resolved routes to avoid redundant HashMap lookups.
 pub fn resolve_model_route(
+    original_model: &str,
+    custom_mapping: &std::collections::HashMap<String, String>,
+    openai_mapping: &std::collections::HashMap<String, String>,
+    anthropic_mapping: &std::collections::HashMap<String, String>,
+    apply_claude_family_mapping: bool,
+) -> String {
+    // Compute cache key from all inputs
+    let cache_key = compute_cache_key(
+        original_model,
+        custom_mapping,
+        openai_mapping,
+        anthropic_mapping,
+        apply_claude_family_mapping,
+    );
+
+    // Check cache first (fast path)
+    {
+        let mut cache = MODEL_ROUTE_CACHE.lock();
+        if let Some(cached_result) = cache.get(&cache_key) {
+            return cached_result.clone();
+        }
+    }
+
+    // Cache miss: compute the route
+    let result = resolve_model_route_uncached(
+        original_model,
+        custom_mapping,
+        openai_mapping,
+        anthropic_mapping,
+        apply_claude_family_mapping,
+    );
+
+    // Store in cache
+    {
+        let mut cache = MODEL_ROUTE_CACHE.lock();
+        cache.put(cache_key, result.clone());
+    }
+
+    result
+}
+
+/// Internal uncached implementation of model route resolution
+fn resolve_model_route_uncached(
     original_model: &str,
     custom_mapping: &std::collections::HashMap<String, String>,
     openai_mapping: &std::collections::HashMap<String, String>,
@@ -266,5 +362,68 @@ mod tests {
             map_claude_model_to_gemini("unknown-model"),
             "claude-sonnet-4-5"
         );
+    }
+
+    #[test]
+    fn test_resolve_model_route_caching() {
+        use std::collections::HashMap;
+
+        let custom_mapping = HashMap::new();
+        let openai_mapping = HashMap::new();
+        let anthropic_mapping = HashMap::new();
+
+        // First call - cache miss, computes route
+        let result1 = resolve_model_route(
+            "gpt-4",
+            &custom_mapping,
+            &openai_mapping,
+            &anthropic_mapping,
+            true,
+        );
+
+        // Second call - should hit cache
+        let result2 = resolve_model_route(
+            "gpt-4",
+            &custom_mapping,
+            &openai_mapping,
+            &anthropic_mapping,
+            true,
+        );
+
+        assert_eq!(result1, result2);
+        assert_eq!(result1, "gemini-2.5-pro"); // GPT-4 maps to gemini-2.5-pro
+    }
+
+    #[test]
+    fn test_cache_invalidation() {
+        use std::collections::HashMap;
+
+        let custom_mapping = HashMap::new();
+        let openai_mapping = HashMap::new();
+        let anthropic_mapping = HashMap::new();
+
+        // Populate cache
+        let _ = resolve_model_route(
+            "test-model",
+            &custom_mapping,
+            &openai_mapping,
+            &anthropic_mapping,
+            false,
+        );
+
+        // Invalidate cache
+        invalidate_model_cache();
+
+        // Cache should be empty, next call will recompute
+        let result = resolve_model_route(
+            "test-model",
+            &custom_mapping,
+            &openai_mapping,
+            &anthropic_mapping,
+            false,
+        );
+
+        // Should still return correct result after invalidation
+        assert_eq!(result, "claude-sonnet-4-5");
     }
 }
