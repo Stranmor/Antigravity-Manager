@@ -13,7 +13,7 @@ const Monitor: React.FC = () => {
             {/* Header */}
             <div className="bg-white dark:bg-base-100 border-b border-gray-200 dark:border-base-300 px-4 py-3 flex items-center gap-4 shadow-sm z-10">
                 <button
-                    onClick={() => { navigate('/api-proxy'); }}
+                    onClick={() => void navigate('/api-proxy')}
                     className="btn btn-ghost btn-sm btn-circle"
                     title={t('common.back')}
                 >

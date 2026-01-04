@@ -255,7 +255,7 @@ function Dashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <CurrentAccount
                         account={currentAccount}
-                        onSwitch={() => navigate('/accounts')}
+                        onSwitch={() => void navigate('/accounts')}
                     />
                     <BestAccounts
                         accounts={accounts}
@@ -268,7 +268,7 @@ function Dashboard() {
                 <div className="grid grid-cols-2 gap-3">
                     <button
                         className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-3 shadow-sm border border-indigo-100 dark:border-indigo-900/30 hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-md transition-all flex items-center justify-between group"
-                        onClick={() => navigate('/accounts')}
+                        onClick={() => void navigate('/accounts')}
                     >
                         <span className="text-indigo-700 dark:text-indigo-300 font-medium text-sm">{t('dashboard.view_all_accounts')}</span>
                         <ArrowRight className="w-4 h-4 text-indigo-400 dark:text-indigo-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-300 group-hover:translate-x-1 transition-all" />

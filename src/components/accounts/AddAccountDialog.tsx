@@ -244,7 +244,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                 await onAdd("", currentToken);
                 successCount++;
             } catch (error) {
-                console.error(`Failed to add token ${i + 1}:`, error);
+                console.error(`Failed to add token ${String(i + 1)}:`, error);
                 failCount++;
             }
             // 稍微延迟一下,避免太快
@@ -292,6 +292,19 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                 console.error('Failed to copy: ', err);
             }
         }
+    };
+
+    // Wrapper handlers for async onClick
+    const onCopyUrlClick = () => { void handleCopyUrl(); };
+    const onImportCustomDbClick = () => { void handleImportCustomDb(); };
+    const onSubmitClick = () => { void handleSubmit(); };
+    const onCancelClick = () => {
+        void (async () => {
+            if (status === 'loading' && activeTab === 'oauth') {
+                await cancelOAuthLogin();
+            }
+            setIsOpen(false);
+        })();
     };
 
     const handleImportDb = () => {
@@ -431,7 +444,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                                                 <button
                                                     type="button"
                                                     className="w-full px-4 py-2 bg-white dark:bg-base-100 text-gray-600 dark:text-gray-300 text-sm font-medium rounded-xl border border-dashed border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-base-200 transition-all flex items-center gap-2"
-                                                    onClick={handleCopyUrl}
+                                                    onClick={onCopyUrlClick}
                                                     title={t('accounts.add.oauth.link_click_to_copy')}
                                                 >
                                                     {oauthUrlCopied ? (
@@ -504,7 +517,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                                         </button>
                                         <button
                                             className="w-full px-4 py-3 bg-gray-50 dark:bg-base-200 text-gray-700 dark:text-gray-300 font-medium rounded-xl border border-gray-200 dark:border-base-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-200 dark:hover:border-indigo-800 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-                                            onClick={handleImportCustomDb}
+                                            onClick={onImportCustomDbClick}
                                             disabled={status === 'loading' || status === 'success'}
                                         >
                                             <Database className="w-4 h-4" />
@@ -538,12 +551,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                         <div className="flex gap-3 w-full mt-6">
                             <button
                                 className="flex-1 px-4 py-2.5 bg-gray-100 dark:bg-base-200 text-gray-700 dark:text-gray-300 font-medium rounded-xl hover:bg-gray-200 dark:hover:bg-base-300 transition-colors focus:outline-none focus:ring-2 focus:ring-200 dark:focus:ring-base-300"
-                                onClick={async () => {
-                                    if (status === 'loading' && activeTab === 'oauth') {
-                                        await cancelOAuthLogin();
-                                    }
-                                    setIsOpen(false);
-                                }}
+                                onClick={onCancelClick}
                                 disabled={status === 'success'} // Only disable on success, allow cancel on loading
                             >
                                 {t('accounts.add.btn_cancel')}
@@ -551,7 +559,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                             {activeTab === 'token' && (
                                 <button
                                     className="flex-1 px-4 py-2.5 text-white font-medium rounded-xl shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 bg-blue-500 hover:bg-blue-600 focus:ring-blue-500 shadow-blue-100 dark:shadow-blue-900/30 flex justify-center items-center gap-2"
-                                    onClick={handleSubmit}
+                                    onClick={onSubmitClick}
                                     disabled={status === 'loading' || status === 'success'}
                                 >
                                     {status === 'loading' ? <Loader2 className="w-4 h-4 animate-spin" /> : null}

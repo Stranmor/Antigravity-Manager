@@ -204,9 +204,9 @@ function Accounts() {
         try {
             await switchAccount(accountId);
             showToast(t('common.success'), 'success');
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('[Accounts] Switch failed:', error);
-            showToast(`${t('common.error')}: ${error}`, 'error');
+            showToast(`${t('common.error')}: ${String(error)}`, 'error');
         } finally {
             // Add a small delay for smoother UX
             setTimeout(() => {
@@ -226,8 +226,8 @@ function Accounts() {
             await refreshQuota(accountId);
             await refreshQuota(accountId);
             showToast(t('common.success'), 'success');
-        } catch (error) {
-            showToast(`${t('common.error')}: ${error}`, 'error');
+        } catch (error: unknown) {
+            showToast(`${t('common.error')}: ${String(error)}`, 'error');
         } finally {
             setRefreshingIds(prev => {
                 const next = new Set(prev);
@@ -251,9 +251,9 @@ function Accounts() {
             setSelectedIds(new Set());
             console.warn('[Accounts] Batch delete success');
             showToast(t('common.success'), 'success');
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('[Accounts] Batch delete failed:', error);
-            showToast(`${t('common.error')}: ${error}`, 'error');
+            showToast(`${t('common.error')}: ${String(error)}`, 'error');
         }
     };
 
@@ -270,9 +270,9 @@ function Accounts() {
             await deleteAccount(deleteConfirmId);
             console.warn('[Accounts] Delete success');
             showToast(t('common.success'), 'success');
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('[Accounts] Delete failed:', error);
-            showToast(`${t('common.error')}: ${error}`, 'error');
+            showToast(`${t('common.error')}: ${String(error)}`, 'error');
         } finally {
             setDeleteConfirmId(null);
         }
@@ -292,9 +292,9 @@ function Accounts() {
                 toggleProxyConfirm.enable ? undefined : '用户手动禁用'
             );
             showToast(t('common.success'), 'success');
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('[Accounts] Toggle proxy status failed:', error);
-            showToast(`${t('common.error')}: ${error}`, 'error');
+            showToast(`${t('common.error')}: ${String(error)}`, 'error');
         } finally {
             setToggleProxyConfirm(null);
         }
@@ -310,14 +310,14 @@ function Accounts() {
             await Promise.all(promises);
             showToast(
                 enable
-                    ? `成功启用 ${selectedIds.size} 个账号的反代功能`
-                    : `成功禁用 ${selectedIds.size} 个账号的反代功能`,
+                    ? `成功启用 ${String(selectedIds.size)} 个账号的反代功能`
+                    : `成功禁用 ${String(selectedIds.size)} 个账号的反代功能`,
                 'success'
             );
             setSelectedIds(new Set());
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('[Accounts] Batch toggle proxy status failed:', error);
-            showToast(`${t('common.error')}: ${error}`, 'error');
+            showToast(`${t('common.error')}: ${String(error)}`, 'error');
         }
     };
 
@@ -352,7 +352,7 @@ function Accounts() {
                         successCount++;
                     } else {
                         failedCount++;
-                        details.push(`${email}: ${result.reason}`);
+                        details.push(`${email ?? ''}: ${String(result.reason)}`);
                     }
                 });
             } else {
@@ -367,15 +367,15 @@ function Accounts() {
             if (failedCount === 0) {
                 showToast(t('accounts.refresh_selected', { count: successCount }), 'success');
             } else {
-                showToast(`${t('common.success')}: ${successCount}, ${t('common.error')}: ${failedCount}`, 'warning');
+                showToast(`${t('common.success')}: ${String(successCount)}, ${t('common.error')}: ${String(failedCount)}`, 'warning');
                 // You might want to show details in a different way, but for toast, keep it simple or use a "view details" action if supported. 
                 // For now, simpler toast is better than a huge alert.
                 if (details.length > 0) {
                     console.warn('Refresh failures:', details);
                 }
             }
-        } catch (error) {
-            showToast(`${t('common.error')}: ${error}`, 'error');
+        } catch (error: unknown) {
+            showToast(`${t('common.error')}: ${String(error)}`, 'error');
         } finally {
             setIsRefreshing(false);
             setRefreshingIds(new Set());
@@ -401,7 +401,7 @@ function Accounts() {
             // 2. Determine Path
             if (config?.default_export_path) {
                 // Use default path
-                const fileName = `antigravity_accounts_${new Date().toISOString().split('T')[0]}.json`;
+                const fileName = `antigravity_accounts_${new Date().toISOString().split('T')[0] ?? ''}.json`;
                 path = await join(config.default_export_path, fileName);
             } else {
                 // Use Native Dialog
@@ -410,7 +410,7 @@ function Accounts() {
                         name: 'JSON',
                         extensions: ['json']
                     }],
-                    defaultPath: `antigravity_accounts_${new Date().toISOString().split('T')[0]}.json`
+                    defaultPath: `antigravity_accounts_${new Date().toISOString().split('T')[0] ?? ''}.json`
                 });
             }
 
@@ -420,9 +420,9 @@ function Accounts() {
             await invoke('save_text_file', { path, content });
 
             showToast(`${t('common.success')} ${path}`, 'success');
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('Export failed:', error);
-            showToast(`${t('common.error')}: ${error}`, 'error');
+            showToast(`${t('common.error')}: ${String(error)}`, 'error');
         }
     };
 
@@ -432,13 +432,13 @@ function Accounts() {
             : accounts.map(a => a.id);
 
         const accountsToExport = accounts.filter(a => idsToExport.includes(a.id));
-        exportAccountsToJson(accountsToExport);
+        void exportAccountsToJson(accountsToExport);
     };
 
     const handleExportOne = (accountId: string) => {
         const account = accounts.find(a => a.id === accountId);
         if (account) {
-            exportAccountsToJson([account]);
+            void exportAccountsToJson([account]);
         }
     };
 
@@ -448,6 +448,18 @@ function Accounts() {
             setDetailsAccount(account);
         }
     };
+
+    // Wrapper handlers for async functions to avoid no-misused-promises
+    const onSwitchHandler = (accountId: string) => { void handleSwitch(accountId); };
+    const onRefreshHandler = (accountId: string) => { void handleRefresh(accountId); };
+    const onReorderHandler = (accountIds: string[]) => { void reorderAccounts(accountIds); };
+    const onExecuteBatchDelete = () => { void executeBatchDelete(); };
+    const onExecuteDelete = () => { void executeDelete(); };
+    const onExecuteRefresh = () => { void executeRefresh(); };
+    const onExecuteToggleProxy = () => { void executeToggleProxy(); };
+
+    // Handler wrapper for AddAccountDialog
+    const onAddAccountHandler = (email: string, refreshToken: string) => { void handleAddAccount(email, refreshToken); };
 
     return (
         <div className="h-full flex flex-col p-5 gap-4 max-w-7xl mx-auto w-full">
@@ -584,7 +596,7 @@ function Accounts() {
 
                 {/* 操作按钮组 */}
                 <div className="flex items-center gap-1.5 shrink-0">
-                    <AddAccountDialog onAdd={handleAddAccount} />
+                    <AddAccountDialog onAdd={onAddAccountHandler} />
 
                     {selectedIds.size > 0 && (
                         <>
@@ -598,16 +610,16 @@ function Accounts() {
                             </button>
                             <button
                                 className="px-2.5 py-2 bg-orange-500 text-white text-xs font-medium rounded-lg hover:bg-orange-600 transition-colors flex items-center gap-1.5 shadow-sm"
-                                onClick={() => handleBatchToggleProxy(false)}
-                                title={`批量禁用 (${selectedIds.size})`}
+                                onClick={() => { void handleBatchToggleProxy(false); }}
+                                title={`批量禁用 (${String(selectedIds.size)})`}
                             >
                                 <ToggleLeft className="w-3.5 h-3.5" />
                                 <span className="hidden xl:inline">禁用 ({selectedIds.size})</span>
                             </button>
                             <button
                                 className="px-2.5 py-2 bg-green-500 text-white text-xs font-medium rounded-lg hover:bg-green-600 transition-colors flex items-center gap-1.5 shadow-sm"
-                                onClick={() => handleBatchToggleProxy(true)}
-                                title={`批量启用 (${selectedIds.size})`}
+                                onClick={() => { void handleBatchToggleProxy(true); }}
+                                title={`批量启用 (${String(selectedIds.size)})`}
                             >
                                 <ToggleRight className="w-3.5 h-3.5" />
                                 <span className="hidden xl:inline">启用 ({selectedIds.size})</span>
@@ -653,13 +665,13 @@ function Accounts() {
                                 onToggleAll={handleToggleAll}
                                 currentAccountId={currentAccount?.id || null}
                                 switchingAccountId={switchingAccountId}
-                                onSwitch={handleSwitch}
-                                onRefresh={handleRefresh}
+                                onSwitch={onSwitchHandler}
+                                onRefresh={onRefreshHandler}
                                 onViewDetails={handleViewDetails}
                                 onExport={handleExportOne}
                                 onDelete={handleDelete}
                                 onToggleProxy={(id) => { handleToggleProxy(id, !!accounts.find(a => a.id === id)?.proxy_disabled); }}
-                                onReorder={reorderAccounts}
+                                onReorder={onReorderHandler}
                             />
                         </div>
                     </div>
@@ -672,8 +684,8 @@ function Accounts() {
                             onToggleSelect={handleToggleSelect}
                             currentAccountId={currentAccount?.id || null}
                             switchingAccountId={switchingAccountId}
-                            onSwitch={handleSwitch}
-                            onRefresh={handleRefresh}
+                            onSwitch={onSwitchHandler}
+                            onRefresh={onRefreshHandler}
                             onViewDetails={handleViewDetails}
                             onExport={handleExportOne}
                             onDelete={handleDelete}
@@ -718,7 +730,7 @@ function Accounts() {
                 type="confirm"
                 confirmText={t('common.delete')}
                 isDestructive={true}
-                onConfirm={isBatchDelete ? executeBatchDelete : executeDelete}
+                onConfirm={isBatchDelete ? onExecuteBatchDelete : onExecuteDelete}
                 onCancel={() => { setDeleteConfirmId(null); setIsBatchDelete(false); }}
             />
 
@@ -732,7 +744,7 @@ function Accounts() {
                 type="confirm"
                 confirmText={t('common.refresh')}
                 isDestructive={false}
-                onConfirm={executeRefresh}
+                onConfirm={onExecuteRefresh}
                 onCancel={() => { setIsRefreshConfirmOpen(false); }}
             />
 
@@ -740,7 +752,7 @@ function Accounts() {
                 <ModalDialog
                     isOpen={!!toggleProxyConfirm}
                     onCancel={() => { setToggleProxyConfirm(null); }}
-                    onConfirm={executeToggleProxy}
+                    onConfirm={onExecuteToggleProxy}
                     title={toggleProxyConfirm.enable ? t('accounts.dialog.enable_proxy_title') : t('accounts.dialog.disable_proxy_title')}
                     message={toggleProxyConfirm.enable ? t('accounts.dialog.enable_proxy_msg') : t('accounts.dialog.disable_proxy_msg')}
                 />
