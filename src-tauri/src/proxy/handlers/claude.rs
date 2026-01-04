@@ -16,6 +16,7 @@ use crate::proxy::mappers::claude::{
     transform_claude_request_in, transform_response, create_claude_sse_stream, ClaudeRequest,
 };
 use crate::proxy::server::AppState;
+use crate::proxy::handlers::common::WithResolvedModel;
 use axum::http::HeaderMap;
 use std::sync::atomic::Ordering;
 
@@ -623,7 +624,8 @@ pub async fn handle_messages(
             }
         }
 
-        
+        // Save a copy of mapped_model for logging before moving it
+        let resolved_model_for_log = mapped_model.clone();
         request_with_mapped.model = mapped_model;
 
         // 生成 Trace ID (简单用时间戳后缀)
@@ -690,6 +692,7 @@ pub async fn handle_messages(
                     .header(header::CONTENT_TYPE, "text/event-stream")
                     .header(header::CACHE_CONTROL, "no-cache")
                     .header(header::CONNECTION, "keep-alive")
+                    .header(crate::proxy::middleware::monitor::X_RESOLVED_MODEL_HEADER, resolved_model_for_log.as_str())
                     .body(Body::from_stream(sse_stream))
                     .unwrap();
             } else {
@@ -740,7 +743,7 @@ pub async fn handle_messages(
                     cache_info
                 );
 
-                return Json(claude_response).into_response();
+                return Json(claude_response).with_resolved_model(&resolved_model_for_log);
             }
         }
         
