@@ -154,11 +154,17 @@ describe('useConfigStore', () => {
 
       mockRequest.mockRejectedValueOnce(new Error('Save failed'));
 
-      await expect(
-        act(async () => {
+      let thrownError: Error | null = null;
+      await act(async () => {
+        try {
           await useConfigStore.getState().saveConfig(mockConfig);
-        })
-      ).rejects.toThrow('Save failed');
+        } catch (e) {
+          thrownError = e as Error;
+        }
+      });
+
+      expect(thrownError).not.toBeNull();
+      expect(thrownError?.message).toBe('Save failed');
 
       const state = useConfigStore.getState();
       expect(state.error).toBe('Error: Save failed');
