@@ -87,6 +87,7 @@ impl AxumServer {
         tracing::info!("z.ai 配置已热更新");
     }
     /// 启动 Axum 服务器
+    #[allow(clippy::too_many_arguments)]
     pub async fn start(
         host: String,
         port: u16,
@@ -291,9 +292,7 @@ async fn health_check_handler(State(state): State<AppState>) -> Response {
     // Determine health status based on account availability
     let status = if accounts_total == 0 {
         "unhealthy"
-    } else if accounts_available == 0 {
-        "degraded"
-    } else if accounts_available < accounts_total / 2 {
+    } else if accounts_available == 0 || accounts_available < accounts_total / 2 {
         "degraded"
     } else {
         "ok"

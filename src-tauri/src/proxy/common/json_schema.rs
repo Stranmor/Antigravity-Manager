@@ -36,19 +36,17 @@ fn flatten_refs(map: &mut serde_json::Map<String, Value>, defs: &serde_json::Map
         // 解析引用名 (例如 #/$defs/MyType -> MyType)
         let ref_name = ref_path.split('/').next_back().unwrap_or(&ref_path);
 
-        if let Some(def_schema) = defs.get(ref_name) {
+        if let Some(Value::Object(def_map)) = defs.get(ref_name) {
             // 将定义的内容合并到当前 map
-            if let Value::Object(def_map) = def_schema {
-                for (k, v) in def_map {
-                    // 仅当当前 map 没有该 key 时才插入 (避免覆盖)
-                    // 但通常 $ref 节点不应该有其他属性
-                    map.entry(k.clone()).or_insert_with(|| v.clone());
-                }
-
-                // 递归处理刚刚合并进来的内容中可能包含的 $ref
-                // 注意：这里可能会无限递归如果存在循环引用，但工具定义通常是 DAG
-                flatten_refs(map, defs);
+            for (k, v) in def_map {
+                // 仅当当前 map 没有该 key 时才插入 (避免覆盖)
+                // 但通常 $ref 节点不应该有其他属性
+                map.entry(k.clone()).or_insert_with(|| v.clone());
             }
+
+            // 递归处理刚刚合并进来的内容中可能包含的 $ref
+            // 注意：这里可能会无限递归如果存在循环引用，但工具定义通常是 DAG
+            flatten_refs(map, defs);
         }
     }
 

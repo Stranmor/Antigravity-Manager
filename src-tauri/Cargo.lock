@@ -95,6 +95,7 @@ dependencies = [
  "hyper-util",
  "image",
  "lru",
+ "memchr",
  "once_cell",
  "parking_lot",
  "pin-project",

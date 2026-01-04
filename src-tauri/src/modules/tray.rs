@@ -112,7 +112,7 @@ pub fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
                              };
                              
                              // 2. 切换
-                             if let Ok(_) = modules::switch_account(&next_account.id).await {
+                             if modules::switch_account(&next_account.id).await.is_ok() {
                                  // 3. 通知前端
                                  let _ = app_handle.emit("tray://account-switched", next_account.id.clone());
                                  // 4. 更新托盘

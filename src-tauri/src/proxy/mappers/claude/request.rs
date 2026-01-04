@@ -38,7 +38,7 @@ impl SafetyThreshold {
     }
 
     /// Convert to Gemini API threshold string
-    pub fn to_gemini_threshold(&self) -> &'static str {
+    pub fn to_gemini_threshold(self) -> &'static str {
         match self {
             SafetyThreshold::Off => "OFF",
             SafetyThreshold::BlockLowAndAbove => "BLOCK_LOW_AND_ABOVE",

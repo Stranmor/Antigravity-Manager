@@ -74,7 +74,7 @@ fn sanitize_thinking_block(block: ContentBlock) -> ContentBlock {
 }
 
 /// 过滤消息中的无效 thinking 块
-fn filter_invalid_thinking_blocks(messages: &mut Vec<Message>) {
+fn filter_invalid_thinking_blocks(messages: &mut [Message]) {
     let mut total_filtered = 0;
     
     for msg in messages.iter_mut() {
