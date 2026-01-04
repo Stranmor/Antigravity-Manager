@@ -164,7 +164,7 @@ pub async fn monitor_middleware(
         match axum::body::to_bytes(body, 512 * 1024).await {
             Ok(bytes) => {
                 if let Ok(s) = std::str::from_utf8(&bytes) {
-                    if let Ok(json) = serde_json::from_str::<Value>(&s) {
+                    if let Ok(json) = serde_json::from_str::<Value>(s) {
                         if let Some(usage) = json.get("usage") {
                             log.input_tokens = usage.get("prompt_tokens").or(usage.get("input_tokens")).and_then(|v| v.as_u64()).map(|v| v as u32);
                             log.output_tokens = usage.get("completion_tokens").or(usage.get("output_tokens")).and_then(|v| v.as_u64()).map(|v| v as u32);
@@ -191,7 +191,7 @@ pub async fn monitor_middleware(
             }
         }
     } else {
-        log.response_body = Some(format!("[{}]", content_type));
+        log.response_body = Some(format!("[{content_type}]"));
         monitor.log_request(log).await;
         response
     }

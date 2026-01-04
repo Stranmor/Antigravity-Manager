@@ -70,7 +70,7 @@ impl NonStreamingProcessor {
         let parts = gemini_response
             .candidates
             .as_ref()
-            .and_then(|c| c.get(0))
+            .and_then(|c| c.first())
             .and_then(|candidate| candidate.content.as_ref())
             .map(|content| &content.parts)
             .unwrap_or(&empty_parts);
@@ -81,7 +81,7 @@ impl NonStreamingProcessor {
         }
 
         // 处理 grounding(web search) -> 转换为 server_tool_use / web_search_tool_result
-        if let Some(candidate) = gemini_response.candidates.as_ref().and_then(|c| c.get(0)) {
+        if let Some(candidate) = gemini_response.candidates.as_ref().and_then(|c| c.first()) {
             if let Some(grounding) = &candidate.grounding_metadata {
                 self.process_grounding(grounding);
             }
@@ -217,7 +217,7 @@ impl NonStreamingProcessor {
             let mime_type = &img.mime_type;
             let data = &img.data;
             if !data.is_empty() {
-                let markdown_img = format!("![image](data:{};base64,{})", mime_type, data);
+                let markdown_img = format!("![image](data:{mime_type};base64,{data})");
                 self.text_builder.push_str(&markdown_img);
                 self.flush_text();
             }
@@ -297,7 +297,7 @@ impl NonStreamingProcessor {
         let finish_reason = gemini_response
             .candidates
             .as_ref()
-            .and_then(|c| c.get(0))
+            .and_then(|c| c.first())
             .and_then(|candidate| candidate.finish_reason.as_deref());
 
         let stop_reason = if self.has_tool_call {
@@ -311,7 +311,7 @@ impl NonStreamingProcessor {
         let usage = gemini_response
             .usage_metadata
             .as_ref()
-            .map(|u| to_claude_usage(u))
+            .map(to_claude_usage)
             .unwrap_or(Usage {
                 input_tokens: 0,
                 output_tokens: 0,

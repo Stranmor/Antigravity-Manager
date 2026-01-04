@@ -138,7 +138,7 @@ impl StreamingState {
         let mut message = json!({
             "id": raw_json.get("responseId")
                 .and_then(|v| v.as_str())
-                .unwrap_or_else(|| "msg_unknown"),
+                .unwrap_or("msg_unknown"),
             "type": "message",
             "role": "assistant",
             "content": [],
@@ -322,7 +322,7 @@ impl StreamingState {
         };
 
         let usage = usage_metadata
-            .map(|u| to_claude_usage(u))
+            .map(to_claude_usage)
             .unwrap_or(Usage {
                 input_tokens: 0,
                 output_tokens: 0,
@@ -505,7 +505,7 @@ impl<'a> PartProcessor<'a> {
             let mime_type = &img.mime_type;
             let data = &img.data;
             if !data.is_empty() {
-                let markdown_img = format!("![image](data:{};base64,{})", mime_type, data);
+                let markdown_img = format!("![image](data:{mime_type};base64,{data})");
                 chunks.extend(self.process_text(&markdown_img, None));
             }
         }

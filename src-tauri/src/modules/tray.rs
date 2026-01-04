@@ -14,7 +14,7 @@ pub fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     // 2. 加载图标（macOS 使用 Template Image）
     let icon_bytes = include_bytes!("../../icons/tray-icon.png");
     let img = image::load_from_memory(icon_bytes)
-        .map_err(|e| tauri::Error::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?
+        .map_err(|e| tauri::Error::Io(std::io::Error::other(e.to_string())))?
         .to_rgba8();
     let (width, height) = img.dimensions();
     let icon = Image::new_owned(img.into_raw(), width, height);
@@ -89,7 +89,7 @@ pub fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
                                      },
                                      Err(e) => {
                                          // 错误处理，可能只记录日志
-                                          modules::logger::log_error(&format!("托盘刷新失败: {}", e));
+                                          modules::logger::log_error(&format!("托盘刷新失败: {e}"));
                                      }
                                  }
                              }
@@ -192,9 +192,9 @@ pub fn update_tray_menus<R: Runtime>(app: &tauri::AppHandle<R>) {
                              if name == "claude-sonnet-4-5" { claude = m.percentage; }
                          }
                          
-                         menu_lines.push(format!("Gemini High: {}%", gemini_high));
-                         menu_lines.push(format!("Gemini Image: {}%", gemini_image));
-                         menu_lines.push(format!("Claude 4.5: {}%", claude));
+                         menu_lines.push(format!("Gemini High: {gemini_high}%"));
+                         menu_lines.push(format!("Gemini Image: {gemini_image}%"));
+                         menu_lines.push(format!("Claude 4.5: {claude}%"));
                      }
                  } else {
                      menu_lines.push(texts.unknown_quota.clone());
@@ -213,7 +213,7 @@ pub fn update_tray_menus<R: Runtime>(app: &tauri::AppHandle<R>) {
          // 动态创建额度项
          let mut quota_items = Vec::new();
          for (i, line) in menu_lines.iter().enumerate() {
-             let item = MenuItem::with_id(&app_clone, format!("info_quota_{}", i), line, false, None::<&str>);
+             let item = MenuItem::with_id(&app_clone, format!("info_quota_{i}"), line, false, None::<&str>);
              if let Ok(item) = item {
                  quota_items.push(item);
              }

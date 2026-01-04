@@ -41,9 +41,9 @@ fn join_base_url(base: &str, path: &str) -> Result<String, String> {
     let path = if path.starts_with('/') {
         path.to_string()
     } else {
-        format!("/{}", path)
+        format!("/{path}")
     };
-    Ok(format!("{}{}", base, path))
+    Ok(format!("{base}{path}"))
 }
 
 fn build_client(
@@ -56,12 +56,12 @@ fn build_client(
     if let Some(config) = upstream_proxy {
         if config.enabled && !config.url.is_empty() {
             let proxy = reqwest::Proxy::all(&config.url)
-                .map_err(|e| format!("Invalid upstream proxy url: {}", e))?;
+                .map_err(|e| format!("Invalid upstream proxy url: {e}"))?;
             builder = builder.proxy(proxy);
         }
     }
 
-    builder.build().map_err(|e| format!("Failed to build HTTP client: {}", e))
+    builder.build().map_err(|e| format!("Failed to build HTTP client: {e}"))
 }
 
 fn copy_passthrough_headers(incoming: &HeaderMap) -> HeaderMap {
@@ -104,7 +104,7 @@ fn set_zai_auth(headers: &mut HeaderMap, incoming: &HeaderMap, api_key: &str) {
     }
 
     if has_auth {
-        if let Ok(v) = HeaderValue::from_str(&format!("Bearer {}", api_key)) {
+        if let Ok(v) = HeaderValue::from_str(&format!("Bearer {api_key}")) {
             headers.insert(header::AUTHORIZATION, v);
         }
     }
@@ -188,7 +188,7 @@ pub async fn forward_anthropic_json(
         } else if existing_beta.contains(effort_beta) {
             existing_beta.to_string()
         } else {
-            format!("{},{}", existing_beta, effort_beta)
+            format!("{existing_beta},{effort_beta}")
         };
 
         if let Ok(v) = HeaderValue::from_str(&new_beta) {
@@ -208,7 +208,7 @@ pub async fn forward_anthropic_json(
         Err(e) => {
             return (
                 StatusCode::BAD_GATEWAY,
-                format!("Upstream request failed: {}", e),
+                format!("Upstream request failed: {e}"),
             )
                 .into_response();
         }
@@ -224,7 +224,7 @@ pub async fn forward_anthropic_json(
     // Stream response body to the client (covers SSE and non-SSE).
     let stream = resp.bytes_stream().map(|chunk| match chunk {
         Ok(b) => Ok::<Bytes, std::io::Error>(b),
-        Err(e) => Ok(Bytes::from(format!("Upstream stream error: {}", e))),
+        Err(e) => Ok(Bytes::from(format!("Upstream stream error: {e}"))),
     });
 
     out.body(Body::from_stream(stream)).unwrap_or_else(|_| {

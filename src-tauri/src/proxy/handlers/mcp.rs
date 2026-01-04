@@ -21,11 +21,11 @@ fn build_client(
 
     if upstream_proxy.enabled && !upstream_proxy.url.is_empty() {
         let proxy = reqwest::Proxy::all(&upstream_proxy.url)
-            .map_err(|e| format!("Invalid upstream proxy url: {}", e))?;
+            .map_err(|e| format!("Invalid upstream proxy url: {e}"))?;
         builder = builder.proxy(proxy);
     }
 
-    builder.build().map_err(|e| format!("Failed to build HTTP client: {}", e))
+    builder.build().map_err(|e| format!("Failed to build HTTP client: {e}"))
 }
 
 fn copy_passthrough_headers(incoming: &HeaderMap) -> HeaderMap {
@@ -69,7 +69,7 @@ async fn forward_mcp(
         Err(e) => {
             return (
                 StatusCode::BAD_REQUEST,
-                format!("Failed to read request body: {}", e),
+                format!("Failed to read request body: {e}"),
             )
                 .into_response();
         }
@@ -90,7 +90,7 @@ async fn forward_mcp(
         Err(e) => {
             return (
                 StatusCode::BAD_GATEWAY,
-                format!("Upstream request failed: {}", e),
+                format!("Upstream request failed: {e}"),
             )
                 .into_response();
         }
@@ -104,7 +104,7 @@ async fn forward_mcp(
 
     let stream = resp.bytes_stream().map(|chunk| match chunk {
         Ok(b) => Ok::<Bytes, std::io::Error>(b),
-        Err(e) => Ok(Bytes::from(format!("Upstream stream error: {}", e))),
+        Err(e) => Ok(Bytes::from(format!("Upstream stream error: {e}"))),
     });
 
     out.body(Body::from_stream(stream)).unwrap_or_else(|_| {
@@ -232,7 +232,7 @@ async fn handle_vision_post(state: AppState, headers: HeaderMap, body: Body) -> 
         Err(e) => {
             return (
                 StatusCode::BAD_REQUEST,
-                format!("Failed to read request body: {}", e),
+                format!("Failed to read request body: {e}"),
             )
                 .into_response();
         }
@@ -243,7 +243,7 @@ async fn handle_vision_post(state: AppState, headers: HeaderMap, body: Body) -> 
         Err(e) => {
             return (
                 StatusCode::BAD_REQUEST,
-                axum::Json(jsonrpc_error(Value::Null, -32700, format!("Parse error: {}", e))),
+                axum::Json(jsonrpc_error(Value::Null, -32700, format!("Parse error: {e}"))),
             )
                 .into_response();
         }
@@ -366,7 +366,7 @@ async fn handle_vision_post(state: AppState, headers: HeaderMap, body: Body) -> 
             axum::Json(jsonrpc_error(
                 id,
                 -32601,
-                format!("Method not found: {}", method),
+                format!("Method not found: {method}"),
             )),
         )
             .into_response(),

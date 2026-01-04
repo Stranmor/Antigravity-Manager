@@ -34,7 +34,7 @@ fn flatten_refs(map: &mut serde_json::Map<String, Value>, defs: &serde_json::Map
     // 检查并替换 $ref
     if let Some(Value::String(ref_path)) = map.remove("$ref") {
         // 解析引用名 (例如 #/$defs/MyType -> MyType)
-        let ref_name = ref_path.split('/').last().unwrap_or(&ref_path);
+        let ref_name = ref_path.split('/').next_back().unwrap_or(&ref_path);
 
         if let Some(def_schema) = defs.get(ref_name) {
             // 将定义的内容合并到当前 map
@@ -97,7 +97,7 @@ fn clean_json_schema_recursive(value: &mut Value) {
                 if let Some(val) = map.remove(field) {
                     // 仅当值是简单类型时才迁移
                     if val.is_string() || val.is_number() || val.is_boolean() {
-                        constraints.push(format!("{}: {}", label, val));
+                        constraints.push(format!("{label}: {val}"));
                     }
                 }
             }

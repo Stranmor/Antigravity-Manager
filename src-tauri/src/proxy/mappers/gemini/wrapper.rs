@@ -24,9 +24,7 @@ pub fn wrap_request(body: &Value, project_id: &str, mapped_model: &str) -> Value
     // relying on upstream defaults or user provided values is safer.
 
     // 提取 tools 列表以进行联网探测 (Gemini 风格可能是嵌套的)
-    let tools_val: Option<Vec<Value>> = inner_request.get("tools").and_then(|t| t.as_array()).map(|arr| {
-        arr.clone()
-    });
+    let tools_val: Option<Vec<Value>> = inner_request.get("tools").and_then(|t| t.as_array()).cloned();
 
     // Use shared grounding/config logic
     let config = crate::proxy::mappers::common_utils::resolve_request_config(original_model, final_model_name, &tools_val);

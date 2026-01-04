@@ -120,7 +120,7 @@ pub fn inject_google_search_tool(body: &mut Value) {
             // [安全校验] 如果数组中已经包含 functionDeclarations，严禁注入 googleSearch
             // 因为 Gemini v1internal 不支持在一次请求中混用 search 和 functions
             let has_functions = tools_arr.iter().any(|t| {
-                t.as_object().map_or(false, |o| o.contains_key("functionDeclarations"))
+                t.as_object().is_some_and(|o| o.contains_key("functionDeclarations"))
             });
 
             if has_functions {

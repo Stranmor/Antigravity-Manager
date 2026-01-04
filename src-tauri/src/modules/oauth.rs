@@ -39,7 +39,7 @@ impl UserInfo {
         
         // 如果 name 为空，尝试组合 given_name 和 family_name
         match (&self.given_name, &self.family_name) {
-            (Some(given), Some(family)) => Some(format!("{} {}", given, family)),
+            (Some(given), Some(family)) => Some(format!("{given} {family}")),
             (Some(given), None) => Some(given.clone()),
             (None, Some(family)) => Some(family.clone()),
             (None, None) => None,
@@ -50,13 +50,11 @@ impl UserInfo {
 
 /// 生成 OAuth 授权 URL
 pub fn get_auth_url(redirect_uri: &str) -> String {
-    let scopes = vec![
-        "https://www.googleapis.com/auth/cloud-platform",
+    let scopes = ["https://www.googleapis.com/auth/cloud-platform",
         "https://www.googleapis.com/auth/userinfo.email",
         "https://www.googleapis.com/auth/userinfo.profile",
         "https://www.googleapis.com/auth/cclog",
-        "https://www.googleapis.com/auth/experimentsandconfigs"
-    ].join(" ");
+        "https://www.googleapis.com/auth/experimentsandconfigs"].join(" ");
 
     let params = vec![
         ("client_id", CLIENT_ID),
@@ -89,12 +87,12 @@ pub async fn exchange_code(code: &str, redirect_uri: &str) -> Result<TokenRespon
         .form(&params)
         .send()
         .await
-        .map_err(|e| format!("Token 交换请求失败: {}", e))?;
+        .map_err(|e| format!("Token 交换请求失败: {e}"))?;
 
     if response.status().is_success() {
         let token_res = response.json::<TokenResponse>()
             .await
-            .map_err(|e| format!("Token 解析失败: {}", e))?;
+            .map_err(|e| format!("Token 解析失败: {e}"))?;
         
         // 添加详细日志
         crate::modules::logger::log_info(&format!(
@@ -116,7 +114,7 @@ pub async fn exchange_code(code: &str, redirect_uri: &str) -> Result<TokenRespon
         Ok(token_res)
     } else {
         let error_text = response.text().await.unwrap_or_default();
-        Err(format!("Token 交换失败: {}", error_text))
+        Err(format!("Token 交换失败: {error_text}"))
     }
 }
 
@@ -138,19 +136,19 @@ pub async fn refresh_access_token(refresh_token: &str) -> Result<TokenResponse, 
         .form(&params)
         .send()
         .await
-        .map_err(|e| format!("刷新请求失败: {}", e))?;
+        .map_err(|e| format!("刷新请求失败: {e}"))?;
 
     if response.status().is_success() {
         let token_data = response
             .json::<TokenResponse>()
             .await
-            .map_err(|e| format!("刷新数据解析失败: {}", e))?;
+            .map_err(|e| format!("刷新数据解析失败: {e}"))?;
         
         crate::modules::logger::log_info(&format!("Token 刷新成功！有效期: {} 秒", token_data.expires_in));
         Ok(token_data)
     } else {
         let error_text = response.text().await.unwrap_or_default();
-        Err(format!("刷新失败: {}", error_text))
+        Err(format!("刷新失败: {error_text}"))
     }
 }
 
@@ -163,15 +161,15 @@ pub async fn get_user_info(access_token: &str) -> Result<UserInfo, String> {
         .bearer_auth(access_token)
         .send()
         .await
-        .map_err(|e| format!("用户信息请求失败: {}", e))?;
+        .map_err(|e| format!("用户信息请求失败: {e}"))?;
 
     if response.status().is_success() {
         response.json::<UserInfo>()
             .await
-            .map_err(|e| format!("用户信息解析失败: {}", e))
+            .map_err(|e| format!("用户信息解析失败: {e}"))
     } else {
         let error_text = response.text().await.unwrap_or_default();
-        Err(format!("获取用户信息失败: {}", error_text))
+        Err(format!("获取用户信息失败: {error_text}"))
     }
 }
 

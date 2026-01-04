@@ -50,7 +50,7 @@ impl TokenManager {
         let accounts_dir = self.data_dir.join("accounts");
         
         if !accounts_dir.exists() {
-            return Err(format!("账号目录不存在: {:?}", accounts_dir));
+            return Err(format!("账号目录不存在: {accounts_dir:?}"));
         }
 
         // Reload should reflect current on-disk state (accounts can be added/removed/disabled).
@@ -62,11 +62,11 @@ impl TokenManager {
         }
         
         let mut entries = tokio::fs::read_dir(&accounts_dir).await
-            .map_err(|e| format!("读取账号目录失败: {}", e))?;
+            .map_err(|e| format!("读取账号目录失败: {e}"))?;
 
         let mut count = 0;
 
-        while let Some(entry) = entries.next_entry().await.map_err(|e| format!("读取目录项失败: {}", e))? {
+        while let Some(entry) = entries.next_entry().await.map_err(|e| format!("读取目录项失败: {e}"))? {
             let path = entry.path();
             
             if path.extension().and_then(|s| s.to_str()) != Some("json") {
@@ -95,10 +95,10 @@ impl TokenManager {
     /// 加载单个账号
     async fn load_single_account(&self, path: &PathBuf) -> Result<Option<ProxyToken>, String> {
         let content = tokio::fs::read_to_string(path).await
-            .map_err(|e| format!("读取文件失败: {}", e))?;
+            .map_err(|e| format!("读取文件失败: {e}"))?;
         
         let account: serde_json::Value = serde_json::from_str(&content)
-            .map_err(|e| format!("解析 JSON 失败: {}", e))?;
+            .map_err(|e| format!("解析 JSON 失败: {e}"))?;
 
         if account
             .get("disabled")
@@ -321,7 +321,7 @@ impl TokenManager {
                         .min()
                         .unwrap_or(60);
                     
-                    return Err(format!("All accounts are currently limited or unhealthy. Please wait {}s.", min_wait));
+                    return Err(format!("All accounts are currently limited or unhealthy. Please wait {min_wait}s."));
                 }
             };
 
@@ -361,12 +361,12 @@ impl TokenManager {
                                 token.email
                             );
                             let _ = self
-                                .disable_account(&token.account_id, &format!("invalid_grant: {}", e))
+                                .disable_account(&token.account_id, &format!("invalid_grant: {e}"))
                                 .await;
                             self.tokens.remove(&token.account_id);
                         }
                         // Avoid leaking account emails to API clients; details are still in logs.
-                        last_error = Some(format!("Token refresh failed: {}", e));
+                        last_error = Some(format!("Token refresh failed: {e}"));
                         attempted.insert(token.account_id.clone());
 
                         // 如果当前账号被锁定复用，刷新失败后必须解除锁定，避免下一次仍选中同一账号
@@ -422,13 +422,13 @@ impl TokenManager {
         } else {
             self.data_dir
                 .join("accounts")
-                .join(format!("{}.json", account_id))
+                .join(format!("{account_id}.json"))
         };
 
         let mut content: serde_json::Value = serde_json::from_str(
-            &tokio::fs::read_to_string(&path).await.map_err(|e| format!("读取文件失败: {}", e))?,
+            &tokio::fs::read_to_string(&path).await.map_err(|e| format!("读取文件失败: {e}"))?,
         )
-        .map_err(|e| format!("解析 JSON 失败: {}", e))?;
+        .map_err(|e| format!("解析 JSON 失败: {e}"))?;
 
         let now = chrono::Utc::now().timestamp();
         content["disabled"] = serde_json::Value::Bool(true);
@@ -436,9 +436,9 @@ impl TokenManager {
         content["disabled_reason"] = serde_json::Value::String(truncate_reason(reason, 800));
 
         let json_content = serde_json::to_string_pretty(&content)
-            .map_err(|e| format!("Failed to serialize account data: {}", e))?;
+            .map_err(|e| format!("Failed to serialize account data: {e}"))?;
         tokio::fs::write(&path, json_content).await
-            .map_err(|e| format!("Failed to write account file: {}", e))?;
+            .map_err(|e| format!("Failed to write account file: {e}"))?;
 
         tracing::warn!("Account disabled: {} ({:?})", account_id, path);
         Ok(())
@@ -452,15 +452,15 @@ impl TokenManager {
         let path = &entry.account_path;
         
         let mut content: serde_json::Value = serde_json::from_str(
-            &tokio::fs::read_to_string(path).await.map_err(|e| format!("读取文件失败: {}", e))?
-        ).map_err(|e| format!("解析 JSON 失败: {}", e))?;
+            &tokio::fs::read_to_string(path).await.map_err(|e| format!("读取文件失败: {e}"))?
+        ).map_err(|e| format!("解析 JSON 失败: {e}"))?;
 
         content["token"]["project_id"] = serde_json::Value::String(project_id.to_string());
 
         let json_content = serde_json::to_string_pretty(&content)
-            .map_err(|e| format!("Failed to serialize project_id data: {}", e))?;
+            .map_err(|e| format!("Failed to serialize project_id data: {e}"))?;
         tokio::fs::write(path, json_content).await
-            .map_err(|e| format!("Failed to write account file: {}", e))?;
+            .map_err(|e| format!("Failed to write account file: {e}"))?;
         
         tracing::debug!("已保存 project_id 到账号 {}", account_id);
         Ok(())
@@ -474,8 +474,8 @@ impl TokenManager {
         let path = &entry.account_path;
         
         let mut content: serde_json::Value = serde_json::from_str(
-            &tokio::fs::read_to_string(path).await.map_err(|e| format!("读取文件失败: {}", e))?
-        ).map_err(|e| format!("解析 JSON 失败: {}", e))?;
+            &tokio::fs::read_to_string(path).await.map_err(|e| format!("读取文件失败: {e}"))?
+        ).map_err(|e| format!("解析 JSON 失败: {e}"))?;
 
         let now = chrono::Utc::now().timestamp();
 
@@ -484,9 +484,9 @@ impl TokenManager {
         content["token"]["expiry_timestamp"] = serde_json::Value::Number((now + token_response.expires_in).into());
 
         let json_content = serde_json::to_string_pretty(&content)
-            .map_err(|e| format!("Failed to serialize token data: {}", e))?;
+            .map_err(|e| format!("Failed to serialize token data: {e}"))?;
         tokio::fs::write(path, json_content).await
-            .map_err(|e| format!("Failed to write account file: {}", e))?;
+            .map_err(|e| format!("Failed to write account file: {e}"))?;
         
         tracing::debug!("已保存刷新后的 token 到账号 {}", account_id);
         Ok(())

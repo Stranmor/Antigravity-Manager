@@ -24,11 +24,11 @@ pub async fn handle_generate(
         (model_action, "generateContent".to_string())
     };
 
-    crate::modules::logger::log_info(&format!("Received Gemini request: {}/{}", model_name, method));
+    crate::modules::logger::log_info(&format!("Received Gemini request: {model_name}/{method}"));
 
     // 1. 验证方法
     if method != "generateContent" && method != "streamGenerateContent" {
-        return Err((StatusCode::BAD_REQUEST, format!("Unsupported method: {}", method)));
+        return Err((StatusCode::BAD_REQUEST, format!("Unsupported method: {method}")));
     }
     let is_stream = method == "streamGenerateContent";
 
@@ -72,7 +72,7 @@ pub async fn handle_generate(
         let (access_token, project_id, email) = match token_manager.get_token(&config.request_type, attempt > 0, Some(&session_id)).await {
             Ok(t) => t,
             Err(e) => {
-                return Err((StatusCode::SERVICE_UNAVAILABLE, format!("Token error: {}", e)));
+                return Err((StatusCode::SERVICE_UNAVAILABLE, format!("Token error: {e}")));
             }
         };
 
@@ -139,12 +139,12 @@ pub async fn handle_generate(
                                                 }
                                                 Err(e) => {
                                                     debug!("[Gemini-SSE] JSON parse error: {}, passing raw line", e);
-                                                    yield Ok::<Bytes, String>(Bytes::from(format!("{}\n\n", line)));
+                                                    yield Ok::<Bytes, String>(Bytes::from(format!("{line}\n\n")));
                                                 }
                                             }
                                         } else {
                                             // Non-data lines (comments, etc.)
-                                            yield Ok::<Bytes, String>(Bytes::from(format!("{}\n\n", line)));
+                                            yield Ok::<Bytes, String>(Bytes::from(format!("{line}\n\n")));
                                         }
                                     } else {
                                         // Non-UTF8 data? Just pass it through or skip
@@ -155,7 +155,7 @@ pub async fn handle_generate(
                             }
                             Err(e) => {
                                 error!("[Gemini-SSE] Connection error: {}", e);
-                                yield Err(format!("Stream error: {}", e));
+                                yield Err(format!("Stream error: {e}"));
                             }
                         }
                     }
@@ -175,7 +175,7 @@ pub async fn handle_generate(
             let gemini_resp: Value = response
                 .json()
                 .await
-                .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Parse error: {}", e)))?;
+                .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Parse error: {e}")))?;
 
             let unwrapped = unwrap_response(&gemini_resp);
             return Ok(Json(unwrapped).with_resolved_model(&mapped_model));
@@ -184,8 +184,8 @@ pub async fn handle_generate(
         // 处理错误并重试
         let status_code = status.as_u16();
         let retry_after = response.headers().get("Retry-After").and_then(|h| h.to_str().ok()).map(|s| s.to_string());
-        let error_text = response.text().await.unwrap_or_else(|_| format!("HTTP {}", status_code));
-        last_error = format!("HTTP {}: {}", status_code, error_text);
+        let error_text = response.text().await.unwrap_or_else(|_| format!("HTTP {status_code}"));
+        last_error = format!("HTTP {status_code}: {error_text}");
  
         // 只有 429 (限流), 529 (过载), 503, 403 (权限) 和 401 (认证失效) 触发账号轮换
         if status_code == 429 || status_code == 529 || status_code == 503 || status_code == 500 || status_code == 403 || status_code == 401 {
@@ -207,7 +207,7 @@ pub async fn handle_generate(
         return Err((status, error_text));
     }
 
-    Ok((StatusCode::TOO_MANY_REQUESTS, format!("All accounts exhausted. Last error: {}", last_error)).into_response())
+    Ok((StatusCode::TOO_MANY_REQUESTS, format!("All accounts exhausted. Last error: {last_error}")).into_response())
 }
 
 pub async fn handle_list_models(State(state): State<AppState>) -> Result<impl IntoResponse, (StatusCode, String)> {
@@ -249,7 +249,7 @@ pub async fn handle_get_model(Path(model_name): Path<String>) -> impl IntoRespon
 pub async fn handle_count_tokens(State(state): State<AppState>, Path(_model_name): Path<String>, Json(_body): Json<Value>) -> Result<impl IntoResponse, (StatusCode, String)> {
     let model_group = "gemini";
     let (_access_token, _project_id, _) = state.token_manager.get_token(model_group, false, None).await
-        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, format!("Token error: {}", e)))?;
+        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, format!("Token error: {e}")))?;
     
     Ok(Json(json!({"totalTokens": 0})))
 }

@@ -60,8 +60,8 @@ async fn fetch_project_id(access_token: &str, email: &str) -> (Option<String>, O
     let meta = json!({"metadata": {"ideType": "ANTIGRAVITY"}});
 
     let res = client
-        .post(format!("{}/v1internal:loadCodeAssist", CLOUD_CODE_BASE_URL))
-        .header(reqwest::header::AUTHORIZATION, format!("Bearer {}", access_token))
+        .post(format!("{CLOUD_CODE_BASE_URL}/v1internal:loadCodeAssist"))
+        .header(reqwest::header::AUTHORIZATION, format!("Bearer {access_token}"))
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .header(reqwest::header::USER_AGENT, "antigravity/windows/amd64")
         .json(&meta)
@@ -164,7 +164,7 @@ pub async fn fetch_quota_inner(access_token: &str, email: &str) -> crate::error:
                 let quota_response: QuotaResponse = response
                     .json()
                     .await
-                    .map_err(|e| AppError::Network(e))?;
+                    .map_err(AppError::Network)?;
                 
                 let mut quota_data = QuotaData::new();
                 

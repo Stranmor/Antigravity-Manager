@@ -81,7 +81,7 @@ pub async fn start_proxy_service(
     
     // 3. 加载账号
     let active_accounts = token_manager.load_accounts().await
-        .map_err(|e| format!("加载账号失败: {}", e))?;
+        .map_err(|e| format!("加载账号失败: {e}"))?;
     
     if active_accounts == 0 {
         let zai_enabled = config.zai.enabled
@@ -108,7 +108,7 @@ pub async fn start_proxy_service(
 
         ).await {
             Ok((server, handle)) => (server, handle),
-            Err(e) => return Err(format!("启动 Axum 服务器失败: {}", e)),
+            Err(e) => return Err(format!("启动 Axum 服务器失败: {e}")),
         };
     
     // 创建服务实例
@@ -123,9 +123,9 @@ pub async fn start_proxy_service(
     
 
     // 保存配置到全局 AppConfig
-    let mut app_config = crate::modules::config::load_app_config().map_err(|e| e)?;
+    let mut app_config = crate::modules::config::load_app_config()?;
     app_config.proxy = config.clone();
-    crate::modules::config::save_app_config(&app_config).map_err(|e| e)?;
+    crate::modules::config::save_app_config(&app_config)?;
     
     Ok(ProxyStatus {
         running: true,
@@ -247,7 +247,7 @@ pub async fn reload_proxy_accounts(
     if let Some(instance) = instance_lock.as_ref() {
         // 重新加载账号
         let count = instance.token_manager.load_accounts().await
-            .map_err(|e| format!("重新加载账号失败: {}", e))?;
+            .map_err(|e| format!("重新加载账号失败: {e}"))?;
         Ok(count)
     } else {
         Err("服务未运行".to_string())
@@ -270,11 +270,11 @@ pub async fn update_model_mapping(
     }
     
     // 2. 无论是否运行，都保存到全局配置持久化
-    let mut app_config = crate::modules::config::load_app_config().map_err(|e| e)?;
+    let mut app_config = crate::modules::config::load_app_config()?;
     app_config.proxy.anthropic_mapping = config.anthropic_mapping;
     app_config.proxy.openai_mapping = config.openai_mapping;
     app_config.proxy.custom_mapping = config.custom_mapping;
-    crate::modules::config::save_app_config(&app_config).map_err(|e| e)?;
+    crate::modules::config::save_app_config(&app_config)?;
     
     Ok(())
 }
@@ -284,9 +284,9 @@ fn join_base_url(base: &str, path: &str) -> String {
     let path = if path.starts_with('/') {
         path.to_string()
     } else {
-        format!("/{}", path)
+        format!("/{path}")
     };
-    format!("{}{}", base, path)
+    format!("{base}{path}")
 }
 
 fn extract_model_ids(value: &serde_json::Value) -> Vec<String> {
@@ -356,12 +356,12 @@ pub async fn fetch_zai_models(
     let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(request_timeout.max(5)));
     if upstream_proxy.enabled && !upstream_proxy.url.is_empty() {
         let proxy = reqwest::Proxy::all(&upstream_proxy.url)
-            .map_err(|e| format!("Invalid upstream proxy url: {}", e))?;
+            .map_err(|e| format!("Invalid upstream proxy url: {e}"))?;
         builder = builder.proxy(proxy);
     }
     let client = builder
         .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
     let resp = client
         .get(&url)
@@ -371,18 +371,18 @@ pub async fn fetch_zai_models(
         .header("accept", "application/json")
         .send()
         .await
-        .map_err(|e| format!("Upstream request failed: {}", e))?;
+        .map_err(|e| format!("Upstream request failed: {e}"))?;
 
     let status = resp.status();
-    let text = resp.text().await.map_err(|e| format!("Failed to read response: {}", e))?;
+    let text = resp.text().await.map_err(|e| format!("Failed to read response: {e}"))?;
 
     if !status.is_success() {
         let preview = if text.len() > 4000 { &text[..4000] } else { &text };
-        return Err(format!("Upstream returned {}: {}", status, preview));
+        return Err(format!("Upstream returned {status}: {preview}"));
     }
 
     let json: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| format!("Invalid JSON response: {}", e))?;
+        serde_json::from_str(&text).map_err(|e| format!("Invalid JSON response: {e}"))?;
     let mut models = extract_model_ids(&json);
     models.retain(|s| !s.trim().is_empty());
     models.sort();

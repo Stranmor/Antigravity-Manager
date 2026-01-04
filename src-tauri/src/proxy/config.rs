@@ -60,6 +60,7 @@ impl Default for ZaiModelDefaults {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct ZaiMcpConfig {
     #[serde(default)]
     pub enabled: bool,
@@ -71,16 +72,6 @@ pub struct ZaiMcpConfig {
     pub vision_enabled: bool,
 }
 
-impl Default for ZaiMcpConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            web_search_enabled: false,
-            web_reader_enabled: false,
-            vision_enabled: false,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ZaiConfig {

@@ -59,12 +59,12 @@ pub async fn add_account(
 /// 删除账号
 #[tauri::command]
 pub async fn delete_account(app: tauri::AppHandle, account_id: String) -> Result<(), String> {
-    modules::logger::log_info(&format!("收到删除账号请求: {}", account_id));
+    modules::logger::log_info(&format!("收到删除账号请求: {account_id}"));
     modules::delete_account(&account_id).map_err(|e| {
-        modules::logger::log_error(&format!("删除账号失败: {}", e));
+        modules::logger::log_error(&format!("删除账号失败: {e}"));
         e
     })?;
-    modules::logger::log_info(&format!("账号删除成功: {}", account_id));
+    modules::logger::log_info(&format!("账号删除成功: {account_id}"));
 
     // 强制同步托盘
     crate::modules::tray::update_tray_menus(&app);
@@ -82,7 +82,7 @@ pub async fn delete_accounts(
         account_ids.len()
     ));
     modules::account::delete_accounts(&account_ids).map_err(|e| {
-        modules::logger::log_error(&format!("批量删除失败: {}", e));
+        modules::logger::log_error(&format!("批量删除失败: {e}"));
         e
     })?;
 
@@ -97,7 +97,7 @@ pub async fn delete_accounts(
 pub async fn reorder_accounts(account_ids: Vec<String>) -> Result<(), String> {
     modules::logger::log_info(&format!("收到账号重排序请求，共 {} 个账号", account_ids.len()));
     modules::account::reorder_accounts(&account_ids).map_err(|e| {
-        modules::logger::log_error(&format!("账号重排序失败: {}", e));
+        modules::logger::log_error(&format!("账号重排序失败: {e}"));
         e
     })
 }
@@ -159,7 +159,7 @@ pub async fn fetch_account_quota(
     app: tauri::AppHandle,
     account_id: String,
 ) -> crate::error::AppResult<QuotaData> {
-    modules::logger::log_info(&format!("手动刷新配额请求: {}", account_id));
+    modules::logger::log_info(&format!("手动刷新配额请求: {account_id}"));
     let mut account =
         modules::load_account(&account_id).map_err(crate::error::AppError::Account)?;
 
@@ -231,7 +231,7 @@ pub async fn refresh_all_quotas() -> Result<RefreshStats, String> {
         }
     }
 
-    modules::logger::log_info(&format!("批量刷新完成: {} 成功, {} 失败", success, failed));
+    modules::logger::log_info(&format!("批量刷新完成: {success} 成功, {failed} 失败"));
     Ok(RefreshStats {
         total: success + failed,
         success,
@@ -310,7 +310,7 @@ pub async fn start_oauth_login(app_handle: tauri::AppHandle) -> Result<Account, 
         .ok();
 
     if let Some(ref pid) = project_id {
-        modules::logger::log_info(&format!("获取项目ID成功: {}", pid));
+        modules::logger::log_info(&format!("获取项目ID成功: {pid}"));
     } else {
         modules::logger::log_warn("未能获取项目ID,将在后续懒加载");
     }
@@ -376,7 +376,7 @@ pub async fn complete_oauth_login(app_handle: tauri::AppHandle) -> Result<Accoun
         .ok();
 
     if let Some(ref pid) = project_id {
-        modules::logger::log_info(&format!("获取项目ID成功: {}", pid));
+        modules::logger::log_info(&format!("获取项目ID成功: {pid}"));
     } else {
         modules::logger::log_warn("未能获取项目ID,将在后续懒加载");
     }
@@ -480,7 +480,7 @@ pub async fn sync_account_from_db(app: tauri::AppHandle) -> Result<Option<Accoun
     let db_refresh_token = match modules::migration::get_refresh_token_from_db() {
         Ok(token) => token,
         Err(e) => {
-            modules::logger::log_info(&format!("自动同步跳过: {}", e));
+            modules::logger::log_info(&format!("自动同步跳过: {e}"));
             return Ok(None);
         }
     };
@@ -511,7 +511,7 @@ pub async fn sync_account_from_db(app: tauri::AppHandle) -> Result<Option<Accoun
 /// 保存文本文件 (绕过前端 Scope 限制)
 #[tauri::command]
 pub async fn save_text_file(path: String, content: String) -> Result<(), String> {
-    std::fs::write(&path, content).map_err(|e| format!("写入文件失败: {}", e))
+    std::fs::write(&path, content).map_err(|e| format!("写入文件失败: {e}"))
 }
 
 /// 清理日志缓存
@@ -546,7 +546,7 @@ pub async fn open_data_folder() -> Result<(), String> {
         std::process::Command::new("xdg-open")
             .arg(path)
             .spawn()
-            .map_err(|e| format!("打开文件夹失败: {}", e))?;
+            .map_err(|e| format!("打开文件夹失败: {e}"))?;
     }
 
     Ok(())
@@ -620,7 +620,7 @@ pub async fn check_for_updates() -> Result<UpdateInfo, String> {
         .header("User-Agent", "Antigravity-Tools")
         .send()
         .await
-        .map_err(|e| format!("请求失败: {}", e))?;
+        .map_err(|e| format!("请求失败: {e}"))?;
 
     if !response.status().is_success() {
         return Err(format!("GitHub API 返回错误: {}", response.status()));
@@ -630,7 +630,7 @@ pub async fn check_for_updates() -> Result<UpdateInfo, String> {
     let json: serde_json::Value = response
         .json()
         .await
-        .map_err(|e| format!("解析响应失败: {}", e))?;
+        .map_err(|e| format!("解析响应失败: {e}"))?;
 
     let latest_version = json["tag_name"]
         .as_str()
@@ -646,14 +646,13 @@ pub async fn check_for_updates() -> Result<UpdateInfo, String> {
     let has_update = compare_versions(latest_version, CURRENT_VERSION);
 
     modules::logger::log_info(&format!(
-        "版本检测完成: 当前 v{}, 最新 v{}, 有更新: {}",
-        CURRENT_VERSION, latest_version, has_update
+        "版本检测完成: 当前 v{CURRENT_VERSION}, 最新 v{latest_version}, 有更新: {has_update}"
     ));
 
     Ok(UpdateInfo {
         has_update,
-        latest_version: format!("v{}", latest_version),
-        current_version: format!("v{}", CURRENT_VERSION),
+        latest_version: format!("v{latest_version}"),
+        current_version: format!("v{CURRENT_VERSION}"),
         download_url,
     })
 }
@@ -696,17 +695,17 @@ pub async fn toggle_proxy_status(
 
     // 1. 读取账号文件
     let data_dir = modules::account::get_data_dir()?;
-    let account_path = data_dir.join("accounts").join(format!("{}.json", account_id));
+    let account_path = data_dir.join("accounts").join(format!("{account_id}.json"));
 
     if !account_path.exists() {
-        return Err(format!("账号文件不存在: {}", account_id));
+        return Err(format!("账号文件不存在: {account_id}"));
     }
 
     let content = std::fs::read_to_string(&account_path)
-        .map_err(|e| format!("读取账号文件失败: {}", e))?;
+        .map_err(|e| format!("读取账号文件失败: {e}"))?;
 
     let mut account_json: serde_json::Value = serde_json::from_str(&content)
-        .map_err(|e| format!("解析账号文件失败: {}", e))?;
+        .map_err(|e| format!("解析账号文件失败: {e}"))?;
 
     // 2. 更新 proxy_disabled 字段
     if enable {
@@ -726,9 +725,9 @@ pub async fn toggle_proxy_status(
 
     // 3. 保存到磁盘
     let json_content = serde_json::to_string_pretty(&account_json)
-        .map_err(|e| format!("Failed to serialize account data: {}", e))?;
+        .map_err(|e| format!("Failed to serialize account data: {e}"))?;
     std::fs::write(&account_path, json_content)
-        .map_err(|e| format!("Failed to write account file: {}", e))?;
+        .map_err(|e| format!("Failed to write account file: {e}"))?;
 
     modules::logger::log_info(&format!(
         "账号反代状态已更新: {} ({})",

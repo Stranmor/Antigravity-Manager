@@ -587,8 +587,7 @@ pub fn close_antigravity(timeout_secs: u64) -> Result<(), String> {
                         .join(" ");
 
                     crate::modules::logger::log_info(&format!(
-                        " - PID: {} | Name: {} | Args: {}",
-                        pid_u32, name, args_str
+                        " - PID: {pid_u32} | Name: {name} | Args: {args_str}"
                     ));
 
                     // 1. 优先尝试手动路径匹配
@@ -606,9 +605,7 @@ pub fn close_antigravity(timeout_secs: u64) -> Result<(), String> {
                                     || name.contains("sandbox");
                                 if !is_helper_by_args && !is_helper_by_name {
                                     main_pid = Some(pid_u32);
-                                    crate::modules::logger::log_info(&format!(
-                                        "   => 识别为主进程 (匹配手动配置路径)"
-                                    ));
+                                    crate::modules::logger::log_info(&"   => 识别为主进程 (匹配手动配置路径)".to_string());
                                     break;
                                 }
                             }
@@ -630,21 +627,17 @@ pub fn close_antigravity(timeout_secs: u64) -> Result<(), String> {
                     if !is_helper_by_args && !is_helper_by_name {
                         if main_pid.is_none() {
                             main_pid = Some(pid_u32);
-                            crate::modules::logger::log_info(&format!(
-                                "   => 识别为主进程 (特征分析)"
-                            ));
+                            crate::modules::logger::log_info(&"   => 识别为主进程 (特征分析)".to_string());
                         }
                     } else {
-                        crate::modules::logger::log_info(&format!(
-                            "   => 识别为辅助进程 (Helper/Args)"
-                        ));
+                        crate::modules::logger::log_info(&"   => 识别为辅助进程 (Helper/Args)".to_string());
                     }
                 }
             }
 
             // 阶段 1: 优雅退出 (SIGTERM)
             if let Some(pid) = main_pid {
-                crate::modules::logger::log_info(&format!("尝试优雅关闭主进程 {} (SIGTERM)", pid));
+                crate::modules::logger::log_info(&format!("尝试优雅关闭主进程 {pid} (SIGTERM)"));
                 let _ = Command::new("kill")
                     .args(["-15", &pid.to_string()])
                     .output();
@@ -733,7 +726,7 @@ pub fn start_antigravity() -> Result<(), String> {
         }
 
         if path.exists() {
-            crate::modules::logger::log_info(&format!("使用手动配置路径启动: {}", path_str));
+            crate::modules::logger::log_info(&format!("使用手动配置路径启动: {path_str}"));
 
             #[cfg(target_os = "macos")]
             {
@@ -776,18 +769,16 @@ pub fn start_antigravity() -> Result<(), String> {
                     }
                 }
 
-                cmd.spawn().map_err(|e| format!("启动失败: {}", e))?;
+                cmd.spawn().map_err(|e| format!("启动失败: {e}"))?;
             }
 
             crate::modules::logger::log_info(&format!(
-                "Antigravity 启动命令已发送 (手动路径: {}, 参数: {:?})",
-                path_str, args
+                "Antigravity 启动命令已发送 (手动路径: {path_str}, 参数: {args:?})"
             ));
             return Ok(());
         } else {
             crate::modules::logger::log_warn(&format!(
-                "手动配置路径不存在: {}，将回退到自动检测",
-                path_str
+                "手动配置路径不存在: {path_str}，将回退到自动检测"
             ));
         }
     }
@@ -849,12 +840,11 @@ pub fn start_antigravity() -> Result<(), String> {
             }
         }
 
-        cmd.spawn().map_err(|e| format!("启动失败: {}", e))?;
+        cmd.spawn().map_err(|e| format!("启动失败: {e}"))?;
     }
 
     crate::modules::logger::log_info(&format!(
-        "Antigravity 启动命令已发送 (默认检测, 参数: {:?})",
-        args
+        "Antigravity 启动命令已发送 (默认检测, 参数: {args:?})"
     ));
     Ok(())
 }

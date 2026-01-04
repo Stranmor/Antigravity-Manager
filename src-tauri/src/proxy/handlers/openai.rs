@@ -41,7 +41,7 @@ pub async fn handle_chat_completions(
     Json(body): Json<Value>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
     let mut openai_req: OpenAIRequest = serde_json::from_value(body)
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid request: {}", e)))?;
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid request: {e}")))?;
 
     // Safety: Ensure messages is not empty
     if openai_req.messages.is_empty() {
@@ -100,7 +100,7 @@ pub async fn handle_chat_completions(
         let tools_val: Option<Vec<Value>> = openai_req
             .tools
             .as_ref()
-            .map(|list| list.iter().cloned().collect());
+            .map(|list| list.to_vec());
         let config = crate::proxy::mappers::common_utils::resolve_request_config(
             &openai_req.model,
             &mapped_model,
@@ -120,7 +120,7 @@ pub async fn handle_chat_completions(
             Err(e) => {
                 return Err((
                     StatusCode::SERVICE_UNAVAILABLE,
-                    format!("Token error: {}", e),
+                    format!("Token error: {e}"),
                 ));
             }
         };
@@ -188,7 +188,7 @@ pub async fn handle_chat_completions(
             let gemini_resp: Value = response
                 .json()
                 .await
-                .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Parse error: {}", e)))?;
+                .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Parse error: {e}")))?;
 
             let openai_response = transform_openai_response(&gemini_resp);
             return Ok(Json(openai_response).with_resolved_model(&mapped_model));
@@ -197,8 +197,8 @@ pub async fn handle_chat_completions(
         // 处理特定错误并重试
         let status_code = status.as_u16();
         let retry_after = response.headers().get("Retry-After").and_then(|h| h.to_str().ok()).map(|s| s.to_string());
-        let error_text = response.text().await.unwrap_or_else(|_| format!("HTTP {}", status_code));
-        last_error = format!("HTTP {}: {}", status_code, error_text);
+        let error_text = response.text().await.unwrap_or_else(|_| format!("HTTP {status_code}"));
+        last_error = format!("HTTP {status_code}: {error_text}");
 
         // [New] 打印错误报文日志
         tracing::error!(
@@ -316,7 +316,7 @@ pub async fn handle_chat_completions(
 
     // Include 529 retry info in final error message if applicable
     let retry_info = if overload_retry_count > 0 {
-        format!(" (including {} overload retries)", overload_retry_count)
+        format!(" (including {overload_retry_count} overload retries)")
     } else {
         String::new()
     };
@@ -324,7 +324,7 @@ pub async fn handle_chat_completions(
     // 所有尝试均失败
     Err((
         StatusCode::TOO_MANY_REQUESTS,
-        format!("All {} attempts failed{}. Last error: {}", max_attempts, retry_info, last_error),
+        format!("All {max_attempts} attempts failed{retry_info}. Last error: {last_error}"),
     ))
 }
 
@@ -589,7 +589,7 @@ pub async fn handle_completions(
     // For now, let's replicate the core loop but with Codex specific SSE mapping.
 
     let mut openai_req: OpenAIRequest = serde_json::from_value(body.clone())
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid request: {}", e)))?;
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid request: {e}")))?;
 
     // Safety: Inject empty message if needed
     if openai_req.messages.is_empty() {
@@ -641,7 +641,7 @@ pub async fn handle_completions(
         let tools_val: Option<Vec<Value>> = openai_req
             .tools
             .as_ref()
-            .map(|list| list.iter().cloned().collect());
+            .map(|list| list.to_vec());
         let config = crate::proxy::mappers::common_utils::resolve_request_config(
             &openai_req.model,
             &mapped_model,
@@ -654,7 +654,7 @@ pub async fn handle_completions(
                 Err(e) => {
                     return Err((
                         StatusCode::SERVICE_UNAVAILABLE,
-                        format!("Token error: {}", e),
+                        format!("Token error: {e}"),
                     ))
                 }
             };
@@ -719,7 +719,7 @@ pub async fn handle_completions(
             let gemini_resp: Value = response
                 .json()
                 .await
-                .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Parse error: {}", e)))?;
+                .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Parse error: {e}")))?;
 
             let chat_resp = transform_openai_response(&gemini_resp);
 
@@ -751,7 +751,7 @@ pub async fn handle_completions(
         let status_code = status.as_u16();
         let retry_after = response.headers().get("Retry-After").and_then(|h| h.to_str().ok()).map(|s| s.to_string());
         let error_text = response.text().await.unwrap_or_default();
-        last_error = format!("HTTP {}: {}", status_code, error_text);
+        last_error = format!("HTTP {status_code}: {error_text}");
 
         // [529 RESILIENCE] Special handling for 529/503 overloaded errors
         if status_code == 529 || status_code == 503 || status_code == 500 {
@@ -796,14 +796,14 @@ pub async fn handle_completions(
 
     // Include 529 retry info in final error message
     let retry_info = if overload_retry_count > 0 {
-        format!(" (including {} overload retries)", overload_retry_count)
+        format!(" (including {overload_retry_count} overload retries)")
     } else {
         String::new()
     };
 
     Err((
         StatusCode::TOO_MANY_REQUESTS,
-        format!("All {} attempts failed{}. Last error: {}", max_attempts, retry_info, last_error),
+        format!("All {max_attempts} attempts failed{retry_info}. Last error: {last_error}"),
     ))
 }
 
@@ -910,7 +910,7 @@ pub async fn handle_images_generations(
         Err(e) => {
             return Err((
                 StatusCode::SERVICE_UNAVAILABLE,
-                format!("Token error: {}", e),
+                format!("Token error: {e}"),
             ))
         }
     };
@@ -964,14 +964,14 @@ pub async fn handle_images_generations(
                     let status = response.status();
                     if !status.is_success() {
                         let err_text = response.text().await.unwrap_or_default();
-                        return Err(format!("Upstream error {}: {}", status, err_text));
+                        return Err(format!("Upstream error {status}: {err_text}"));
                     }
                     match response.json::<Value>().await {
                         Ok(json) => Ok(json),
-                        Err(e) => Err(format!("Parse error: {}", e)),
+                        Err(e) => Err(format!("Parse error: {e}")),
                     }
                 }
-                Err(e) => Err(format!("Network error: {}", e)),
+                Err(e) => Err(format!("Network error: {e}")),
             }
         }));
     }
@@ -1021,7 +1021,7 @@ pub async fn handle_images_generations(
                 }
             },
             Err(e) => {
-                let err_msg = format!("Task join error: {}", e);
+                let err_msg = format!("Task join error: {e}");
                 tracing::error!("[Images] Task {} join error: {}", idx, e);
                 errors.push(err_msg);
             }
@@ -1080,7 +1080,7 @@ pub async fn handle_images_edits(
     while let Some(field) = multipart
         .next_field()
         .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Multipart error: {}", e)))?
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Multipart error: {e}")))?
     {
         let name = field.name().unwrap_or("").to_string();
 
@@ -1088,19 +1088,19 @@ pub async fn handle_images_edits(
             let data = field
                 .bytes()
                 .await
-                .map_err(|e| (StatusCode::BAD_REQUEST, format!("Image read error: {}", e)))?;
+                .map_err(|e| (StatusCode::BAD_REQUEST, format!("Image read error: {e}")))?;
             image_data = Some(base64::engine::general_purpose::STANDARD.encode(data));
         } else if name == "mask" {
             let data = field
                 .bytes()
                 .await
-                .map_err(|e| (StatusCode::BAD_REQUEST, format!("Mask read error: {}", e)))?;
+                .map_err(|e| (StatusCode::BAD_REQUEST, format!("Mask read error: {e}")))?;
             mask_data = Some(base64::engine::general_purpose::STANDARD.encode(data));
         } else if name == "prompt" {
             prompt = field
                 .text()
                 .await
-                .map_err(|e| (StatusCode::BAD_REQUEST, format!("Prompt read error: {}", e)))?;
+                .map_err(|e| (StatusCode::BAD_REQUEST, format!("Prompt read error: {e}")))?;
         } else if name == "n" {
             if let Ok(val) = field.text().await {
                 n = val.parse().unwrap_or(1);
@@ -1160,7 +1160,7 @@ pub async fn handle_images_edits(
         Err(e) => {
             return Err((
                 StatusCode::SERVICE_UNAVAILABLE,
-                format!("Token error: {}", e),
+                format!("Token error: {e}"),
             ))
         }
     };
@@ -1235,14 +1235,14 @@ pub async fn handle_images_edits(
                     let status = response.status();
                     if !status.is_success() {
                         let err_text = response.text().await.unwrap_or_default();
-                        return Err(format!("Upstream error {}: {}", status, err_text));
+                        return Err(format!("Upstream error {status}: {err_text}"));
                     }
                     match response.json::<Value>().await {
                         Ok(json) => Ok(json),
-                        Err(e) => Err(format!("Parse error: {}", e)),
+                        Err(e) => Err(format!("Parse error: {e}")),
                     }
                 }
-                Err(e) => Err(format!("Network error: {}", e)),
+                Err(e) => Err(format!("Network error: {e}")),
             }
         }));
     }
@@ -1291,7 +1291,7 @@ pub async fn handle_images_edits(
                 }
             },
             Err(e) => {
-                let err_msg = format!("Task join error: {}", e);
+                let err_msg = format!("Task join error: {e}");
                 tracing::error!("[Images] Task {} join error: {}", idx, e);
                 errors.push(err_msg);
             }

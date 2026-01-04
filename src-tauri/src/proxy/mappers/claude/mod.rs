@@ -51,7 +51,7 @@ pub fn create_claude_sse_stream(
                     }
                 }
                 Err(e) => {
-                    yield Err(format!("Stream error: {}", e));
+                    yield Err(format!("Stream error: {e}"));
                     break;
                 }
             }
@@ -105,7 +105,7 @@ fn process_sse_line(line: &str, state: &mut StreamingState, trace_id: &str, emai
             // 提取搜索词
             if let Some(query) = grounding.get("webSearchQueries")
                 .and_then(|v| v.as_array())
-                .and_then(|arr| arr.get(0))
+                .and_then(|arr| arr.first())
                 .and_then(|v| v.as_str())
             {
                 state.web_search_query = Some(query.to_string());
@@ -161,7 +161,7 @@ fn process_sse_line(line: &str, state: &mut StreamingState, trace_id: &str, emai
         if let Some(ref u) = usage {
             let cached_tokens = u.cached_content_token_count.unwrap_or(0);
             let cache_info = if cached_tokens > 0 {
-                format!(", Cached: {}", cached_tokens)
+                format!(", Cached: {cached_tokens}")
             } else {
                 String::new()
             };
@@ -278,8 +278,7 @@ fn process_grounding_metadata(
         }
     });
     chunks.push(Bytes::from(format!(
-        "event: content_block_start\ndata: {}\n\n",
-        server_tool_use_start
+        "event: content_block_start\ndata: {server_tool_use_start}\n\n"
     )));
 
     // server_tool_use block stop
@@ -288,8 +287,7 @@ fn process_grounding_metadata(
         "index": state.block_index
     });
     chunks.push(Bytes::from(format!(
-        "event: content_block_stop\ndata: {}\n\n",
-        server_tool_use_stop
+        "event: content_block_stop\ndata: {server_tool_use_stop}\n\n"
     )));
     state.block_index += 1;
 
@@ -304,8 +302,7 @@ fn process_grounding_metadata(
         }
     });
     chunks.push(Bytes::from(format!(
-        "event: content_block_start\ndata: {}\n\n",
-        tool_result_start
+        "event: content_block_start\ndata: {tool_result_start}\n\n"
     )));
 
     // web_search_tool_result block stop
@@ -314,8 +311,7 @@ fn process_grounding_metadata(
         "index": state.block_index
     });
     chunks.push(Bytes::from(format!(
-        "event: content_block_stop\ndata: {}\n\n",
-        tool_result_stop
+        "event: content_block_stop\ndata: {tool_result_stop}\n\n"
     )));
     state.block_index += 1;
 

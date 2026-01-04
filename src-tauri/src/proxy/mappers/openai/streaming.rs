@@ -115,7 +115,7 @@ pub fn create_openai_sse_stream(
 
                                     // Extract components
                                     let candidates = actual_data.get("candidates").and_then(|c| c.as_array());
-                                    let candidate = candidates.and_then(|c| c.get(0));
+                                    let candidate = candidates.and_then(|c| c.first());
                                     let parts = candidate.and_then(|c| c.get("content")).and_then(|c| c.get("parts")).and_then(|p| p.as_array());
 
                                     let mut content_out = String::with_capacity(CONTENT_BUFFER_CAPACITY);
@@ -138,7 +138,7 @@ pub fn create_openai_sse_stream(
                                                 let mime_type = img.get("mimeType").and_then(|v| v.as_str()).unwrap_or("image/png");
                                                 let data = img.get("data").and_then(|v| v.as_str()).unwrap_or("");
                                                 if !data.is_empty() {
-                                                    content_out.push_str(&format!("![image](data:{};base64,{})", mime_type, data));
+                                                    content_out.push_str(&format!("![image](data:{mime_type};base64,{data})"));
                                                 }
                                             }
                                         }
@@ -211,7 +211,7 @@ pub fn create_openai_sse_stream(
                     }
                 }
                 Err(e) => {
-                    yield Err(format!("Upstream error: {}", e));
+                    yield Err(format!("Upstream error: {e}"));
                 }
             }
         }
@@ -239,7 +239,7 @@ pub fn create_legacy_sse_stream(
             charset[idx] as char
         })
         .collect();
-    let stream_id = format!("cmpl-{}", random_str);
+    let stream_id = format!("cmpl-{random_str}");
     let created_ts = Utc::now().timestamp(); 
     
     let stream = async_stream::stream! {
@@ -262,7 +262,7 @@ pub fn create_legacy_sse_stream(
                                     
                                     let mut content_out = String::with_capacity(CONTENT_BUFFER_CAPACITY);
                                     if let Some(candidates) = actual_data.get("candidates").and_then(|c| c.as_array()) {
-                                        if let Some(parts) = candidates.get(0).and_then(|c| c.get("content")).and_then(|c| c.get("parts")).and_then(|p| p.as_array()) {
+                                        if let Some(parts) = candidates.first().and_then(|c| c.get("content")).and_then(|c| c.get("parts")).and_then(|p| p.as_array()) {
                                             for part in parts {
                                                 if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
                                                     content_out.push_str(text);
@@ -283,7 +283,7 @@ pub fn create_legacy_sse_stream(
 
                                     let finish_reason = actual_data.get("candidates")
                                         .and_then(|c| c.as_array())
-                                        .and_then(|c| c.get(0))
+                                        .and_then(|c| c.first())
                                         .and_then(|c| c.get("finishReason"))
                                         .and_then(|f| f.as_str())
                                         .map(map_finish_reason);
@@ -306,14 +306,14 @@ pub fn create_legacy_sse_stream(
 
                                     let json_str = serde_json::to_string(&legacy_chunk).unwrap_or_default();
                                     tracing::debug!("Legacy Stream Chunk: {}", json_str); 
-                                    let sse_out = format!("data: {}\n\n", json_str);
+                                    let sse_out = format!("data: {json_str}\n\n");
                                     yield Ok::<Bytes, String>(Bytes::from(sse_out));
                                 }
                             }
                         }
                     }
                 }
-                Err(e) => yield Err(format!("Upstream error: {}", e)),
+                Err(e) => yield Err(format!("Upstream error: {e}")),
             }
         }
         tracing::debug!("Stream finished. Yielding [DONE]");
@@ -329,7 +329,8 @@ pub fn create_codex_sse_stream(
     mut gemini_stream: Pin<Box<dyn Stream<Item = Result<Bytes, reqwest::Error>> + Send>>,
     _model: String,
 ) -> Pin<Box<dyn Stream<Item = Result<Bytes, String>> + Send>> {
-    let mut buffer = BytesMut::new();
+    // Pre-allocate buffer with capacity hint
+    let mut buffer = BytesMut::with_capacity(INITIAL_BUFFER_CAPACITY);
     
     // Generate alphanumeric ID
     // SAFETY: Using bytes array indexing which is always valid for ASCII charset
@@ -341,7 +342,7 @@ pub fn create_codex_sse_stream(
             charset[idx] as char
         })
         .collect();
-    let response_id = format!("resp-{}", random_str);
+    let response_id = format!("resp-{random_str}");
     
     let stream = async_stream::stream! {
         // 1. Emit response.created
@@ -376,7 +377,7 @@ pub fn create_codex_sse_stream(
                                 
                                 // Capture finish reason
                                 if let Some(candidates) = actual_data.get("candidates").and_then(|c| c.as_array()) {
-                                    if let Some(candidate) = candidates.get(0) {
+                                    if let Some(candidate) = candidates.first() {
                                         if let Some(reason) = candidate.get("finishReason").and_then(|r| r.as_str()) {
                                             last_finish_reason = map_finish_reason(reason).to_string(); // Optimized
                                         }
@@ -386,12 +387,12 @@ pub fn create_codex_sse_stream(
                                 // text delta
                                 let mut delta_text = String::with_capacity(CONTENT_BUFFER_CAPACITY);
                                 if let Some(candidates) = actual_data.get("candidates").and_then(|c| c.as_array()) {
-                                    if let Some(candidate) = candidates.get(0) {
+                                    if let Some(candidate) = candidates.first() {
                                         if let Some(parts) = candidate.get("content").and_then(|c| c.get("parts")).and_then(|p| p.as_array()) {
                                             for part in parts {
                                                 if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
                                                     // Sanitize smart quotes to standard quotes for JSON compatibility
-                                                    let clean_text = text.replace('“', "\"").replace('”', "\"");
+                                                    let clean_text = text.replace(['“', '”'], "\"");
                                                     delta_text.push_str(&clean_text);
                                                 }
                                                 /* 禁用思维链输出到正文
@@ -578,7 +579,7 @@ pub fn create_codex_sse_stream(
                         }
                     }
                 }
-                Err(e) => yield Err(format!("Upstream error: {}", e)),
+                Err(e) => yield Err(format!("Upstream error: {e}")),
             }
         }
 
@@ -617,8 +618,8 @@ pub fn create_codex_sse_stream(
                 if *c == '{' {
                     if depth == 0 { start_idx = i; }
                     depth += 1;
-                } else if *c == '}' {
-                    if depth > 0 {
+                } else if *c == '}'
+                    && depth > 0 {
                         depth -= 1;
                         if depth == 0 {
                             // Found a potential JSON object block [start_idx..=i]
@@ -629,7 +630,7 @@ pub fn create_codex_sse_stream(
                                     // Found a command! Identify type.
                                     // Case 1: "command": ["shell", ...] or ["ls", ...]
                                     if let Some(arr) = cmd_val.as_array() {
-                                        if let Some(first) = arr.get(0).and_then(|v| v.as_str()) {
+                                        if let Some(first) = arr.first().and_then(|v| v.as_str()) {
                                             if first == "shell" || first == "powershell" || first == "cmd" || first == "ls" || first == "git" || first == "echo" {
                                                 detected_cmd_type = "shell";
                                                 detected_cmd_val = Some(cmd_val.clone());
@@ -688,7 +689,6 @@ pub fn create_codex_sse_stream(
                             }
                         }
                     }
-                }
             }
 
             if let Some(cmd_val) = detected_cmd_val {
@@ -718,7 +718,7 @@ pub fn create_codex_sse_stream(
                         // Use EncodedCommand to avoid quoting hell
                         // AND pipe to Out-String to avoid CLIXML object output which breaks Gemini
                         let raw_cmd = cmd_vec.join(" ");
-                        let joined = format!("& {{ {} }} | Out-String", raw_cmd);
+                        let joined = format!("& {{ {raw_cmd} }} | Out-String");
                         let utf16: Vec<u16> = joined.encode_utf16().collect();
                         let mut bytes = Vec::with_capacity(utf16.len() * 2);
                         for c in utf16 {

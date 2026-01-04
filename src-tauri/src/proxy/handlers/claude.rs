@@ -52,7 +52,7 @@ fn has_valid_signature(block: &ContentBlock) -> bool {
                 return true;
             }
             // 有内容 + 足够长度的 signature = 有效
-            signature.as_ref().map_or(false, |s| s.len() >= MIN_SIGNATURE_LENGTH)
+            signature.as_ref().is_some_and(|s| s.len() >= MIN_SIGNATURE_LENGTH)
         }
         _ => true  // 非 thinking 块默认有效
     }
@@ -701,7 +701,7 @@ pub async fn handle_messages(
                 let sse_stream = claude_stream.map(|result| -> Result<Bytes, std::io::Error> {
                     match result {
                         Ok(bytes) => Ok(bytes),
-                        Err(e) => Ok(Bytes::from(format!("data: {{\"error\":\"{}\"}}\n\n", e))),
+                        Err(e) => Ok(Bytes::from(format!("data: {{\"error\":\"{e}\"}}\n\n"))),
                     }
                 });
 
@@ -717,7 +717,7 @@ pub async fn handle_messages(
                 // 处理非流式响应
                 let bytes = match response.bytes().await {
                     Ok(b) => b,
-                    Err(e) => return (StatusCode::BAD_GATEWAY, format!("Failed to read body: {}", e)).into_response(),
+                    Err(e) => return (StatusCode::BAD_GATEWAY, format!("Failed to read body: {e}")).into_response(),
                 };
                 
                 // Debug print
@@ -727,7 +727,7 @@ pub async fn handle_messages(
 
                 let gemini_resp: Value = match serde_json::from_slice(&bytes) {
                     Ok(v) => v,
-                    Err(e) => return (StatusCode::BAD_GATEWAY, format!("Parse error: {}", e)).into_response(),
+                    Err(e) => return (StatusCode::BAD_GATEWAY, format!("Parse error: {e}")).into_response(),
                 };
 
                 // 解包 response 字段（v1internal 格式）
@@ -736,18 +736,18 @@ pub async fn handle_messages(
                 // 转换为 Gemini Response 结构
                 let gemini_response: crate::proxy::mappers::claude::models::GeminiResponse = match serde_json::from_value(raw.clone()) {
                     Ok(r) => r,
-                    Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Convert error: {}", e)).into_response(),
+                    Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Convert error: {e}")).into_response(),
                 };
                 
                 // 转换
                 let claude_response = match transform_response(&gemini_response) {
                     Ok(r) => r,
-                    Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Transform error: {}", e)).into_response(),
+                    Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Transform error: {e}")).into_response(),
                 };
 
                 // [Optimization] 记录闭环日志：消耗情况
                 let cache_info = if let Some(cached) = claude_response.usage.cache_read_input_tokens {
-                    format!(", Cached: {}", cached)
+                    format!(", Cached: {cached}")
                 } else {
                     String::new()
                 };
@@ -893,7 +893,7 @@ pub async fn handle_messages(
 
     // Include 529 retry info in final error message if applicable
     let retry_info = if overload_retry_count > 0 {
-        format!(" (including {} overload retries)", overload_retry_count)
+        format!(" (including {overload_retry_count} overload retries)")
     } else {
         String::new()
     };

@@ -33,12 +33,12 @@ pub async fn import_from_v1() -> Result<Vec<Account>, String> {
         }
         
         found_index = true;
-        crate::modules::logger::log_info(&format!("发现 V1 数据: {:?}", v1_accounts_path));
+        crate::modules::logger::log_info(&format!("发现 V1 数据: {v1_accounts_path:?}"));
         
         let content = match fs::read_to_string(&v1_accounts_path) {
             Ok(c) => c,
             Err(e) => {
-                crate::modules::logger::log_warn(&format!("读取索引失败: {}", e));
+                crate::modules::logger::log_warn(&format!("读取索引失败: {e}"));
                 continue;
             }
         };
@@ -46,7 +46,7 @@ pub async fn import_from_v1() -> Result<Vec<Account>, String> {
         let v1_index: Value = match serde_json::from_str(&content) {
             Ok(v) => v,
             Err(e) => {
-                crate::modules::logger::log_warn(&format!("解析索引 JSON 失败: {}", e));
+                crate::modules::logger::log_warn(&format!("解析索引 JSON 失败: {e}"));
                 continue;
             }
         };
@@ -77,7 +77,7 @@ pub async fn import_from_v1() -> Result<Vec<Account>, String> {
             let target_file = backup_file_str.or(data_file_str);
             
             if target_file.is_none() {
-                crate::modules::logger::log_warn(&format!("账号 {} ({}) 缺少数据文件路径", id, email_placeholder));
+                crate::modules::logger::log_warn(&format!("账号 {id} ({email_placeholder}) 缺少数据文件路径"));
                 continue;
             }
             
@@ -103,7 +103,7 @@ pub async fn import_from_v1() -> Result<Vec<Account>, String> {
             }
             
             if !backup_path.exists() {
-                crate::modules::logger::log_warn(&format!("账号 {} ({}) 备份文件不存在: {:?}", id, email_placeholder, backup_path));
+                crate::modules::logger::log_warn(&format!("账号 {id} ({email_placeholder}) 备份文件不存在: {backup_path:?}"));
                 continue;
             }
             
@@ -141,7 +141,7 @@ pub async fn import_from_v1() -> Result<Vec<Account>, String> {
                     }
                     
                     if let Some(refresh_token) = refresh_token_opt {
-                         crate::modules::logger::log_info(&format!("正在导入账号: {}", email_placeholder));
+                         crate::modules::logger::log_info(&format!("正在导入账号: {email_placeholder}"));
                          
                          let (email, access_token, expires_in) = match oauth::refresh_access_token(&refresh_token).await {
                             Ok(token_resp) => {
@@ -151,7 +151,7 @@ pub async fn import_from_v1() -> Result<Vec<Account>, String> {
                                 }
                             },
                             Err(e) => {
-                                crate::modules::logger::log_warn(&format!("Token 刷新失败 (可能过期): {}", e));
+                                crate::modules::logger::log_warn(&format!("Token 刷新失败 (可能过期): {e}"));
                                 (email_placeholder.clone(), "imported_access_token".to_string(), 0)
                             }, 
                         };
@@ -168,14 +168,14 @@ pub async fn import_from_v1() -> Result<Vec<Account>, String> {
                         // 在第153行的get_user_info中已经获取name，但这里是在match语句外，我们巴安全起见使用None
                         match account::upsert_account(email.clone(), None, token_data) {
                             Ok(acc) => {
-                                crate::modules::logger::log_info(&format!("导入成功: {}", email));
+                                crate::modules::logger::log_info(&format!("导入成功: {email}"));
                                 imported_accounts.push(acc);
                             },
-                            Err(e) => crate::modules::logger::log_error(&format!("导入保存失败 {}: {}", email, e)),
+                            Err(e) => crate::modules::logger::log_error(&format!("导入保存失败 {email}: {e}")),
                         }
 
                     } else {
-                        crate::modules::logger::log_warn(&format!("账号 {} 数据文件中未找到 Refresh Token", email_placeholder));
+                        crate::modules::logger::log_warn(&format!("账号 {email_placeholder} 数据文件中未找到 Refresh Token"));
                     }
                 }
             }
@@ -195,7 +195,7 @@ pub async fn import_from_custom_db_path(path_str: String) -> Result<Account, Str
 
     let path = PathBuf::from(path_str);
     if !path.exists() {
-        return Err(format!("文件不存在: {:?}", path));
+        return Err(format!("文件不存在: {path:?}"));
     }
 
     let refresh_token = extract_refresh_token_from_file(&path)?;
@@ -207,7 +207,7 @@ pub async fn import_from_custom_db_path(path_str: String) -> Result<Account, Str
     
     let email = user_info.email;
     
-    crate::modules::logger::log_info(&format!("成功获取账号信息: {}", email));
+    crate::modules::logger::log_info(&format!("成功获取账号信息: {email}"));
     
     let token_data = TokenData::new(
         token_resp.access_token,
@@ -231,12 +231,12 @@ pub async fn import_from_db() -> Result<Account, String> {
 /// 从数据库获取当前 Refresh Token (通用逻辑)
 pub fn extract_refresh_token_from_file(db_path: &PathBuf) -> Result<String, String> {
     if !db_path.exists() {
-        return Err(format!("找不到数据库文件: {:?}", db_path));
+        return Err(format!("找不到数据库文件: {db_path:?}"));
     }
     
     // 连接数据库
     let conn = rusqlite::Connection::open(db_path)
-        .map_err(|e| format!("打开数据库失败: {}", e))?;
+        .map_err(|e| format!("打开数据库失败: {e}"))?;
         
     // 从 ItemTable 读取
     let current_data: String = conn
@@ -250,16 +250,16 @@ pub fn extract_refresh_token_from_file(db_path: &PathBuf) -> Result<String, Stri
     // Base64 解码
     let blob = general_purpose::STANDARD
         .decode(&current_data)
-        .map_err(|e| format!("Base64 解码失败: {}", e))?;
+        .map_err(|e| format!("Base64 解码失败: {e}"))?;
         
     // 1. 查找 oauthTokenInfo (Field 6)
     let oauth_data = protobuf::find_field(&blob, 6)
-        .map_err(|e| format!("解析 Protobuf 失败: {}", e))?
+        .map_err(|e| format!("解析 Protobuf 失败: {e}"))?
         .ok_or("未找到 OAuth 数据 (Field 6)")?;
         
     // 2. 提取 refresh_token (Field 3)
     let refresh_bytes = protobuf::find_field(&oauth_data, 3)
-        .map_err(|e| format!("解析 OAuth 数据失败: {}", e))?
+        .map_err(|e| format!("解析 OAuth 数据失败: {e}"))?
         .ok_or("数据中未包含 Refresh Token (Field 3)")?;
         
     String::from_utf8(refresh_bytes)

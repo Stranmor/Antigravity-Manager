@@ -13,11 +13,11 @@ fn build_client(upstream_proxy: UpstreamProxyConfig, timeout_secs: u64) -> Resul
 
     if upstream_proxy.enabled && !upstream_proxy.url.is_empty() {
         let proxy = reqwest::Proxy::all(&upstream_proxy.url)
-            .map_err(|e| format!("Invalid upstream proxy url: {}", e))?;
+            .map_err(|e| format!("Invalid upstream proxy url: {e}"))?;
         builder = builder.proxy(proxy);
     }
 
-    builder.build().map_err(|e| format!("Failed to build HTTP client: {}", e))
+    builder.build().map_err(|e| format!("Failed to build HTTP client: {e}"))
 }
 
 fn is_http_url(value: &str) -> bool {
@@ -49,9 +49,9 @@ fn file_ext(path: &std::path::Path) -> Option<String> {
 }
 
 fn encode_file_as_data_url(path: &std::path::Path, mime: &str) -> Result<String, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("Failed to read file: {}", e))?;
+    let bytes = std::fs::read(path).map_err(|e| format!("Failed to read file: {e}"))?;
     let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
-    Ok(format!("data:{};base64,{}", mime, encoded))
+    Ok(format!("data:{mime};base64,{encoded}"))
 }
 
 fn image_source_to_content(image_source: &str, max_size_mb: u64) -> Result<Value, String> {
@@ -143,15 +143,15 @@ async fn vision_chat_completion(
         .json(&body)
         .send()
         .await
-        .map_err(|e| format!("Upstream request failed: {}", e))?;
+        .map_err(|e| format!("Upstream request failed: {e}"))?;
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        return Err(format!("HTTP {}: {}", status, text));
+        return Err(format!("HTTP {status}: {text}"));
     }
 
-    let v: Value = resp.json().await.map_err(|e| format!("Invalid JSON response: {}", e))?;
+    let v: Value = resp.json().await.map_err(|e| format!("Invalid JSON response: {e}"))?;
     let content = v
         .get("choices")
         .and_then(|c| c.get(0))

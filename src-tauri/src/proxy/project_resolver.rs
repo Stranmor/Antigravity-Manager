@@ -21,17 +21,17 @@ pub async fn fetch_project_id(access_token: &str) -> Result<String, String> {
         .json(&request_body)
         .send()
         .await
-        .map_err(|e| format!("loadCodeAssist 请求失败: {}", e))?;
+        .map_err(|e| format!("loadCodeAssist 请求失败: {e}"))?;
     
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("loadCodeAssist 返回错误 {}: {}", status, body));
+        return Err(format!("loadCodeAssist 返回错误 {status}: {body}"));
     }
     
     let data: Value = response.json()
         .await
-        .map_err(|e| format!("解析响应失败: {}", e))?;
+        .map_err(|e| format!("解析响应失败: {e}"))?;
     
     // 提取 cloudaicompanionProject
     if let Some(project_id) = data.get("cloudaicompanionProject")
@@ -67,5 +67,5 @@ pub fn generate_mock_project_id() -> String {
         })
         .collect();
     
-    format!("{}-{}-{}", adj, noun, random_num)
+    format!("{adj}-{noun}-{random_num}")
 }

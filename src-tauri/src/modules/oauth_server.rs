@@ -64,16 +64,15 @@ async fn ensure_oauth_flow_prepared(app_handle: &tauri::AppHandle) -> Result<Str
         Ok(l6) => {
             port = l6
                 .local_addr()
-                .map_err(|e| format!("无法获取本地端口: {}", e))?
+                .map_err(|e| format!("无法获取本地端口: {e}"))?
                 .port();
             ipv6_listener = Some(l6);
 
-            match TcpListener::bind(format!("127.0.0.1:{}", port)).await {
+            match TcpListener::bind(format!("127.0.0.1:{port}")).await {
                 Ok(l4) => ipv4_listener = Some(l4),
                 Err(e) => {
                     crate::modules::logger::log_warn(&format!(
-                        "无法绑定 IPv4 回调端口 127.0.0.1:{} (将仅监听 IPv6): {}",
-                        port, e
+                        "无法绑定 IPv4 回调端口 127.0.0.1:{port} (将仅监听 IPv6): {e}"
                     ));
                 }
             }
@@ -81,19 +80,18 @@ async fn ensure_oauth_flow_prepared(app_handle: &tauri::AppHandle) -> Result<Str
         Err(_) => {
             let l4 = TcpListener::bind("127.0.0.1:0")
                 .await
-                .map_err(|e| format!("无法绑定本地端口: {}", e))?;
+                .map_err(|e| format!("无法绑定本地端口: {e}"))?;
             port = l4
                 .local_addr()
-                .map_err(|e| format!("无法获取本地端口: {}", e))?
+                .map_err(|e| format!("无法获取本地端口: {e}"))?
                 .port();
             ipv4_listener = Some(l4);
 
-            match TcpListener::bind(format!("[::1]:{}", port)).await {
+            match TcpListener::bind(format!("[::1]:{port}")).await {
                 Ok(l6) => ipv6_listener = Some(l6),
                 Err(e) => {
                     crate::modules::logger::log_warn(&format!(
-                        "无法绑定 IPv6 回调端口 [::1]:{} (将仅监听 IPv4): {}",
-                        port, e
+                        "无法绑定 IPv6 回调端口 [::1]:{port} (将仅监听 IPv4): {e}"
                     ));
                 }
             }
@@ -104,11 +102,11 @@ async fn ensure_oauth_flow_prepared(app_handle: &tauri::AppHandle) -> Result<Str
     let has_ipv6 = ipv6_listener.is_some();
 
     let redirect_uri = if has_ipv4 && has_ipv6 {
-        format!("http://localhost:{}/oauth-callback", port)
+        format!("http://localhost:{port}/oauth-callback")
     } else if has_ipv4 {
-        format!("http://127.0.0.1:{}/oauth-callback", port)
+        format!("http://127.0.0.1:{port}/oauth-callback")
     } else {
-        format!("http://[::1]:{}/oauth-callback", port)
+        format!("http://[::1]:{port}/oauth-callback")
     };
 
     let auth_url = oauth::get_auth_url(&redirect_uri);
@@ -129,7 +127,7 @@ async fn ensure_oauth_flow_prepared(app_handle: &tauri::AppHandle) -> Result<Str
         let app_handle = app_handle_for_tasks.clone();
         tokio::spawn(async move {
             if let Ok((mut stream, _)) = tokio::select! {
-                res = l4.accept() => res.map_err(|e| format!("接受连接失败: {}", e)),
+                res = l4.accept() => res.map_err(|e| format!("接受连接失败: {e}")),
                 _ = rx.changed() => Err("OAuth cancelled".to_string()),
             } {
                 // Reuse the existing parsing/response code by constructing a temporary listener task
@@ -141,7 +139,7 @@ async fn ensure_oauth_flow_prepared(app_handle: &tauri::AppHandle) -> Result<Str
                     .lines()
                     .next()
                     .and_then(|line| line.split_whitespace().nth(1))
-                    .and_then(|path| Url::parse(&format!("http://127.0.0.1:{}{}", port, path)).ok())
+                    .and_then(|path| Url::parse(&format!("http://127.0.0.1:{port}{path}")).ok())
                     .and_then(|url| {
                         url.query_pairs()
                             .find(|(k, _)| k == "code")
@@ -169,7 +167,7 @@ async fn ensure_oauth_flow_prepared(app_handle: &tauri::AppHandle) -> Result<Str
         let app_handle = app_handle_for_tasks;
         tokio::spawn(async move {
             if let Ok((mut stream, _)) = tokio::select! {
-                res = l6.accept() => res.map_err(|e| format!("接受连接失败: {}", e)),
+                res = l6.accept() => res.map_err(|e| format!("接受连接失败: {e}")),
                 _ = rx.changed() => Err("OAuth cancelled".to_string()),
             } {
                 let mut buffer = [0u8; 4096];
@@ -179,7 +177,7 @@ async fn ensure_oauth_flow_prepared(app_handle: &tauri::AppHandle) -> Result<Str
                     .lines()
                     .next()
                     .and_then(|line| line.split_whitespace().nth(1))
-                    .and_then(|path| Url::parse(&format!("http://127.0.0.1:{}{}", port, path)).ok())
+                    .and_then(|path| Url::parse(&format!("http://127.0.0.1:{port}{path}")).ok())
                     .and_then(|url| {
                         url.query_pairs()
                             .find(|(k, _)| k == "code")
@@ -242,7 +240,7 @@ pub async fn start_oauth_flow(app_handle: tauri::AppHandle) -> Result<oauth::Tok
     app_handle
         .opener()
         .open_url(&auth_url, None::<String>)
-        .map_err(|e| format!("无法打开浏览器: {}", e))?;
+        .map_err(|e| format!("无法打开浏览器: {e}"))?;
 
     // 取出 code_rx 用于等待
     let (code_rx, redirect_uri) = {

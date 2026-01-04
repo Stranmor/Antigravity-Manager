@@ -70,7 +70,7 @@ pub fn inject_token(
     expiry: i64,
 ) -> Result<String, String> {
     // 1. 打开数据库
-    let conn = Connection::open(db_path).map_err(|e| format!("打开数据库失败: {}", e))?;
+    let conn = Connection::open(db_path).map_err(|e| format!("打开数据库失败: {e}"))?;
 
     // 2. 读取当前数据
     let current_data: String = conn
@@ -79,12 +79,12 @@ pub fn inject_token(
             ["jetskiStateSync.agentManagerInitState"],
             |row| row.get(0),
         )
-        .map_err(|e| format!("读取数据失败: {}", e))?;
+        .map_err(|e| format!("读取数据失败: {e}"))?;
 
     // 3. Base64 解码
     let blob = general_purpose::STANDARD
         .decode(&current_data)
-        .map_err(|e| format!("Base64 解码失败: {}", e))?;
+        .map_err(|e| format!("Base64 解码失败: {e}"))?;
 
     // 4. 移除旧 Field 6
     let clean_data = protobuf::remove_field(&blob, 6)?;
@@ -101,7 +101,7 @@ pub fn inject_token(
         "UPDATE ItemTable SET value = ? WHERE key = ?",
         [&final_b64, "jetskiStateSync.agentManagerInitState"],
     )
-    .map_err(|e| format!("写入数据失败: {}", e))?;
+    .map_err(|e| format!("写入数据失败: {e}"))?;
 
     // 8. 注入 Onboarding 标记
     let onboarding_key = "antigravityOnboarding";
@@ -109,7 +109,7 @@ pub fn inject_token(
         "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)",
         [onboarding_key, "true"],
     )
-    .map_err(|e| format!("写入 Onboarding 标记失败: {}", e))?;
+    .map_err(|e| format!("写入 Onboarding 标记失败: {e}"))?;
 
-    Ok(format!("Token 注入成功！\n数据库: {:?}", db_path))
+    Ok(format!("Token 注入成功！\n数据库: {db_path:?}"))
 }

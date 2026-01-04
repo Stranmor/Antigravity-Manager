@@ -114,7 +114,7 @@ mod tests {
     #[test]
     fn test_request_id_display() {
         let id = RequestId::new();
-        let display_str = format!("{}", id);
+        let display_str = format!("{id}");
         assert_eq!(display_str, id.as_str());
     }
 

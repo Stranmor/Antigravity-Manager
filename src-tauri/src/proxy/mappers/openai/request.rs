@@ -6,7 +6,7 @@ use super::streaming::get_thought_signature;
 pub fn transform_openai_request(request: &OpenAIRequest, project_id: &str, mapped_model: &str) -> Value {
     // 将 OpenAI 工具转为 Value 数组以便探测
     let tools_val = request.tools.as_ref().map(|list| {
-        list.iter().map(|v| v.clone()).collect::<Vec<_>>()
+        list.iter().cloned().collect::<Vec<_>>()
     });
 
     // Resolve grounding config
@@ -144,7 +144,7 @@ pub fn transform_openai_request(request: &OpenAIRequest, project_id: &str, mappe
 
             // Handle tool calls (assistant message)
             if let Some(tool_calls) = &msg.tool_calls {
-                for (_index, tc) in tool_calls.iter().enumerate() {
+                for tc in tool_calls.iter() {
                     /* 暂时移除：防止 Codex CLI 界面碎片化
                     if index == 0 && parts.is_empty() {
                          if mapped_model.contains("gemini-3") {
