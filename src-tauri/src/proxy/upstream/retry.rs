@@ -5,7 +5,8 @@ use regex::Regex;
 use once_cell::sync::Lazy;
 
 static DURATION_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"([\d.]+)\s*(ms|s|m|h)").unwrap()
+    Regex::new(r"([\d.]+)\s*(ms|s|m|h)")
+        .expect("DURATION_RE: Invalid regex pattern - this is a compile-time constant")
 });
 
 /// 解析 Duration 字符串 (e.g., "1.5s", "200ms", "1h16m0.667s")
