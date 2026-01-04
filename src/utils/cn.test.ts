@@ -7,8 +7,8 @@ describe('cn', () => {
   });
 
   it('handles conditional classes', () => {
-    const includeClass = true;
-    const excludeClass = false;
+    const includeClass = true as boolean;
+    const excludeClass = false as boolean;
     expect(cn('base', includeClass && 'included', excludeClass && 'excluded')).toBe(
       'base included'
     );

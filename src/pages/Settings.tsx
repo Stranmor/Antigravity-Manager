@@ -537,7 +537,7 @@ function Settings() {
                                                 <input
                                                     type="checkbox"
                                                     className="sr-only"
-                                                    checked={formData.proxy?.upstream_proxy?.enabled || false}
+                                                    checked={formData.proxy.upstream_proxy.enabled || false}
                                                     onChange={(e) => { setFormData({
                                                         ...formData,
                                                         proxy: {
@@ -549,8 +549,8 @@ function Settings() {
                                                         }
                                                     }); }}
                                                 />
-                                                <div className={`block w-14 h-8 rounded-full transition-colors ${formData.proxy?.upstream_proxy?.enabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-base-300'}`}></div>
-                                                <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${formData.proxy?.upstream_proxy?.enabled ? 'transform translate-x-6' : ''}`}></div>
+                                                <div className={`block w-14 h-8 rounded-full transition-colors ${formData.proxy.upstream_proxy.enabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-base-300'}`}></div>
+                                                <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${formData.proxy.upstream_proxy.enabled ? 'transform translate-x-6' : ''}`}></div>
                                             </div>
                                             <span className="text-sm font-medium text-gray-900 dark:text-base-content">
                                                 {t('proxy.config.upstream_proxy.enable')}
@@ -564,7 +564,7 @@ function Settings() {
                                         </label>
                                         <input
                                             type="text"
-                                            value={formData.proxy?.upstream_proxy?.url || ''}
+                                            value={formData.proxy.upstream_proxy.url || ''}
                                             onChange={(e) => { setFormData({
                                                 ...formData,
                                                 proxy: {

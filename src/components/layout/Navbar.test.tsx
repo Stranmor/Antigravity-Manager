@@ -156,7 +156,7 @@ describe('Navbar', () => {
       // Find the theme toggle button (the one with Moon icon when light theme)
       const buttons = screen.getAllByRole('button');
       const themeButton = buttons.find(
-        (btn) => btn.title?.includes('切换') || btn.title?.includes('深色') || btn.title?.includes('浅色')
+        (btn) => btn.title.includes('切换') || btn.title.includes('深色') || btn.title.includes('浅色')
       );
 
       if (themeButton) {
@@ -167,7 +167,7 @@ describe('Navbar', () => {
   });
 
   describe('language toggle', () => {
-    it('shows Chinese button when current language is English', async () => {
+    it('shows Chinese button when current language is English', () => {
       // When language='en', the toggle shows '中' to switch to Chinese
       renderWithRouter();
       expect(screen.getByText('中')).toBeInTheDocument();
