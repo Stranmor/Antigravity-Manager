@@ -12,8 +12,8 @@ const Monitor: React.FC = () => {
         <div className="h-full w-full flex flex-col bg-gray-50 dark:bg-base-200">
             {/* Header */}
             <div className="bg-white dark:bg-base-100 border-b border-gray-200 dark:border-base-300 px-4 py-3 flex items-center gap-4 shadow-sm z-10">
-                <button 
-                    onClick={() => navigate('/api-proxy')}
+                <button
+                    onClick={() => { navigate('/api-proxy'); }}
                     className="btn btn-ghost btn-sm btn-circle"
                     title={t('common.back')}
                 >

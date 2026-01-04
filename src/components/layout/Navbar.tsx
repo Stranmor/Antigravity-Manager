@@ -36,7 +36,7 @@ function Navbar() {
                 Math.max(y, window.innerHeight - y)
             );
 
-            // @ts-ignore
+            // @ts-expect-error - View Transition API not yet in TypeScript DOM types
             const transition = document.startViewTransition(async () => {
                 await saveConfig({
                     ...config,
@@ -45,10 +45,10 @@ function Navbar() {
                 });
             });
 
-            transition.ready.then(() => {
+            void transition.ready.then(() => {
                 const clipPath = [
-                    `circle(0px at ${x}px ${y}px)`,
-                    `circle(${endRadius}px at ${x}px ${y}px)`
+                    `circle(0px at ${String(x)}px ${String(y)}px)`,
+                    `circle(${String(endRadius)}px at ${String(x)}px ${String(y)}px)`
                 ];
 
                 document.documentElement.animate(
@@ -80,7 +80,15 @@ function Navbar() {
             language: newLang,
             theme: config.theme
         });
-        i18n.changeLanguage(newLang);
+        await i18n.changeLanguage(newLang);
+    };
+
+    const handleToggleTheme = (event: React.MouseEvent<HTMLButtonElement>) => {
+        void toggleTheme(event);
+    };
+
+    const handleToggleLanguage = () => {
+        void toggleLanguage();
     };
 
     return (
@@ -124,7 +132,7 @@ function Navbar() {
                     <div className="flex items-center gap-2">
                         {/* 主题切换按钮 */}
                         <button
-                            onClick={toggleTheme}
+                            onClick={handleToggleTheme}
                             className="w-10 h-10 rounded-full bg-gray-100 dark:bg-base-200 hover:bg-gray-200 dark:hover:bg-base-100 flex items-center justify-center transition-colors"
                             title={config?.theme === 'light' ? '切换到深色模式' : '切换到浅色模式'}
                         >
@@ -137,7 +145,7 @@ function Navbar() {
 
                         {/* 语言切换按钮 */}
                         <button
-                            onClick={toggleLanguage}
+                            onClick={handleToggleLanguage}
                             className="w-10 h-10 rounded-full bg-gray-100 dark:bg-base-200 hover:bg-gray-200 dark:hover:bg-base-100 flex items-center justify-center transition-colors"
                             title={config?.language === 'zh' ? 'Switch to English' : '切换到中文'}
                         >

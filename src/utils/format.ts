@@ -16,7 +16,7 @@ export function formatBytes(bytes: number): string {
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
 
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    return String(Math.round(bytes / Math.pow(k, i) * 100) / 100) + ' ' + (sizes[i] ?? 'B');
 }
 
 export function getQuotaColor(percentage: number): string {
@@ -38,10 +38,10 @@ export function formatTimeRemaining(dateStr: string): string {
     if (diffHrs >= 24) {
         const diffDays = Math.floor(diffHrs / 24);
         const remainingHrs = diffHrs % 24;
-        return `${diffDays}d ${remainingHrs}h`;
+        return `${String(diffDays)}d ${String(remainingHrs)}h`;
     }
 
-    return `${diffHrs}h ${diffMins}m`;
+    return `${String(diffHrs)}h ${String(diffMins)}m`;
 }
 
 export function getTimeRemainingColor(dateStr: string | undefined): string {
@@ -89,5 +89,5 @@ export function formatCompactNumber(num: number): string {
     
     // Round to 1 decimal place if needed
     const formatted = value.toFixed(Math.abs(value) < 10 && i > 0 ? 1 : 0);
-    return `${formatted.replace(/\.0$/, '')}${units[i]}`;
+    return `${formatted.replace(/\.0$/, '')}${units[i] ?? ''}`;
 }

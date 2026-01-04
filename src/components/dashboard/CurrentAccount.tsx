@@ -120,7 +120,7 @@ function CurrentAccount({ account, onSwitch }: CurrentAccountProps) {
                                     geminiFlashModel.percentage >= 20 ? 'bg-gradient-to-r from-amber-400 to-amber-500' :
                                         'bg-gradient-to-r from-rose-400 to-rose-500'
                                     }`}
-                                style={{ width: `${geminiFlashModel.percentage}%` }}
+                                style={{ width: `${String(geminiFlashModel.percentage)}%` }}
                             ></div>
                         </div>
                     </div>
@@ -148,7 +148,7 @@ function CurrentAccount({ account, onSwitch }: CurrentAccountProps) {
                                     claudeModel.percentage >= 20 ? 'bg-gradient-to-r from-orange-400 to-orange-500' :
                                         'bg-gradient-to-r from-rose-400 to-rose-500'
                                     }`}
-                                style={{ width: `${claudeModel.percentage}%` }}
+                                style={{ width: `${String(claudeModel.percentage)}%` }}
                             ></div>
                         </div>
                     </div>

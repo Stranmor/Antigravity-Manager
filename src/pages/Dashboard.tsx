@@ -26,8 +26,8 @@ function Dashboard() {
     } = useAccountStore();
 
     useEffect(() => {
-        fetchAccounts();
-        fetchCurrentAccount();
+        void fetchAccounts();
+        void fetchCurrentAccount();
     }, [fetchAccounts, fetchCurrentAccount]);
 
     // 计算统计数据
@@ -72,7 +72,7 @@ function Dashboard() {
         if (loading || isSwitchingRef.current) return;
 
         isSwitchingRef.current = true;
-        console.log('[Dashboard] handleSwitch called for', accountId);
+        console.warn('[Dashboard] handleSwitch called for', accountId);
         try {
             await switchAccount(accountId);
             showToast(t('dashboard.toast.switch_success'), 'success');
@@ -144,7 +144,7 @@ function Dashboard() {
     };
 
     const handleExport = () => {
-        exportAccountsToJson(accounts);
+        void exportAccountsToJson(accounts);
     };
 
     return (

@@ -63,7 +63,7 @@ export async function startOAuthLogin(): Promise<Account> {
                 throw error;
             }
             // 其他错误添加上下文
-            throw `OAuth 授权失败: ${error}`;
+            throw new Error(`OAuth 授权失败: ${error}`);
         }
         throw error;
     }
@@ -78,7 +78,7 @@ export async function completeOAuthLogin(): Promise<Account> {
             if (error.includes('Refresh Token') || error.includes('refresh_token')) {
                 throw error;
             }
-            throw `OAuth 授权失败: ${error}`;
+            throw new Error(`OAuth 授权失败: ${error}`);
         }
         throw error;
     }

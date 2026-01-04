@@ -45,7 +45,7 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
     const loadData = async () => {
         try {
             const config = await invoke<AppConfig>('load_config');
-            if (config && config.proxy) {
+            if (config?.proxy) {
                 setIsLoggingEnabled(config.proxy.enable_logging);
                 await invoke('set_proxy_monitor_enabled', { enabled: config.proxy.enable_logging });
             }
@@ -55,8 +55,8 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
 
             const currentStats = await invoke<ProxyStats>('get_proxy_stats');
             if (currentStats) setStats(currentStats);
-        } catch (e) {
-            console.error("Failed to load proxy data", e);
+        } catch {
+            console.error("Failed to load proxy data");
         }
     };
 
@@ -64,19 +64,19 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
         const newState = !isLoggingEnabled;
         try {
             const config = await invoke<AppConfig>('load_config');
-            if (config && config.proxy) {
+            if (config?.proxy) {
                 config.proxy.enable_logging = newState;
                 await invoke('save_config', { config });
                 await invoke('set_proxy_monitor_enabled', { enabled: newState });
                 setIsLoggingEnabled(newState);
             }
-        } catch (e) {
-            console.error("Failed to toggle logging", e);
+        } catch {
+            console.error("Failed to toggle logging");
         }
     };
 
     useEffect(() => {
-        loadData();
+        void loadData();
         let unlistenFn: (() => void) | null = null;
         const setupListener = async () => {
             unlistenFn = await listen<ProxyRequestLog>('proxy://request', (event) => {
@@ -92,7 +92,7 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
                 });
             });
         };
-        setupListener();
+        void setupListener();
         return () => { if (unlistenFn) unlistenFn(); };
     }, []);
 
@@ -100,8 +100,8 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
         .filter(log =>
             log.url.toLowerCase().includes(filter.toLowerCase()) ||
             log.method.toLowerCase().includes(filter.toLowerCase()) ||
-            (log.model && log.model.toLowerCase().includes(filter.toLowerCase())) ||
-            (log.resolved_model && log.resolved_model.toLowerCase().includes(filter.toLowerCase())) ||
+            (log.model?.toLowerCase().includes(filter.toLowerCase())) ||
+            (log.resolved_model?.toLowerCase().includes(filter.toLowerCase())) ||
             log.status.toString().includes(filter)
         )
         .sort((a, b) => b.timestamp - a.timestamp);
@@ -125,19 +125,27 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
             await invoke('clear_proxy_logs');
             setLogs([]);
             setStats({ total_requests: 0, success_count: 0, error_count: 0 });
-        } catch (e) {
-            console.error("Failed to clear logs", e);
+        } catch {
+            console.error("Failed to clear logs");
         }
     };
 
     const formatBody = (body?: string) => {
         if (!body) return <span className="text-gray-400 italic">Empty</span>;
         try {
-            const obj = JSON.parse(body);
+            const obj: unknown = JSON.parse(body);
             return <pre className="text-[10px] font-mono whitespace-pre-wrap text-gray-700 dark:text-gray-300">{JSON.stringify(obj, null, 2)}</pre>;
-        } catch (e) {
+        } catch {
             return <pre className="text-[10px] font-mono whitespace-pre-wrap text-gray-700 dark:text-gray-300">{body}</pre>;
         }
+    };
+
+    const handleToggleLogging = () => {
+        void toggleLogging();
+    };
+
+    const handleExecuteClearLogs = () => {
+        void executeClearLogs();
     };
 
     return (
@@ -145,7 +153,7 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
             <div className="p-3 border-b border-gray-100 dark:border-base-200 space-y-3 bg-gray-50/30 dark:bg-base-200/30">
                 <div className="flex items-center gap-4">
                     <button
-                        onClick={toggleLogging}
+                        onClick={handleToggleLogging}
                         className={`btn btn-sm gap-2 px-4 border font-bold ${isLoggingEnabled
                             ? 'bg-red-500 border-red-600 text-white animate-pulse'
                             : 'bg-white dark:bg-base-200 border-gray-300 text-gray-600'
@@ -206,7 +214,7 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
                             <tr key={log.id} className="hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer" onClick={() => { setSelectedLog(log); }}>
                                 <td><span className={`badge badge-xs text-white border-none ${log.status >= 200 && log.status < 400 ? 'badge-success' : 'badge-error'}`}>{log.status}</span></td>
                                 <td className="font-bold">{log.method}</td>
-                                <td className="truncate max-w-[180px]" title={log.resolved_model ? `${log.model} → ${log.resolved_model}` : log.model}>
+                                <td className="truncate max-w-[180px]" title={log.resolved_model ? `${log.model ?? ''} → ${log.resolved_model}` : log.model}>
                                     {log.resolved_model && log.resolved_model !== log.model ? (
                                         <span className="flex items-center gap-1">
                                             <span className="text-gray-400 line-through text-[9px]">{log.model}</span>
@@ -219,8 +227,8 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
                                 </td>
                                 <td className="truncate max-w-[240px]">{log.url}</td>
                                 <td className="text-right text-[9px]">
-                                    {log.input_tokens != null && <div>I: {formatCompactNumber(log.input_tokens)}</div>}
-                                    {log.output_tokens != null && <div>O: {formatCompactNumber(log.output_tokens)}</div>}
+                                    {log.input_tokens !== null && log.input_tokens !== undefined && <div>I: {formatCompactNumber(log.input_tokens)}</div>}
+                                    {log.output_tokens !== null && log.output_tokens !== undefined && <div>O: {formatCompactNumber(log.output_tokens)}</div>}
                                 </td>
                                 <td className="text-right">{log.duration}ms</td>
                                 <td className="text-right text-[10px]">{new Date(log.timestamp).toLocaleTimeString()}</td>
@@ -306,7 +314,7 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
                 type="confirm"
                 confirmText={t('common.delete')}
                 isDestructive={true}
-                onConfirm={executeClearLogs}
+                onConfirm={handleExecuteClearLogs}
                 onCancel={() => { setIsClearConfirmOpen(false); }}
             />
         </div>

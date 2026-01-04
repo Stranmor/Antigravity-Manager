@@ -104,7 +104,7 @@ function Accounts() {
     }, [localPageSize, config?.accounts_page_size, containerSize, viewMode]);
 
     useEffect(() => {
-        fetchAccounts();
+        void fetchAccounts();
     }, []);
 
     // Reset pagination when view mode changes to avoid empty pages or confusion
@@ -200,7 +200,7 @@ function Accounts() {
         if (loading || switchingAccountId) return;
 
         setSwitchingAccountId(accountId);
-        console.log('[Accounts] handleSwitch called for:', accountId);
+        console.warn('[Accounts] handleSwitch called for:', accountId);
         try {
             await switchAccount(accountId);
             showToast(t('common.success'), 'success');
@@ -246,10 +246,10 @@ function Accounts() {
         setIsBatchDelete(false);
         try {
             const ids = Array.from(selectedIds);
-            console.log('[Accounts] Batch deleting:', ids);
+            console.warn('[Accounts] Batch deleting:', ids);
             await deleteAccounts(ids);
             setSelectedIds(new Set());
-            console.log('[Accounts] Batch delete success');
+            console.warn('[Accounts] Batch delete success');
             showToast(t('common.success'), 'success');
         } catch (error) {
             console.error('[Accounts] Batch delete failed:', error);
@@ -258,7 +258,7 @@ function Accounts() {
     };
 
     const handleDelete = (accountId: string) => {
-        console.log('[Accounts] Request to delete:', accountId);
+        console.warn('[Accounts] Request to delete:', accountId);
         setDeleteConfirmId(accountId);
     };
 
@@ -266,9 +266,9 @@ function Accounts() {
         if (!deleteConfirmId) return;
 
         try {
-            console.log('[Accounts] Executing delete for:', deleteConfirmId);
+            console.warn('[Accounts] Executing delete for:', deleteConfirmId);
             await deleteAccount(deleteConfirmId);
-            console.log('[Accounts] Delete success');
+            console.warn('[Accounts] Delete success');
             showToast(t('common.success'), 'success');
         } catch (error) {
             console.error('[Accounts] Delete failed:', error);

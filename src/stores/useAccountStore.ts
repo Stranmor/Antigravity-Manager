@@ -39,7 +39,7 @@ export const useAccountStore = create<AccountState>((set, get) => ({
     fetchAccounts: async () => {
         set({ loading: true, error: null });
         try {
-            console.log('[Store] Fetching accounts...');
+            console.warn('[Store] Fetching accounts...');
             const accounts = await accountService.listAccounts();
             set({ accounts, loading: false });
         } catch (error) {
@@ -248,7 +248,7 @@ export const useAccountStore = create<AccountState>((set, get) => ({
         try {
             const syncedAccount = await accountService.syncAccountFromDb();
             if (syncedAccount) {
-                console.log('[AccountStore] Account synced from DB:', syncedAccount.email);
+                console.warn('[AccountStore] Account synced from DB:', syncedAccount.email);
                 await get().fetchAccounts();
                 set({ currentAccount: syncedAccount });
             }
