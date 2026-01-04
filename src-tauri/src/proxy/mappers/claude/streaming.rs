@@ -1,11 +1,21 @@
-// Claude 流式响应转换 (Gemini SSE → Claude SSE)
-// 对应 StreamingState + PartProcessor
+// Claude Streaming Transformation (Gemini SSE -> Claude SSE)
+// Optimized for minimal allocations and zero-copy where possible
+//
+// Performance optimizations:
+// - Pre-allocated SSE output buffers with capacity hints
+// - Vec capacity hints for chunk collections
+// - Inlined helper functions for hot paths
 
 use super::models::*;
 use super::utils::to_claude_usage;
 use crate::proxy::mappers::signature_store::store_thought_signature;
 use bytes::Bytes;
 use serde_json::json;
+
+// === Buffer Capacity Constants ===
+// Pre-tuned for typical Claude SSE event sizes
+const SSE_OUTPUT_CAPACITY: usize = 512;           // Typical SSE event output size
+const CHUNK_VEC_CAPACITY: usize = 4;              // Typical number of chunks per operation
 
 /// Known parameter remappings for Gemini → Claude compatibility
 /// [FIX] Gemini sometimes uses different parameter names than specified in tool schema
@@ -114,13 +124,17 @@ impl StreamingState {
         }
     }
 
-    /// 发送 SSE 事件
+    /// Emit SSE event with pre-allocated buffer hint
+    #[inline]
     pub fn emit(&self, event_type: &str, data: serde_json::Value) -> Bytes {
-        let sse = format!(
-            "event: {}\ndata: {}\n\n",
-            event_type,
-            serde_json::to_string(&data).unwrap_or_default()
-        );
+        // Pre-allocate with capacity hint to reduce reallocations
+        let json_str = serde_json::to_string(&data).unwrap_or_default();
+        let mut sse = String::with_capacity(SSE_OUTPUT_CAPACITY);
+        sse.push_str("event: ");
+        sse.push_str(event_type);
+        sse.push_str("\ndata: ");
+        sse.push_str(&json_str);
+        sse.push_str("\n\n");
         Bytes::from(sse)
     }
 
@@ -171,7 +185,7 @@ impl StreamingState {
         block_type: BlockType,
         content_block: serde_json::Value,
     ) -> Vec<Bytes> {
-        let mut chunks = Vec::new();
+        let mut chunks = Vec::with_capacity(CHUNK_VEC_CAPACITY);
         if self.block_type != BlockType::None {
             chunks.extend(self.end_block());
         }
@@ -195,7 +209,7 @@ impl StreamingState {
             return vec![];
         }
 
-        let mut chunks = Vec::new();
+        let mut chunks = Vec::with_capacity(CHUNK_VEC_CAPACITY);
 
         // Thinking 块结束时发送暂存的签名
         if self.block_type == BlockType::Thinking && self.signatures.has_pending() {
@@ -243,7 +257,7 @@ impl StreamingState {
         finish_reason: Option<&str>,
         usage_metadata: Option<&UsageMetadata>,
     ) -> Vec<Bytes> {
-        let mut chunks = Vec::new();
+        let mut chunks = Vec::with_capacity(CHUNK_VEC_CAPACITY);
 
         // 关闭最后一个块
         chunks.extend(self.end_block());
@@ -390,7 +404,7 @@ impl StreamingState {
     /// Reserved for future SSE stream recovery mechanism
     #[allow(dead_code)]
     pub fn handle_parse_error(&mut self, raw_data: &str) -> Vec<Bytes> {
-        let mut chunks = Vec::new();
+        let mut chunks = Vec::with_capacity(CHUNK_VEC_CAPACITY);
 
         self.parse_error_count += 1;
 
@@ -456,7 +470,7 @@ impl<'a> PartProcessor<'a> {
 
     /// 处理单个 part
     pub fn process(&mut self, part: &GeminiPart) -> Vec<Bytes> {
-        let mut chunks = Vec::new();
+        let mut chunks = Vec::with_capacity(CHUNK_VEC_CAPACITY);
         let signature = part.thought_signature.clone();
 
         // 1. FunctionCall 处理
@@ -515,7 +529,7 @@ impl<'a> PartProcessor<'a> {
 
     /// 处理 Thinking
     fn process_thinking(&mut self, text: &str, signature: Option<String>) -> Vec<Bytes> {
-        let mut chunks = Vec::new();
+        let mut chunks = Vec::with_capacity(CHUNK_VEC_CAPACITY);
 
         // 处理之前的 trailingSignature
         if self.state.has_trailing_signature() {
@@ -574,7 +588,7 @@ impl<'a> PartProcessor<'a> {
 
     /// 处理普通 Text
     fn process_text(&mut self, text: &str, signature: Option<String>) -> Vec<Bytes> {
-        let mut chunks = Vec::new();
+        let mut chunks = Vec::with_capacity(CHUNK_VEC_CAPACITY);
 
         // 空 text 带签名 - 暂存
         if text.is_empty() {
@@ -659,7 +673,7 @@ impl<'a> PartProcessor<'a> {
         fc: &FunctionCall,
         signature: Option<String>,
     ) -> Vec<Bytes> {
-        let mut chunks = Vec::new();
+        let mut chunks = Vec::with_capacity(CHUNK_VEC_CAPACITY);
 
         self.state.mark_tool_used();
 

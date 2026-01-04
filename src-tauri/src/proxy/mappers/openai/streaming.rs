@@ -787,3 +787,49 @@ pub fn create_codex_sse_stream(
 
     Box::pin(stream)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_map_finish_reason() {
+        assert_eq!(map_finish_reason("STOP"), "stop");
+        assert_eq!(map_finish_reason("MAX_TOKENS"), "length");
+        assert_eq!(map_finish_reason("SAFETY"), "content_filter");
+        assert_eq!(map_finish_reason("UNKNOWN"), "stop");
+        assert_eq!(map_finish_reason(""), "stop");
+    }
+
+    #[test]
+    fn test_buffer_capacity_constants() {
+        // Verify capacity constants are reasonable
+        assert!(INITIAL_BUFFER_CAPACITY >= 4096);
+        assert!(INITIAL_BUFFER_CAPACITY <= 65536);
+        assert!(CONTENT_BUFFER_CAPACITY >= 256);
+        assert!(CONTENT_BUFFER_CAPACITY <= 8192);
+    }
+
+    #[test]
+    fn test_thought_signature_storage() {
+        // Test storing and retrieving thought signatures
+        store_thought_signature("test_signature_123");
+        let sig = get_thought_signature();
+        assert!(sig.is_some());
+        assert!(sig.unwrap().contains("test_signature"));
+
+        // Test that shorter signatures don't overwrite longer ones
+        store_thought_signature("short");
+        let sig2 = get_thought_signature();
+        assert!(sig2.is_some());
+        // The longer signature should still be stored
+        assert!(sig2.unwrap().len() > 5);
+    }
+
+    #[test]
+    fn test_buffer_preallocation() {
+        // Verify that BytesMut with capacity works as expected
+        let buffer = BytesMut::with_capacity(INITIAL_BUFFER_CAPACITY);
+        assert!(buffer.capacity() >= INITIAL_BUFFER_CAPACITY);
+    }
+}
