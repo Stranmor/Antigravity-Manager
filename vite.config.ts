@@ -20,7 +20,7 @@ export default defineConfig(() => ({
       output: {
         manualChunks: {
           "react-vendor": ["react", "react-dom", "react-router-dom"],
-          "ui-vendor": ["framer-motion", "lucide-react", "recharts"],
+          "ui-vendor": ["lucide-react"],
           "i18n": ["i18next", "react-i18next", "i18next-browser-languagedetector"],
           "dnd": ["@dnd-kit/core", "@dnd-kit/sortable", "@dnd-kit/utilities"],
           "utils": ["clsx", "tailwind-merge", "date-fns", "zustand"],
@@ -37,7 +37,6 @@ export default defineConfig(() => ({
       "react",
       "react-dom",
       "react-router-dom",
-      "framer-motion",
       "zustand",
       "i18next",
       "react-i18next",

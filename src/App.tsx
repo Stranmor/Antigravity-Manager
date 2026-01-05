@@ -1,17 +1,29 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
 
 import Layout from './components/layout/Layout';
-import Dashboard from './pages/Dashboard';
-import Accounts from './pages/Accounts';
-import Settings from './pages/Settings';
-import ApiProxy from './pages/ApiProxy';
-import Monitor from './pages/Monitor';
 import ThemeManager from './components/common/ThemeManager';
 import { useEffect } from 'react';
 import { useConfigStore } from './stores/useConfigStore';
 import { useAccountStore } from './stores/useAccountStore';
 import { useTranslation } from 'react-i18next';
 import { listen } from '@tauri-apps/api/event';
+
+// Lazy load pages for code splitting
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Accounts = lazy(() => import('./pages/Accounts'));
+const Settings = lazy(() => import('./pages/Settings'));
+const ApiProxy = lazy(() => import('./pages/ApiProxy'));
+const Monitor = lazy(() => import('./pages/Monitor'));
+
+// Loading fallback component
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-full w-full">
+      <div className="loading loading-spinner loading-lg text-blue-500" />
+    </div>
+  );
+}
 
 const router = createBrowserRouter([
   {
@@ -20,23 +32,23 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <Dashboard />,
+        element: <Suspense fallback={<PageLoader />}><Dashboard /></Suspense>,
       },
       {
         path: 'accounts',
-        element: <Accounts />,
+        element: <Suspense fallback={<PageLoader />}><Accounts /></Suspense>,
       },
       {
         path: 'api-proxy',
-        element: <ApiProxy />,
+        element: <Suspense fallback={<PageLoader />}><ApiProxy /></Suspense>,
       },
       {
         path: 'monitor',
-        element: <Monitor />,
+        element: <Suspense fallback={<PageLoader />}><Monitor /></Suspense>,
       },
       {
         path: 'settings',
-        element: <Settings />,
+        element: <Suspense fallback={<PageLoader />}><Settings /></Suspense>,
       },
     ],
   },
