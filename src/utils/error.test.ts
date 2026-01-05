@@ -96,6 +96,8 @@ describe('withErrorHandling', () => {
       () => Promise.reject(new Error('fail')),
       (err) => {
         capturedError = err;
+        // Make the error handler throw an error to test if withErrorHandling catches it
+        throw new Error('Error in error handler');
       }
     );
     expect(capturedError).toBeInstanceOf(Error);
