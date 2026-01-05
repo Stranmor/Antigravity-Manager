@@ -19,3 +19,9 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - Target: Mathematical and Engineering Perfection.
 - Preference: Rust for heavy lifting, TS for orchestration.
 - Deployment: Podman/Quadlets.
+
+## CRITICAL: BINARY NAMING CONVENTION
+- **NEVER modify `/usr/bin/antigravity_tools`** - This is the ORIGINAL production binary.
+- Dev builds should be installed as **`/usr/bin/antigravity_tools_dev`**
+- Debug builds output to: `src-tauri/target/debug/antigravity_tools`
+- Release builds output to: `src-tauri/target/release/antigravity_tools`

@@ -180,7 +180,10 @@ impl TokenManager {
     /// 参数 `quota_group` 用于区分 "claude" vs "gemini" 组
     /// 参数 `force_rotate` 为 true 时将忽略锁定，强制切换账号
     /// 参数 `session_id` 用于跨请求维持会话粘性
-    pub async fn get_token(&self, quota_group: &str, force_rotate: bool, session_id: Option<&str>) -> Result<(String, String, String), String> {
+    ///
+    /// 返回: (access_token, project_id, email, account_id)
+    /// [IMPROVEMENT] 添加 account_id 到返回值，确保 rate limiting 使用正确的键
+    pub async fn get_token(&self, quota_group: &str, force_rotate: bool, session_id: Option<&str>) -> Result<(String, String, String, String), String> {
         let mut tokens_snapshot: Vec<ProxyToken> = self.tokens.iter().map(|e| e.value().clone()).collect();
         let total = tokens_snapshot.len();
         if total == 0 {
@@ -410,7 +413,7 @@ impl TokenManager {
                 }
             };
 
-            return Ok((token.access_token, project_id, token.email));
+            return Ok((token.access_token, project_id, token.email, token.account_id));
         }
 
         Err(last_error.unwrap_or_else(|| "All accounts failed".to_string()))
@@ -505,8 +508,9 @@ impl TokenManager {
     }
     
     // ===== 限流管理方法 =====
-    
+
     /// 标记账号限流(从外部调用,通常在 handler 中)
+    /// 现在支持 per-model rate limiting：同一账号的 Claude 和 Gemini 配额独立跟踪
     pub fn mark_rate_limited(
         &self,
         account_id: &str,
@@ -514,17 +518,38 @@ impl TokenManager {
         retry_after_header: Option<&str>,
         error_body: &str,
     ) {
-        self.rate_limit_tracker.parse_from_error(
+        self.mark_rate_limited_for_group(account_id, status, retry_after_header, error_body, None);
+    }
+
+    /// 标记账号限流（带配额组支持）
+    /// quota_group: "claude", "agent", "gemini", "image_gen" 等
+    pub fn mark_rate_limited_for_group(
+        &self,
+        account_id: &str,
+        status: u16,
+        retry_after_header: Option<&str>,
+        error_body: &str,
+        quota_group: Option<&str>,
+    ) {
+        self.rate_limit_tracker.parse_from_error_with_group(
             account_id,
             status,
             retry_after_header,
             error_body,
+            quota_group,
         );
     }
-    
+
     /// 检查账号是否在限流中
     pub fn is_rate_limited(&self, account_id: &str) -> bool {
         self.rate_limit_tracker.is_rate_limited(account_id)
+    }
+
+    /// 检查账号是否在限流中（带配额组）
+    /// 允许同一账号的 Claude 和 Gemini 配额独立检查
+    #[allow(dead_code)]
+    pub fn is_rate_limited_for_group(&self, account_id: &str, quota_group: Option<&str>) -> bool {
+        self.rate_limit_tracker.is_rate_limited_for_group(account_id, quota_group)
     }
     
     /// 获取距离限流重置还有多少秒
@@ -563,6 +588,60 @@ impl TokenManager {
     #[allow(dead_code)]
     pub fn clear_session_binding(&self, session_id: &str) {
         self.session_accounts.remove(session_id);
+    }
+
+    /// 解绑会话从指定账号（当账号被限流时调用）
+    /// 返回被解绑的会话 ID 列表
+    pub fn unbind_sessions_from_account(&self, account_id: &str) -> Vec<String> {
+        let mut unbound_sessions = Vec::new();
+
+        // 遍历所有会话，找到绑定到该账号的会话并解绑
+        self.session_accounts.retain(|session_id, bound_account_id| {
+            if bound_account_id == account_id {
+                tracing::debug!(
+                    "Rate-limit unbind: Session {} detached from account {}",
+                    session_id,
+                    account_id
+                );
+                unbound_sessions.push(session_id.clone());
+                false // Remove this binding
+            } else {
+                true // Keep this binding
+            }
+        });
+
+        if !unbound_sessions.is_empty() {
+            tracing::info!(
+                "Unbound {} session(s) from rate-limited account {}",
+                unbound_sessions.len(),
+                account_id
+            );
+        }
+
+        unbound_sessions
+    }
+
+    /// 标记账号限流并自动解绑所有关联会话
+    /// 这是 mark_rate_limited_for_group 的增强版本
+    pub fn mark_rate_limited_and_unbind(
+        &self,
+        account_id: &str,
+        status: u16,
+        retry_after_header: Option<&str>,
+        error_body: &str,
+        quota_group: Option<&str>,
+    ) {
+        // 1. 标记限流
+        self.rate_limit_tracker.parse_from_error_with_group(
+            account_id,
+            status,
+            retry_after_header,
+            error_body,
+            quota_group,
+        );
+
+        // 2. 自动解绑所有关联会话
+        self.unbind_sessions_from_account(account_id);
     }
 
     /// 清除所有会话的粘性映射

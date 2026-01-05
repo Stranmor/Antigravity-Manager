@@ -70,8 +70,27 @@ pub struct RateLimitInfo {
 }
 
 /// 限流跟踪器
+///
+/// [IMPROVEMENT] 支持 per-model rate limiting
+/// Key format: "{account_id}" 或 "{account_id}:{quota_group}"
+/// 这允许同一账号的 Claude 和 Gemini 配额独立跟踪
 pub struct RateLimitTracker {
     limits: DashMap<String, RateLimitInfo>,
+}
+
+impl RateLimitTracker {
+    /// 生成带 quota_group 的限流键
+    /// 如果 quota_group 为空或 "gemini"，使用纯 account_id（向后兼容）
+    /// 否则使用 "{account_id}:{quota_group}" 格式
+    #[inline]
+    pub fn make_key(account_id: &str, quota_group: Option<&str>) -> String {
+        match quota_group {
+            Some(group) if !group.is_empty() && group != "gemini" => {
+                format!("{}:{}", account_id, group)
+            }
+            _ => account_id.to_string()
+        }
+    }
 }
 
 impl RateLimitTracker {
@@ -93,12 +112,15 @@ impl RateLimitTracker {
     }
     
     /// 从错误响应解析限流信息
-    /// 
+    ///
     /// # Arguments
     /// * `account_id` - 账号 ID
     /// * `status` - HTTP 状态码
     /// * `retry_after_header` - Retry-After header 值
     /// * `body` - 错误响应 body
+    /// * `quota_group` - 可选的配额组 (e.g., "claude", "agent", "gemini")
+    ///                   用于 per-model rate limiting
+    #[allow(dead_code)]
     pub fn parse_from_error(
         &self,
         account_id: &str,
@@ -106,6 +128,19 @@ impl RateLimitTracker {
         retry_after_header: Option<&str>,
         body: &str,
     ) -> Option<RateLimitInfo> {
+        self.parse_from_error_with_group(account_id, status, retry_after_header, body, None)
+    }
+
+    /// 从错误响应解析限流信息（带配额组支持）
+    pub fn parse_from_error_with_group(
+        &self,
+        account_id: &str,
+        status: u16,
+        retry_after_header: Option<&str>,
+        body: &str,
+        quota_group: Option<&str>,
+    ) -> Option<RateLimitInfo> {
+        let key = Self::make_key(account_id, quota_group);
         // 支持 429 (限流) 以及 500/503/529 (后端故障软避让)
         if status != 429 && status != 500 && status != 503 && status != 529 {
             return None;
@@ -171,15 +206,16 @@ impl RateLimitTracker {
             reason,
         };
         
-        // 存储
-        self.limits.insert(account_id.to_string(), info.clone());
-        
+        // 存储 (使用 key 而非 account_id，支持 per-model rate limiting)
+        self.limits.insert(key.clone(), info.clone());
+
         tracing::warn!(
-            "账号 {} [{}] 限流类型: {:?}, 重置延时: {}秒",
+            "账号 {} [{}] 限流类型: {:?}, 重置延时: {}秒 (key: {})",
             account_id,
             status,
             reason,
-            retry_sec
+            retry_sec,
+            key
         );
         
         Some(info)
@@ -337,7 +373,14 @@ impl RateLimitTracker {
     pub fn get(&self, account_id: &str) -> Option<RateLimitInfo> {
         self.limits.get(account_id).map(|r| r.clone())
     }
-    
+
+    /// 获取账号的限流信息（带配额组）
+    #[allow(dead_code)]
+    pub fn get_for_group(&self, account_id: &str, quota_group: Option<&str>) -> Option<RateLimitInfo> {
+        let key = Self::make_key(account_id, quota_group);
+        self.limits.get(&key).map(|r| r.clone())
+    }
+
     /// 检查账号是否仍在限流中
     pub fn is_rate_limited(&self, account_id: &str) -> bool {
         if let Some(info) = self.get(account_id) {
@@ -346,10 +389,34 @@ impl RateLimitTracker {
             false
         }
     }
-    
+
+    /// 检查账号是否仍在限流中（带配额组）
+    /// 这允许同一账号的 Claude 和 Gemini 配额独立检查
+    #[allow(dead_code)]
+    pub fn is_rate_limited_for_group(&self, account_id: &str, quota_group: Option<&str>) -> bool {
+        if let Some(info) = self.get_for_group(account_id, quota_group) {
+            info.reset_time > SystemTime::now()
+        } else {
+            false
+        }
+    }
+
     /// 获取距离限流重置还有多少秒
     pub fn get_reset_seconds(&self, account_id: &str) -> Option<u64> {
         if let Some(info) = self.get(account_id) {
+            info.reset_time
+                .duration_since(SystemTime::now())
+                .ok()
+                .map(|d| d.as_secs())
+        } else {
+            None
+        }
+    }
+
+    /// 获取距离限流重置还有多少秒（带配额组）
+    #[allow(dead_code)]
+    pub fn get_reset_seconds_for_group(&self, account_id: &str, quota_group: Option<&str>) -> Option<u64> {
+        if let Some(info) = self.get_for_group(account_id, quota_group) {
             info.reset_time
                 .duration_since(SystemTime::now())
                 .ok()
