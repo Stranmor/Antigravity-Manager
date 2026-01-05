@@ -185,11 +185,11 @@ impl AxumServer {
 	            .route("/v1beta/models", get(handlers::gemini::handle_list_models))
             // Handle both GET (get info) and POST (generateContent with colon) at the same route
             .route(
-                "/v1beta/models/:model",
+                "/v1beta/models/{model}",
                 get(handlers::gemini::handle_get_model).post(handlers::gemini::handle_generate),
             )
             .route(
-                "/v1beta/models/:model/countTokens",
+                "/v1beta/models/{model}/countTokens",
                 post(handlers::gemini::handle_count_tokens),
             ) // Specific route priority
             .route("/v1/models/detect", post(handlers::common::handle_detect_model))

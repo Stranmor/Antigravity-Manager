@@ -40,13 +40,13 @@ image = "0.25.9"
 thiserror = "2.0.17"
 
 # 反代服务依赖
-axum = { version = "0.7", features = ["multipart"] }
+axum = { version = "0.8", features = ["multipart"] }
 tokio-stream = { version = "0.1.17", features = ["sync"] }
 
 hyper = { version = "1", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
 eventsource-stream = "0.2"
 dashmap = "6.1"
 anyhow = "1.0"
