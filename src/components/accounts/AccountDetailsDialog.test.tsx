@@ -129,7 +129,8 @@ describe('AccountDetailsDialog', () => {
       const onClose = vi.fn();
       render(<AccountDetailsDialog account={createMockAccount()} onClose={onClose} />);
 
-      const closeButton = screen.getAllByRole('button')[0]!;
+      const closeButton = screen.getAllByRole('button')[0];
+      expect(closeButton).toBeDefined();
       await user.click(closeButton);
       expect(onClose).toHaveBeenCalledTimes(1);
     });

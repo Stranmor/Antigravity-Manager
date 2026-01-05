@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import ModalDialog from '../common/ModalDialog';
 import { useTranslation } from 'react-i18next';
@@ -41,22 +41,7 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
     const [selectedLog, setSelectedLog] = useState<ProxyRequestLog | null>(null);
     const [isLoggingEnabled, setIsLoggingEnabled] = useState(false);
     const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
-
-    const loadData = async () => {
-        try {
-            const config = await invoke<AppConfig>('load_config');
-            setIsLoggingEnabled(config.proxy.enable_logging);
-            await invoke('set_proxy_monitor_enabled', { enabled: config.proxy.enable_logging });
-
-            const history = await invoke<ProxyRequestLog[]>('get_proxy_logs', { limit: 100 });
-            if (Array.isArray(history)) setLogs(history);
-
-            const currentStats = await invoke<ProxyStats>('get_proxy_stats');
-            setStats(currentStats);
-        } catch {
-            console.error("Failed to load proxy data");
-        }
-    };
+    const isMountedRef = useRef(true);
 
     const toggleLogging = async () => {
         const newState = !isLoggingEnabled;
@@ -72,8 +57,31 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
     };
 
     useEffect(() => {
-        void loadData();
+        isMountedRef.current = true;
         let unlistenFn: (() => void) | null = null;
+
+        // Helper to check mount status - prevents TypeScript from narrowing the type
+        const isMounted = () => isMountedRef.current;
+
+        const initializeData = async () => {
+            try {
+                const config = await invoke<AppConfig>('load_config');
+                if (!isMounted()) return;
+                setIsLoggingEnabled(config.proxy.enable_logging);
+                await invoke('set_proxy_monitor_enabled', { enabled: config.proxy.enable_logging });
+
+                const history = await invoke<ProxyRequestLog[]>('get_proxy_logs', { limit: 100 });
+                if (!isMounted()) return;
+                if (Array.isArray(history)) setLogs(history);
+
+                const currentStats = await invoke<ProxyStats>('get_proxy_stats');
+                if (!isMounted()) return;
+                setStats(currentStats);
+            } catch {
+                console.error("Failed to load proxy data");
+            }
+        };
+
         const setupListener = async () => {
             unlistenFn = await listen<ProxyRequestLog>('proxy://request', (event) => {
                 const newLog = event.payload;
@@ -88,8 +96,14 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
                 });
             });
         };
+
+        void initializeData();
         void setupListener();
-        return () => { if (unlistenFn) unlistenFn(); };
+
+        return () => {
+            isMountedRef.current = false;
+            if (unlistenFn) unlistenFn();
+        };
     }, []);
 
     const filteredLogs = logs
