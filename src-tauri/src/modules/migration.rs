@@ -76,12 +76,15 @@ pub async fn import_from_v1() -> Result<Vec<Account>, String> {
             // 优先使用 backup_file, 其次 data_file
             let target_file = backup_file_str.or(data_file_str);
             
-            if target_file.is_none() {
-                crate::modules::logger::log_warn(&format!("账号 {id} ({email_placeholder}) 缺少数据文件路径"));
-                continue;
-            }
-            
-            let mut backup_path = PathBuf::from(target_file.unwrap());
+            let target_file = match target_file {
+                Some(path) => path,
+                None => {
+                    crate::modules::logger::log_warn(&format!("账号 {id} ({email_placeholder}) 缺少数据文件路径"));
+                    continue;
+                }
+            };
+
+            let mut backup_path = PathBuf::from(target_file);
             
             // 如果是相对路径，尝试拼接
             if !backup_path.exists() {

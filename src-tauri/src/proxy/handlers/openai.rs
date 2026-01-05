@@ -184,7 +184,7 @@ pub async fn handle_chat_completions(
                     .header("Connection", "keep-alive")
                     .header(crate::proxy::middleware::monitor::X_RESOLVED_MODEL_HEADER, mapped_model.as_str())
                     .body(body)
-                    .expect("Failed to build SSE response - invalid headers")
+                    .expect("Failed to build SSE response - this indicates a bug in header construction")
                     .into_response());
             }
 
@@ -534,7 +534,7 @@ pub async fn handle_completions(
                         let output = item.get("output");
                         let output_str = if let Some(o) = output {
                             if o.is_string() {
-                                o.as_str().unwrap().to_string()
+                                o.as_str().unwrap_or_default().to_string()
                             } else if let Some(content) = o.get("content").and_then(|v| v.as_str())
                             {
                                 content.to_string()
@@ -715,7 +715,7 @@ pub async fn handle_completions(
                     .header("Connection", "keep-alive")
                     .header(crate::proxy::middleware::monitor::X_RESOLVED_MODEL_HEADER, mapped_model.as_str())
                     .body(body)
-                    .expect("Failed to build SSE response - invalid headers")
+                    .expect("Failed to build SSE response - this indicates a bug in header construction")
                     .into_response());
             }
 

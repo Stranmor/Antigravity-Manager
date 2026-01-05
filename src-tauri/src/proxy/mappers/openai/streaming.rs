@@ -355,7 +355,7 @@ pub fn create_codex_sse_stream(
                 "object": "response"
             }
         });
-        yield Ok::<Bytes, String>(Bytes::from(format!("data: {}\n\n", serde_json::to_string(&created_ev).unwrap())));
+        yield Ok::<Bytes, String>(Bytes::from(format!("data: {}\n\n", serde_json::to_string(&created_ev).unwrap_or_else(|_| "{}".to_string()))));
 
         let mut full_content = String::new();
         let mut emitted_tool_calls = std::collections::HashSet::new();
@@ -500,9 +500,8 @@ pub fn create_codex_sse_stream(
                                                             }))
                                                         };
 
-                                                        // 只有在有事件时才发送
                                                         if let Some(item_added_ev) = maybe_item_added_ev {
-                                                            yield Ok::<Bytes, String>(Bytes::from(format!("data: {}\n\n", serde_json::to_string(&item_added_ev).unwrap())));
+                                                            yield Ok::<Bytes, String>(Bytes::from(format!("data: {}\n\n", serde_json::to_string(&item_added_ev).unwrap_or_else(|_| "{}".to_string()))));
 
                                                         // Emit response.output_item.done (matching the added event)
                                                         // 复用相同的 cmd_vec 逻辑
@@ -559,7 +558,7 @@ pub fn create_codex_sse_stream(
                                                             })
                                                         };
 
-                                                        yield Ok::<Bytes, String>(Bytes::from(format!("data: {}\n\n", serde_json::to_string(&item_done_ev).unwrap())));
+                                                        yield Ok::<Bytes, String>(Bytes::from(format!("data: {}\n\n", serde_json::to_string(&item_done_ev).unwrap_or_else(|_| "{}".to_string()))));
                                                         } // 关闭 if let Some(item_added_ev)
                                                     }
                                                 }
@@ -575,7 +574,7 @@ pub fn create_codex_sse_stream(
                                         "type": "response.output_text.delta",
                                         "delta": delta_text
                                     });
-                                    yield Ok::<Bytes, String>(Bytes::from(format!("data: {}\n\n", serde_json::to_string(&delta_ev).unwrap())));
+                                    yield Ok::<Bytes, String>(Bytes::from(format!("data: {}\n\n", serde_json::to_string(&delta_ev).unwrap_or_else(|_| "{}".to_string()))));
                                 }
                             }
                         }
@@ -599,7 +598,7 @@ pub fn create_codex_sse_stream(
                 ]
             }
         });
-        yield Ok::<Bytes, String>(Bytes::from(format!("data: {}\n\n", serde_json::to_string(&item_done_ev).unwrap())));
+        yield Ok::<Bytes, String>(Bytes::from(format!("data: {}\n\n", serde_json::to_string(&item_done_ev).unwrap_or_else(|_| "{}".to_string()))));
 
         // SSOP: Check full_content for embedded JSON command signatures if no tools were emitted natively
         if emitted_tool_calls.is_empty() {
@@ -701,7 +700,10 @@ pub fn create_codex_sse_stream(
                      serde_json::to_string(&cmd_val).unwrap_or_default().hash(&mut hasher);
                      let call_id = format!("call_{:x}", hasher.finish());
 
-                     let mut cmd_vec: Vec<String> = cmd_val.as_array().unwrap().iter().map(|v| v.as_str().unwrap_or("").to_string()).collect();
+                     let mut cmd_vec: Vec<String> = cmd_val
+                         .as_array()
+                         .map(|arr| arr.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect())
+                         .unwrap_or_default();
                      
                      // Helper to ensure it runs in shell properly
                      // Problem: Model often outputs ["shell", "powershell", "-Command", ...]
@@ -747,7 +749,7 @@ pub fn create_codex_sse_stream(
                             }
                         }
                     });
-                    yield Ok::<Bytes, String>(Bytes::from(format!("data: {}\n\n", serde_json::to_string(&item_added_ev).unwrap())));
+                    yield Ok::<Bytes, String>(Bytes::from(format!("data: {}\n\n", serde_json::to_string(&item_added_ev).unwrap_or_else(|_| "{}".to_string()))));
 
                     // Emit done
                     let item_done_ev = json!({
@@ -762,7 +764,7 @@ pub fn create_codex_sse_stream(
                             }
                         }
                     });
-                    yield Ok::<Bytes, String>(Bytes::from(format!("data: {}\n\n", serde_json::to_string(&item_done_ev).unwrap())));
+                    yield Ok::<Bytes, String>(Bytes::from(format!("data: {}\n\n", serde_json::to_string(&item_done_ev).unwrap_or_else(|_| "{}".to_string()))));
                 }
             }
         }
@@ -784,7 +786,7 @@ pub fn create_codex_sse_stream(
                 }
             }
         });
-        yield Ok::<Bytes, String>(Bytes::from(format!("data: {}\n\n", serde_json::to_string(&completed_ev).unwrap())));
+        yield Ok::<Bytes, String>(Bytes::from(format!("data: {}\n\n", serde_json::to_string(&completed_ev).unwrap_or_else(|_| "{}".to_string()))));
     };
 
     Box::pin(stream)

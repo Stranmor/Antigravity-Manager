@@ -712,7 +712,7 @@ pub async fn handle_messages(
                     .header(header::CONNECTION, "keep-alive")
                     .header(crate::proxy::middleware::monitor::X_RESOLVED_MODEL_HEADER, resolved_model_for_log.as_str())
                     .body(Body::from_stream(sse_stream))
-                    .expect("Failed to build SSE response - invalid headers");
+                    .expect("Failed to build SSE response - this indicates a bug in header construction");
             } else {
                 // 处理非流式响应
                 let bytes = match response.bytes().await {

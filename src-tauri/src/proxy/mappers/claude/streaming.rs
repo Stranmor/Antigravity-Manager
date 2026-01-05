@@ -623,7 +623,7 @@ impl<'a> PartProcessor<'a> {
         }
 
         // 非空 text 带签名 - 立即处理
-        if signature.is_some() {
+        if let Some(ref sig) = signature {
             // 2. 开始新 text 块并发送内容
             chunks.extend(
                 self.state
@@ -647,7 +647,7 @@ impl<'a> PartProcessor<'a> {
             );
             chunks.push(self.state.emit_delta(
                 "signature_delta",
-                json!({ "signature": signature.unwrap() }),
+                json!({ "signature": sig }),
             ));
             chunks.extend(self.state.end_block());
 

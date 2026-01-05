@@ -51,7 +51,7 @@ pub fn transform_openai_request(request: &OpenAIRequest, project_id: &str, mappe
     // 从全局存储获取 thoughtSignature (PR #93 支持)
     let global_thought_sig = get_thought_signature();
     if global_thought_sig.is_some() {
-        tracing::debug!("从全局存储获取到 thoughtSignature (长度: {})", global_thought_sig.as_ref().unwrap().len());
+        tracing::debug!("从全局存储获取到 thoughtSignature (长度: {})", global_thought_sig.as_ref().map_or(0, |s| s.len()));
     }
 
     // 2. 构建 Gemini contents (过滤掉 system)
