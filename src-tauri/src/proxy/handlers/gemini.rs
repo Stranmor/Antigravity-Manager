@@ -1,5 +1,5 @@
 // Gemini Handler
-use axum::{extract::State, extract::{Json, Path}, http::StatusCode, response::IntoResponse};
+use axum::{extract::State, extract::{Json, Path}, response::IntoResponse};
 use serde_json::{json, Value};
 use tracing::{debug, error, info};
 
@@ -7,6 +7,7 @@ use crate::proxy::mappers::gemini::{wrap_request, unwrap_response};
 use crate::proxy::server::AppState;
 use crate::proxy::session_manager::SessionManager;
 use crate::proxy::handlers::common::WithResolvedModel;
+use crate::proxy::error::ProxyError;
  
 const MAX_RETRY_ATTEMPTS: usize = 3;
  
@@ -16,7 +17,7 @@ pub async fn handle_generate(
     State(state): State<AppState>,
     Path(model_action): Path<String>,
     Json(body): Json<Value>
-) -> Result<impl IntoResponse, (StatusCode, String)> {
+) -> Result<impl IntoResponse, ProxyError> {
     // 解析 model:method
     let (model_name, method) = if let Some((m, action)) = model_action.rsplit_once(':') {
         (m.to_string(), action.to_string())
@@ -28,7 +29,7 @@ pub async fn handle_generate(
 
     // 1. 验证方法
     if method != "generateContent" && method != "streamGenerateContent" {
-        return Err((StatusCode::BAD_REQUEST, format!("Unsupported method: {method}")));
+        return Err(ProxyError::invalid_request(format!("Unsupported method: {method}")));
     }
     let is_stream = method == "streamGenerateContent";
 
@@ -72,7 +73,7 @@ pub async fn handle_generate(
         let (access_token, project_id, email, account_id) = match token_manager.get_token(&config.request_type, attempt > 0, Some(&session_id)).await {
             Ok(t) => t,
             Err(e) => {
-                return Err((StatusCode::SERVICE_UNAVAILABLE, format!("Token error: {e}")));
+                return Err(ProxyError::token_error(format!("Token error: {e}")));
             }
         };
 
@@ -177,7 +178,7 @@ pub async fn handle_generate(
             let gemini_resp: Value = response
                 .json()
                 .await
-                .map_err(|e| (StatusCode::BAD_GATEWAY, format!("Parse error: {e}")))?;
+                .map_err(|e| ProxyError::parse_error(format!("Parse error: {e}")))?;
 
             let unwrapped = unwrap_response(&gemini_resp);
             return Ok(Json(unwrapped).with_resolved_model(&mapped_model));
@@ -197,7 +198,7 @@ pub async fn handle_generate(
             // 只有明确包含 "QUOTA_EXHAUSTED" 才停止，避免误判上游的频率限制提示 (如 "check quota")
             if status_code == 429 && error_text.contains("QUOTA_EXHAUSTED") {
                 error!("Gemini Quota exhausted (429) on account {} attempt {}/{}, stopping to protect pool.", email, attempt + 1, max_attempts);
-                return Err((status, error_text));
+                return Err(ProxyError::RateLimited(error_text));
             }
 
             tracing::warn!("Gemini Upstream {} on account {} attempt {}/{}, rotating account", status_code, email, attempt + 1, max_attempts);
@@ -206,13 +207,13 @@ pub async fn handle_generate(
  
         // 404 等由于模型配置或路径错误的 HTTP 异常，直接报错，不进行无效轮换
         error!("Gemini Upstream non-retryable error {}: {}", status_code, error_text);
-        return Err((status, error_text));
+        return Err(ProxyError::upstream_error(status_code, error_text));
     }
 
-    Ok((StatusCode::TOO_MANY_REQUESTS, format!("All accounts exhausted. Last error: {last_error}")).into_response())
+    Err(ProxyError::Overloaded(format!("All {} attempts failed. Last error: {}", max_attempts, last_error)))
 }
 
-pub async fn handle_list_models(State(state): State<AppState>) -> Result<impl IntoResponse, (StatusCode, String)> {
+pub async fn handle_list_models(State(state): State<AppState>) -> Result<impl IntoResponse, ProxyError> {
     use crate::proxy::common::model_mapping::get_all_dynamic_models;
 
     // 获取所有动态模型列表（与 /v1/models 一致）
@@ -248,10 +249,10 @@ pub async fn handle_get_model(Path(model_name): Path<String>) -> impl IntoRespon
     }))
 }
 
-pub async fn handle_count_tokens(State(state): State<AppState>, Path(_model_name): Path<String>, Json(_body): Json<Value>) -> Result<impl IntoResponse, (StatusCode, String)> {
+pub async fn handle_count_tokens(State(state): State<AppState>, Path(_model_name): Path<String>, Json(_body): Json<Value>) -> Result<impl IntoResponse, ProxyError> {
     let model_group = "gemini";
     let (_access_token, _project_id, _, _account_id) = state.token_manager.get_token(model_group, false, None).await
-        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, format!("Token error: {e}")))?;
+        .map_err(|e| ProxyError::token_error(format!("Token error: {e}")))?;
 
     Ok(Json(json!({"totalTokens": 0})))
 }
