@@ -458,9 +458,6 @@ function Accounts() {
     const onExecuteRefresh = () => { void executeRefresh(); };
     const onExecuteToggleProxy = () => { void executeToggleProxy(); };
 
-    // Handler wrapper for AddAccountDialog
-    const onAddAccountHandler = (email: string, refreshToken: string) => { void handleAddAccount(email, refreshToken); };
-
     return (
         <div className="h-full flex flex-col p-5 gap-4 max-w-7xl mx-auto w-full">
             {/* 测试按钮 - 在最顶部 */}
@@ -596,7 +593,7 @@ function Accounts() {
 
                 {/* 操作按钮组 */}
                 <div className="flex items-center gap-1.5 shrink-0">
-                    <AddAccountDialog onAdd={onAddAccountHandler} />
+                    <AddAccountDialog onAdd={handleAddAccount} />
 
                     {selectedIds.size > 0 && (
                         <>

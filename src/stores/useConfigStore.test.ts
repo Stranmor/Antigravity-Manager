@@ -164,7 +164,7 @@ describe('useConfigStore', () => {
       });
 
       expect(thrownError).not.toBeNull();
-      expect(thrownError?.message).toBe('Save failed');
+      expect((thrownError as unknown as Error).message).toBe('Save failed');
 
       const state = useConfigStore.getState();
       expect(state.error).toBe('Error: Save failed');

@@ -36,7 +36,6 @@ function Navbar() {
                 Math.max(y, window.innerHeight - y)
             );
 
-            // @ts-expect-error - View Transition API not yet in TypeScript DOM types
             const transition = document.startViewTransition(async () => {
                 await saveConfig({
                     ...config,

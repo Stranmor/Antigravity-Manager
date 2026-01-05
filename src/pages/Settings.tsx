@@ -92,7 +92,6 @@ function Settings() {
 
     const handleSelectExportPath = async () => {
         try {
-            // @ts-expect-error - Tauri dialog types incomplete
             const selected = await open({
                 directory: true,
                 multiple: false,
