@@ -129,8 +129,7 @@ describe('AccountDetailsDialog', () => {
       const onClose = vi.fn();
       render(<AccountDetailsDialog account={createMockAccount()} onClose={onClose} />);
 
-      // Find the close button (first button in the header)
-      const closeButton = screen.getAllByRole('button')[0];
+      const closeButton = screen.getAllByRole('button')[0]!;
       await user.click(closeButton);
       expect(onClose).toHaveBeenCalledTimes(1);
     });
