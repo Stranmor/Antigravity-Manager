@@ -175,6 +175,7 @@ function Dashboard() {
                             className={`px-3 py-1.5 bg-blue-500 text-white text-xs font-medium rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-1.5 shadow-sm ${isRefreshing || !currentAccount ? 'opacity-70 cursor-not-allowed' : ''}`}
                             onClick={onRefreshClick}
                             disabled={isRefreshing || !currentAccount}
+                            aria-label="Refresh Quota"
                         >
                             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
                             {isRefreshing ? t('dashboard.refreshing') : t('dashboard.refresh_quota')}
@@ -187,7 +188,7 @@ function Dashboard() {
                     <div className="bg-white dark:bg-base-100 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-base-200">
                         <div className="flex items-center justify-between mb-2">
                             <div className="p-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-md">
-                                <Users className="w-4 h-4 text-blue-500 dark:text-blue-400" />
+                                <Users className="w-4 h-4 text-blue-500 dark:text-blue-400" aria-hidden="true" />
                             </div>
                         </div>
                         <div className="text-2xl font-bold text-gray-900 dark:text-base-content mb-0.5">{stats.total}</div>
@@ -197,7 +198,7 @@ function Dashboard() {
                     <div className="bg-white dark:bg-base-100 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-base-200">
                         <div className="flex items-center justify-between mb-2">
                             <div className="p-1.5 bg-green-50 dark:bg-green-900/20 rounded-md">
-                                <Sparkles className="w-4 h-4 text-green-500 dark:text-green-400" />
+                                <Sparkles className="w-4 h-4 text-green-500 dark:text-green-400" aria-hidden="true" />
                             </div>
                         </div>
                         <div className="text-2xl font-bold text-gray-900 dark:text-base-content mb-0.5">{stats.avgGemini}%</div>
@@ -212,7 +213,7 @@ function Dashboard() {
                     <div className="bg-white dark:bg-base-100 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-base-200">
                         <div className="flex items-center justify-between mb-2">
                             <div className="p-1.5 bg-purple-50 dark:bg-purple-900/20 rounded-md">
-                                <Sparkles className="w-4 h-4 text-purple-500 dark:text-purple-400" />
+                                <Sparkles className="w-4 h-4 text-purple-500 dark:text-purple-400" aria-hidden="true" />
                             </div>
                         </div>
                         <div className="text-2xl font-bold text-gray-900 dark:text-base-content mb-0.5">{stats.avgGeminiImage}%</div>
@@ -227,7 +228,7 @@ function Dashboard() {
                     <div className="bg-white dark:bg-base-100 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-base-200">
                         <div className="flex items-center justify-between mb-2">
                             <div className="p-1.5 bg-cyan-50 dark:bg-cyan-900/20 rounded-md">
-                                <Bot className="w-4 h-4 text-cyan-500 dark:text-cyan-400" />
+                                <Bot className="w-4 h-4 text-cyan-500 dark:text-cyan-400" aria-hidden="true" />
                             </div>
                         </div>
                         <div className="text-2xl font-bold text-gray-900 dark:text-base-content mb-0.5">{stats.avgClaude}%</div>
@@ -242,7 +243,7 @@ function Dashboard() {
                     <div className="bg-white dark:bg-base-100 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-base-200">
                         <div className="flex items-center justify-between mb-2">
                             <div className="p-1.5 bg-orange-50 dark:bg-orange-900/20 rounded-md">
-                                <AlertTriangle className="w-4 h-4 text-orange-500 dark:text-orange-400" />
+                                <AlertTriangle className="w-4 h-4 text-orange-500 dark:text-orange-400" aria-hidden="true" />
                             </div>
                         </div>
                         <div className="text-2xl font-bold text-gray-900 dark:text-base-content mb-0.5">{stats.lowQuota}</div>

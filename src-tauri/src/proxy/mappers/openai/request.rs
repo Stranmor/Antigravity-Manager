@@ -1,5 +1,5 @@
 // OpenAI → Gemini 请求转换
-use super::models::{OpenAIRequest, OpenAIContent, OpenAIContentBlock, OpenAIMessage, OpenAIImageUrl};
+use super::models::{OpenAIRequest, OpenAIContent, OpenAIContentBlock};
 use serde_json::{json, Value};
 use super::streaming::get_thought_signature;
 
@@ -358,6 +358,7 @@ fn enforce_uppercase_types(value: &mut Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::models::{OpenAIMessage, OpenAIImageUrl};
 
     #[test]
     fn test_transform_openai_request_multimodal() {

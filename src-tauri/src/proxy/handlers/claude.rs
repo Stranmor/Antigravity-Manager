@@ -700,7 +700,7 @@ pub async fn handle_messages(
 
                 let gemini_resp: Value = match serde_json::from_slice(&bytes) {
                     Ok(v) => v,
-                    Err(e) => return (StatusCode::BAD_GATEWAY, format!("Parse error: {e}")).into_response(),
+                    Err(e) => return ProxyError::parse_error(format!("Parse error: {e}")).into_response(),
                 };
 
                 // 解包 response 字段（v1internal 格式）
@@ -709,13 +709,13 @@ pub async fn handle_messages(
                 // 转换为 Gemini Response 结构
                 let gemini_response: crate::proxy::mappers::claude::models::GeminiResponse = match serde_json::from_value(raw.clone()) {
                     Ok(r) => r,
-                    Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Convert error: {e}")).into_response(),
+                    Err(e) => return ProxyError::parse_error(format!("Convert error: {e}")).into_response(),
                 };
                 
                 // 转换
                 let claude_response = match transform_response(&gemini_response) {
                     Ok(r) => r,
-                    Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Transform error: {e}")).into_response(),
+                    Err(e) => return ProxyError::TransformError(format!("Transform error: {e}")).into_response(),
                 };
 
                 // [Optimization] 记录闭环日志：消耗情况
@@ -867,7 +867,7 @@ pub async fn handle_messages(
         }
         // 不可重试的错误，直接返回
         error!("[{}] Non-retryable error {}: {}", trace_id, status_code, error_text);
-        return (status, error_text).into_response();
+        return ProxyError::upstream_error(status_code, error_text).into_response();
     }
 
     // Include 529 retry info in final error message if applicable
@@ -877,13 +877,10 @@ pub async fn handle_messages(
         String::new()
     };
 
-    (StatusCode::TOO_MANY_REQUESTS, Json(json!({
-        "type": "error",
-        "error": {
-            "type": "overloaded_error",
-            "message": format!("All {} attempts failed{}. Last error: {}", max_attempts, retry_info, last_error)
-        }
-    }))).into_response()
+    ProxyError::Overloaded(format!(
+        "All {} attempts failed{}. Last error: {}",
+        max_attempts, retry_info, last_error
+    )).into_response()
 }
 
 /// 列出可用模型

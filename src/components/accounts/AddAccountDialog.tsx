@@ -348,9 +348,9 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
         };
 
         const icons = {
-            loading: <Loader2 className="w-5 h-5 animate-spin" />,
-            success: <CheckCircle2 className="w-5 h-5" />,
-            error: <XCircle className="w-5 h-5" />
+            loading: <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />,
+            success: <CheckCircle2 className="w-5 h-5" aria-hidden="true" />,
+            error: <XCircle className="w-5 h-5" aria-hidden="true" />
         };
 
         return (
@@ -367,7 +367,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                 className="px-4 py-2 bg-white dark:bg-base-100 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-base-200 transition-colors flex items-center gap-2 shadow-sm border border-gray-200/50 dark:border-base-300"
                 onClick={() => { setIsOpen(true); }}
             >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-4 h-4" aria-hidden="true" />
                 {t('accounts.add_account')}
             </button>
 
@@ -380,13 +380,15 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                         <h3 className="font-bold text-lg mb-4">{t('accounts.add.title')}</h3>
 
                         {/* Tab 导航 - 胶囊风格 */}
-                        <div className="bg-gray-100 dark:bg-base-200 p-1 rounded-xl mb-6 grid grid-cols-3 gap-1">
+                        <div className="bg-gray-100 dark:bg-base-200 p-1 rounded-xl mb-6 grid grid-cols-3 gap-1" role="tablist">
                             <button
                                 className={`py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === 'oauth'
                                     ? 'bg-white dark:bg-base-100 shadow-sm text-blue-600 dark:text-blue-400'
                                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-base-300'
                                     } `}
                                 onClick={() => { setActiveTab('oauth'); }}
+                                role="tab"
+                                aria-selected={activeTab === 'oauth'}
                             >
                                 {t('accounts.add.tabs.oauth')}
                             </button>
@@ -396,6 +398,8 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-base-300'
                                     } `}
                                 onClick={() => { setActiveTab('token'); }}
+                                role="tab"
+                                aria-selected={activeTab === 'token'}
                             >
                                 {t('accounts.add.tabs.token')}
                             </button>
@@ -405,6 +409,8 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-base-300'
                                     } `}
                                 onClick={() => { setActiveTab('import'); }}
+                                role="tab"
+                                aria-selected={activeTab === 'import'}
                             >
                                 {t('accounts.add.tabs.import')}
                             </button>
@@ -419,7 +425,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                                 <div className="space-y-6 py-4">
                                     <div className="text-center space-y-3">
                                         <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-full w-20 h-20 mx-auto flex items-center justify-center">
-                                            <Globe className="w-10 h-10 text-blue-500" />
+                                            <Globe className="w-10 h-10 text-blue-500" aria-hidden="true" />
                                         </div>
                                         <div className="space-y-1">
                                             <h4 className="font-medium text-gray-900 dark:text-gray-100">{t('accounts.add.oauth.recommend')}</h4>
@@ -447,11 +453,12 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                                                     className="w-full px-4 py-2 bg-white dark:bg-base-100 text-gray-600 dark:text-gray-300 text-sm font-medium rounded-xl border border-dashed border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-base-200 transition-all flex items-center gap-2"
                                                     onClick={onCopyUrlClick}
                                                     title={t('accounts.add.oauth.link_click_to_copy')}
+                                                    aria-label="Copy OAuth URL"
                                                 >
                                                     {oauthUrlCopied ? (
-                                                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                                        <Check className="w-3.5 h-3.5 text-emerald-600" aria-hidden="true" />
                                                     ) : (
-                                                        <Copy className="w-3.5 h-3.5" />
+                                                        <Copy className="w-3.5 h-3.5" aria-hidden="true" />
                                                     )}
                                                     <code className="text-[11px] font-mono truncate flex-1 text-left">
                                                         {oauthUrl}
@@ -467,7 +474,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                                                     onClick={handleCompleteOAuth}
                                                     disabled={status === 'loading' || status === 'success'}
                                                 >
-                                                    <CheckCircle2 className="w-4 h-4" />
+                                                    <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
                                                     {t('accounts.add.oauth.btn_finish')}
                                                 </button>
                                             </div>
@@ -502,7 +509,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                                 <div className="space-y-6 py-2">
                                     <div className="space-y-2">
                                         <h4 className="font-semibold flex items-center gap-2 text-gray-800 dark:text-gray-200">
-                                            <Database className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                                            <Database className="w-4 h-4 text-gray-600 dark:text-gray-400" aria-hidden="true" />
                                             {t('accounts.add.import.scheme_a')}
                                         </h4>
                                         <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -513,7 +520,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                                             onClick={handleImportDb}
                                             disabled={status === 'loading' || status === 'success'}
                                         >
-                                            <CheckCircle2 className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                            <CheckCircle2 className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true" />
                                             {t('accounts.add.import.btn_db')}
                                         </button>
                                         <button
@@ -521,7 +528,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                                             onClick={onImportCustomDbClick}
                                             disabled={status === 'loading' || status === 'success'}
                                         >
-                                            <Database className="w-4 h-4" />
+                                            <Database className="w-4 h-4" aria-hidden="true" />
                                             {t('accounts.add.import.btn_custom_db') || 'Custom DB (state.vscdb)'}
                                         </button>
                                     </div>
@@ -530,7 +537,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
 
                                     <div className="space-y-2">
                                         <h4 className="font-semibold flex items-center gap-2 text-gray-800 dark:text-gray-200">
-                                            <FileClock className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                                            <FileClock className="w-4 h-4 text-gray-600 dark:text-gray-400" aria-hidden="true" />
                                             {t('accounts.add.import.scheme_b')}
                                         </h4>
                                         <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -541,7 +548,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                                             onClick={handleImportV1}
                                             disabled={status === 'loading' || status === 'success'}
                                         >
-                                            <FileClock className="w-4 h-4" />
+                                            <FileClock className="w-4 h-4" aria-hidden="true" />
                                             {t('accounts.add.import.btn_v1')}
                                         </button>
                                     </div>
@@ -563,7 +570,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
                                     onClick={onSubmitClick}
                                     disabled={status === 'loading' || status === 'success'}
                                 >
-                                    {status === 'loading' ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                                    {status === 'loading' ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : null}
                                     {t('accounts.add.btn_confirm')}
                                 </button>
                             )}

@@ -1,7 +1,7 @@
 // Claude 非流式响应转换 (Gemini → Claude)
 // 对应 NonStreamingProcessor
 
-use super::models::{Candidate, ContentBlock, GeminiContent, GeminiResponse, ClaudeResponse, GeminiPart, GroundingMetadata, Usage, UsageMetadata};
+use super::models::{ContentBlock, GeminiResponse, ClaudeResponse, GeminiPart, GroundingMetadata, Usage};
 use super::utils::to_claude_usage;
 
 /// Known parameter remappings for Gemini → Claude compatibility
@@ -342,6 +342,7 @@ pub fn transform_response(gemini_response: &GeminiResponse) -> Result<ClaudeResp
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::models::{Candidate, GeminiContent, UsageMetadata};
 
     #[test]
     fn test_simple_text_response() {

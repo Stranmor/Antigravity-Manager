@@ -71,8 +71,9 @@ parking_lot = "0.12"                    # Fast synchronization primitives
 unsafe_code = "warn"
 
 [lints.clippy]
-all = "warn"
-pedantic = "warn"
+# Lint groups need lower priority than individual lints
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
 # Allow noisy lints
 module_name_repetitions = "allow"
 too_many_lines = "allow"
@@ -83,6 +84,11 @@ similar_names = "allow"
 doc_markdown = "allow"
 needless_pass_by_value = "allow"
 struct_excessive_bools = "allow"
+# Allow common patterns
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+unreadable_literal = "allow"
 
 # Release profile: optimize for size while maintaining performance
 [profile.release]
