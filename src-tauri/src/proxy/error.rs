@@ -20,10 +20,6 @@ pub enum ProxyError {
     #[error("Invalid request: {0}")]
     InvalidRequest(String),
 
-    /// Authentication/authorization failure
-    #[error("Authentication error: {0}")]
-    AuthError(String),
-
     /// Token manager errors (no tokens available, refresh failures)
     #[error("Token error: {0}")]
     TokenError(String),
@@ -55,14 +51,6 @@ pub enum ProxyError {
     /// Internal server error (unexpected failures)
     #[error("Internal error: {0}")]
     InternalError(String),
-
-    /// Service unavailable (token pool exhausted, etc.)
-    #[error("Service unavailable: {0}")]
-    ServiceUnavailable(String),
-
-    /// Configuration error
-    #[error("Configuration error: {0}")]
-    ConfigError(String),
 }
 
 impl ProxyError {
@@ -70,7 +58,6 @@ impl ProxyError {
     pub fn status_code(&self) -> StatusCode {
         match self {
             ProxyError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
-            ProxyError::AuthError(_) => StatusCode::UNAUTHORIZED,
             ProxyError::TokenError(_) => StatusCode::SERVICE_UNAVAILABLE,
             ProxyError::UpstreamError { status, .. } => {
                 StatusCode::from_u16(*status).unwrap_or(StatusCode::BAD_GATEWAY)
@@ -84,8 +71,6 @@ impl ProxyError {
             ProxyError::ParseError(_) => StatusCode::BAD_GATEWAY,
             ProxyError::NetworkError(_) => StatusCode::BAD_GATEWAY,
             ProxyError::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            ProxyError::ServiceUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
-            ProxyError::ConfigError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
@@ -156,9 +141,6 @@ impl From<serde_json::Error> for ProxyError {
         ProxyError::ParseError(format!("JSON error: {err}"))
     }
 }
-
-/// Result type alias for proxy operations
-pub type ProxyResult<T> = Result<T, ProxyError>;
 
 #[cfg(test)]
 mod tests {
