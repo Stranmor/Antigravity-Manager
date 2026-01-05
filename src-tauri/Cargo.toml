@@ -65,3 +65,11 @@ tauri-plugin-autostart = "2.5.1"
 sha2 = "0.10"
 lru = "0.12"                            # LRU cache for model routing
 parking_lot = "0.12"                    # Fast synchronization primitives
+
+# Release profile: optimize for size while maintaining performance
+[profile.release]
+opt-level = "s"        # Optimize for size (good balance of size/speed)
+lto = true             # Link-Time Optimization for smaller binary
+codegen-units = 1      # Single codegen unit for better optimization
+panic = "abort"        # Smaller binary, no unwinding
+strip = true           # Strip debug symbols
