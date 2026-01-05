@@ -71,6 +71,7 @@ export default function ThemeManager() {
             void applyTheme(theme);
             return; // Explicit return for non-system theme path
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- using optional chaining on config.theme, config itself not needed
     }, [config?.theme, applyTheme]);
 
     return null; // This component handles side effects only

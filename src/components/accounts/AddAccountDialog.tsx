@@ -135,6 +135,7 @@ function AddAccountDialog({ onAdd }: AddAccountDialogProps) {
         cancelOAuthLogin().catch(() => { });
         setOauthUrl('');
         setOauthUrlCopied(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally not including oauthUrl to prevent loop
     }, [isOpen, activeTab]);
 
     const resetState = () => {

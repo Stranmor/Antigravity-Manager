@@ -105,6 +105,7 @@ function Accounts() {
 
     useEffect(() => {
         void fetchAccounts();
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally run only on mount
     }, []);
 
     // Reset pagination when view mode changes to avoid empty pages or confusion

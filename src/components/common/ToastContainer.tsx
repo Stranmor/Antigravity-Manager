@@ -12,6 +12,7 @@ export interface ToastItem {
 let toastCounter = 0;
 let addToastExternal: ((message: string, type: ToastType, duration?: number) => void) | null = null;
 
+// eslint-disable-next-line react-refresh/only-export-components -- showToast is intentionally exported as singleton API
 export const showToast = (message: string, type: ToastType = 'info', duration: number = 3000) => {
     if (addToastExternal) {
         addToastExternal(message, type, duration);

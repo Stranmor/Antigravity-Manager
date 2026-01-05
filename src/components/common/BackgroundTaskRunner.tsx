@@ -42,6 +42,7 @@ function BackgroundTaskRunner() {
                 clearInterval(intervalId);
             }
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- using optional chaining on config properties, config itself not needed
     }, [config?.auto_refresh, config?.refresh_interval, stableRefreshAllQuotas]);
 
     // Auto Sync Current Account Effect
@@ -73,6 +74,7 @@ function BackgroundTaskRunner() {
                 clearInterval(intervalId);
             }
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- using optional chaining on config properties, config itself not needed
     }, [config?.auto_sync, config?.sync_interval]);
 
     // Render nothing
