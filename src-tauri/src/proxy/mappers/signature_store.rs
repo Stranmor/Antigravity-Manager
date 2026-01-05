@@ -23,14 +23,14 @@ pub fn store_thought_signature(sig: &str) {
             tracing::debug!(
                 "[ThoughtSig] Storing new signature (length: {}, replacing old length: {:?})",
                 sig.len(),
-                guard.as_ref().map(|s| s.len())
+                guard.as_ref().map(std::string::String::len)
             );
             *guard = Some(sig.to_string());
         } else {
             tracing::debug!(
                 "[ThoughtSig] Skipping shorter signature (new length: {}, existing length: {})",
                 sig.len(),
-                guard.as_ref().map(|s| s.len()).unwrap_or(0)
+                guard.as_ref().map_or(0, std::string::String::len)
             );
         }
     }

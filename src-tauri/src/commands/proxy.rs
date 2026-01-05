@@ -294,7 +294,7 @@ fn extract_model_ids(value: &serde_json::Value) -> Vec<String> {
 
     fn push_from_item(out: &mut Vec<String>, item: &serde_json::Value) {
         match item {
-            serde_json::Value::String(s) => out.push(s.to_string()),
+            serde_json::Value::String(s) => out.push(s.clone()),
             serde_json::Value::Object(map) => {
                 if let Some(id) = map.get("id").and_then(|v| v.as_str()) {
                     out.push(id.to_string());

@@ -94,7 +94,7 @@ fn filter_invalid_thinking_blocks(messages: &mut [Message]) {
                 if matches!(block, ContentBlock::Thinking { .. }) {
                     // [DEBUG] 强制输出日志
                     if let ContentBlock::Thinking { ref signature, .. } = block {
-                         tracing::error!("[DEBUG-FILTER] Found thinking block. Sig len: {:?}", signature.as_ref().map(|s| s.len()));
+                         tracing::error!("[DEBUG-FILTER] Found thinking block. Sig len: {:?}", signature.as_ref().map(std::string::String::len));
                     }
 
                     // [CRITICAL FIX] Vertex AI 不认可 skip_thought_signature_validator
@@ -104,15 +104,15 @@ fn filter_invalid_thinking_blocks(messages: &mut [Message]) {
                     } else {
                         // [IMPROVED] 保留内容转换为 text，而不是直接丢弃
                         if let ContentBlock::Thinking { thinking, .. } = &block {
-                            if !thinking.is_empty() {
+                            if thinking.is_empty() {
+                                tracing::debug!("[Claude-Handler] Dropping empty thinking block with invalid signature");
+                            } else {
                                 tracing::info!(
                                     "[Claude-Handler] Converting thinking block with invalid signature to text. \
                                      Content length: {} chars",
                                     thinking.len()
                                 );
                                 new_blocks.push(ContentBlock::Text { text: thinking.clone() });
-                            } else {
-                                tracing::debug!("[Claude-Handler] Dropping empty thinking block with invalid signature");
                             }
                         }
                     }
@@ -150,11 +150,10 @@ fn remove_trailing_unsigned_thinking(blocks: &mut Vec<ContentBlock>) {
     for i in (0..blocks.len()).rev() {
         match &blocks[i] {
             ContentBlock::Thinking { .. } => {
-                if !has_valid_signature(&blocks[i]) {
-                    end_index = i;
-                } else {
+                if has_valid_signature(&blocks[i]) {
                     break;  // 遇到有效签名的 thinking 块,停止
                 }
+                end_index = i;
             }
             _ => break  // 遇到非 thinking 块,停止
         }
@@ -341,9 +340,7 @@ pub async fn handle_messages(
     let zai_enabled = zai.enabled && !matches!(zai.dispatch_mode, crate::proxy::ZaiDispatchMode::Off);
     let google_accounts = state.token_manager.len();
 
-    let use_zai = if !zai_enabled {
-        false
-    } else {
+    let use_zai = if zai_enabled {
         match zai.dispatch_mode {
             crate::proxy::ZaiDispatchMode::Off => false,
             crate::proxy::ZaiDispatchMode::Exclusive => true,
@@ -356,6 +353,8 @@ pub async fn handle_messages(
                 slot == 0
             }
         }
+    } else {
+        false
     };
 
     // [CRITICAL REFACTOR] 优先解析并过滤 Thinking 块，确保 z.ai 也是用修复后的 Body
@@ -410,7 +409,7 @@ pub async fn handle_messages(
         .filter(|m| m.role == "user")
         .find_map(|m| {
             let content = match &m.content {
-                crate::proxy::mappers::claude::models::MessageContent::String(s) => s.to_string(),
+                crate::proxy::mappers::claude::models::MessageContent::String(s) => s.clone(),
                 crate::proxy::mappers::claude::models::MessageContent::Array(arr) => {
                     // 对于数组，提取所有 Text 块并拼接，忽略 ToolResult
                     arr.iter()
@@ -615,7 +614,7 @@ pub async fn handle_messages(
             request_with_mapped.thinking = None;
             
             // 3. 清理历史消息中的 Thinking Block，防止 Invalid Argument
-            for msg in request_with_mapped.messages.iter_mut() {
+            for msg in &mut request_with_mapped.messages {
                 if let crate::proxy::mappers::claude::models::MessageContent::Array(blocks) = &mut msg.content {
                     blocks.retain(|b| !matches!(b, 
                         crate::proxy::mappers::claude::models::ContentBlock::Thinking { .. } |
@@ -633,7 +632,7 @@ pub async fn handle_messages(
             
             // 对真实请求应用额外的清理:移除尾部无签名的 thinking 块
             // 对真实请求应用额外的清理:移除尾部无签名的 thinking 块
-            for msg in request_with_mapped.messages.iter_mut() {
+            for msg in &mut request_with_mapped.messages {
                 if msg.role == "assistant" || msg.role == "model" {
                     if let crate::proxy::mappers::claude::models::MessageContent::Array(blocks) = &mut msg.content {
                         remove_trailing_unsigned_thinking(blocks);
@@ -767,7 +766,7 @@ pub async fn handle_messages(
         
         // 1. 立即提取状态码和 headers（防止 response 被 move）
         let status_code = status.as_u16();
-        let retry_after = response.headers().get("Retry-After").and_then(|h| h.to_str().ok()).map(|s| s.to_string());
+        let retry_after = response.headers().get("Retry-After").and_then(|h| h.to_str().ok()).map(std::string::ToString::to_string);
         
         // 2. 获取错误文本并转移 Response 所有权
         let error_text = response.text().await.unwrap_or_else(|_| format!("HTTP {status}"));
@@ -810,7 +809,7 @@ pub async fn handle_messages(
             request_for_body.thinking = None;
             
             // 清理历史消息中的所有 Thinking Block
-            for msg in request_for_body.messages.iter_mut() {
+            for msg in &mut request_for_body.messages {
                 if let crate::proxy::mappers::claude::models::MessageContent::Array(blocks) = &mut msg.content {
                     blocks.retain(|b| !matches!(b, 
                         crate::proxy::mappers::claude::models::ContentBlock::Thinking { .. } |
@@ -865,14 +864,13 @@ pub async fn handle_messages(
                 // CRITICAL: Do NOT increment `attempt` - 529 retries are "free"
                 // This allows us to keep retrying without exhausting the account pool
                 continue;
-            } else {
-                tracing::error!(
-                    "[{}] ❌ 529 Overloaded - exhausted {} retries, giving up",
-                    trace_id,
-                    MAX_OVERLOAD_RETRIES
-                );
-                // Fall through to normal error handling after max retries
             }
+            tracing::error!(
+                "[{}] ❌ 529 Overloaded - exhausted {} retries, giving up",
+                trace_id,
+                MAX_OVERLOAD_RETRIES
+            );
+            // Fall through to normal error handling after max retries
         }
 
         // 6. 统一处理所有可重试错误
@@ -892,11 +890,10 @@ pub async fn handle_messages(
             // Increment attempt counter for non-529 errors (account rotation)
             attempt += 1;
             continue;
-        } else {
-            // 不可重试的错误，直接返回
-            error!("[{}] Non-retryable error {}: {}", trace_id, status_code, error_text);
-            return (status, error_text).into_response();
         }
+        // 不可重试的错误，直接返回
+        error!("[{}] Non-retryable error {}: {}", trace_id, status_code, error_text);
+        return (status, error_text).into_response();
     }
 
     // Include 529 retry info in final error message if applicable
@@ -1093,7 +1090,7 @@ fn extract_last_user_message_for_detection(request: &ClaudeRequest) -> Option<St
         .filter(|m| m.role == "user")
         .find_map(|m| {
             let content = match &m.content {
-                crate::proxy::mappers::claude::models::MessageContent::String(s) => s.to_string(),
+                crate::proxy::mappers::claude::models::MessageContent::String(s) => s.clone(),
                 crate::proxy::mappers::claude::models::MessageContent::Array(arr) => {
                     arr.iter()
                         .filter_map(|block| match block {

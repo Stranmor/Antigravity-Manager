@@ -205,7 +205,7 @@ pub fn update_tray_menus<R: Runtime>(app: &tauri::AppHandle<R>) {
              }
          } else {
              menu_lines.push(texts.unknown_quota.clone());
-         };
+         }
 
          // 重新构建菜单项
          let info_user = MenuItem::with_id(&app_clone, "info_user", &user_text, false, None::<&str>);

@@ -45,7 +45,7 @@ fn mime_for_video_extension(ext: &str) -> Option<&'static str> {
 fn file_ext(path: &std::path::Path) -> Option<String> {
     path.extension()
         .and_then(|s| s.to_str())
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
 }
 
 fn encode_file_as_data_url(path: &std::path::Path, mime: &str) -> Result<String, String> {

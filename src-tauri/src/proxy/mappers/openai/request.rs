@@ -1,13 +1,11 @@
 // OpenAI → Gemini 请求转换
-use super::models::*;
+use super::models::{OpenAIRequest, OpenAIContent, OpenAIContentBlock, OpenAIMessage, OpenAIImageUrl};
 use serde_json::{json, Value};
 use super::streaming::get_thought_signature;
 
 pub fn transform_openai_request(request: &OpenAIRequest, project_id: &str, mapped_model: &str) -> Value {
     // 将 OpenAI 工具转为 Value 数组以便探测
-    let tools_val = request.tools.as_ref().map(|list| {
-        list.to_vec()
-    });
+    let tools_val = request.tools.clone();
 
     // Resolve grounding config
     let config = crate::proxy::mappers::common_utils::resolve_request_config(&request.model, mapped_model, &tools_val);
@@ -51,7 +49,7 @@ pub fn transform_openai_request(request: &OpenAIRequest, project_id: &str, mappe
     // 从全局存储获取 thoughtSignature (PR #93 支持)
     let global_thought_sig = get_thought_signature();
     if global_thought_sig.is_some() {
-        tracing::debug!("从全局存储获取到 thoughtSignature (长度: {})", global_thought_sig.as_ref().map_or(0, |s| s.len()));
+        tracing::debug!("从全局存储获取到 thoughtSignature (长度: {})", global_thought_sig.as_ref().map_or(0, std::string::String::len));
     }
 
     // 2. 构建 Gemini contents (过滤掉 system)
@@ -84,7 +82,7 @@ pub fn transform_openai_request(request: &OpenAIRequest, project_id: &str, mappe
                                 }
                                 OpenAIContentBlock::ImageUrl { image_url } => {
                                     if image_url.url.starts_with("data:") {
-                                        if let Some(pos) = image_url.url.find(",") {
+                                        if let Some(pos) = image_url.url.find(',') {
                                             let mime_part = &image_url.url[5..pos];
                                             let mime_type = mime_part.split(';').next().unwrap_or("image/jpeg");
                                             let data = &image_url.url[pos + 1..];
@@ -144,7 +142,7 @@ pub fn transform_openai_request(request: &OpenAIRequest, project_id: &str, mappe
 
             // Handle tool calls (assistant message)
             if let Some(tool_calls) = &msg.tool_calls {
-                for tc in tool_calls.iter() {
+                for tc in tool_calls {
                     /* 暂时移除：防止 Codex CLI 界面碎片化
                     if index == 0 && parts.is_empty() {
                          if mapped_model.contains("gemini-3") {
@@ -174,13 +172,13 @@ pub fn transform_openai_request(request: &OpenAIRequest, project_id: &str, mappe
             if msg.role == "tool" || msg.role == "function" {
                 let name = msg.name.as_deref().unwrap_or("unknown");
                 let final_name = if name == "local_shell_call" { "shell" } 
-                                else if let Some(id) = &msg.tool_call_id { tool_id_to_name.get(id).map(|s| s.as_str()).unwrap_or(name) }
+                                else if let Some(id) = &msg.tool_call_id { tool_id_to_name.get(id).map_or(name, std::string::String::as_str) }
                                 else { name };
 
                 let content_val = match &msg.content {
                     Some(OpenAIContent::String(s)) => s.clone(),
                     Some(OpenAIContent::Array(blocks)) => blocks.iter().filter_map(|b| if let OpenAIContentBlock::Text { text } = b { Some(text.clone()) } else { None }).collect::<Vec<_>>().join("\n"),
-                    None => "".to_string()
+                    None => String::new()
                 };
 
                 parts.push(json!({
@@ -247,7 +245,7 @@ pub fn transform_openai_request(request: &OpenAIRequest, project_id: &str, mappe
     // 4. Handle Tools (Merged Cleaning)
     if let Some(tools) = &request.tools {
         let mut function_declarations: Vec<Value> = Vec::new();
-        for tool in tools.iter() {
+        for tool in tools {
             let mut gemini_func = if let Some(func) = tool.get("function") {
                 func.clone()
             } else {

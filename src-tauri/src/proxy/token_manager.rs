@@ -102,7 +102,7 @@ impl TokenManager {
 
         if account
             .get("disabled")
-            .and_then(|v| v.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
         {
             tracing::debug!(
@@ -116,7 +116,7 @@ impl TokenManager {
         // 检查主动禁用状态
         if account
             .get("proxy_disabled")
-            .and_then(|v| v.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
         {
             tracing::debug!(
@@ -155,13 +155,13 @@ impl TokenManager {
         // project_id 是可选的
         let project_id = token_obj.get("project_id")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
         
         // 【新增】提取订阅等级 (subscription_tier 为 "FREE" | "PRO" | "ULTRA")
         let subscription_tier = account.get("quota")
             .and_then(|q| q.get("subscription_tier"))
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(std::string::ToString::to_string);
         
         Ok(Some(ProxyToken {
             account_id,
@@ -315,17 +315,14 @@ impl TokenManager {
                 }
             }
             
-            let mut token = match target_token {
-                Some(t) => t,
-                None => {
-                    // 如果所有账号都被尝试过或都处于限流中，计算最短等待时间
-                    let min_wait = tokens_snapshot.iter()
-                        .filter_map(|t| self.rate_limit_tracker.get_reset_seconds(&t.account_id))
-                        .min()
-                        .unwrap_or(60);
-                    
-                    return Err(format!("All accounts are currently limited or unhealthy. Please wait {min_wait}s."));
-                }
+            let mut token = if let Some(t) = target_token { t } else {
+                // 如果所有账号都被尝试过或都处于限流中，计算最短等待时间
+                let min_wait = tokens_snapshot.iter()
+                    .filter_map(|t| self.rate_limit_tracker.get_reset_seconds(&t.account_id))
+                    .min()
+                    .unwrap_or(60);
+                
+                return Err(format!("All accounts are currently limited or unhealthy. Please wait {min_wait}s."));
             };
 
         

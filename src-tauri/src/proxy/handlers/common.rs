@@ -1,7 +1,8 @@
-use axum::{extract::State, extract::Json, http::StatusCode, response::IntoResponse, response::Response};
+use axum::{extract::State, extract::Json, response::IntoResponse, response::Response};
 use serde_json::{json, Value};
 use crate::proxy::server::AppState;
 use crate::proxy::middleware::monitor::X_RESOLVED_MODEL_HEADER;
+use crate::proxy::error::ProxyError;
 
 /// Helper trait to attach resolved model info to responses for monitoring
 pub trait WithResolvedModel {
@@ -23,11 +24,11 @@ impl<T: IntoResponse> WithResolvedModel for T {
 pub async fn handle_detect_model(
     State(state): State<AppState>,
     Json(body): Json<Value>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, ProxyError> {
     let model_name = body.get("model").and_then(|v| v.as_str()).unwrap_or("");
-    
+
     if model_name.is_empty() {
-        return (StatusCode::BAD_REQUEST, "Missing 'model' field").into_response();
+        return Err(ProxyError::invalid_request("Missing 'model' field"));
     }
 
     // 1. Resolve mapping
@@ -63,5 +64,5 @@ pub async fn handle_detect_model(
         }
     }
 
-    Json(response).into_response()
+    Ok(Json(response))
 }

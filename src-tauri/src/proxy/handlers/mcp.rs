@@ -30,7 +30,7 @@ fn build_client(
 
 fn copy_passthrough_headers(incoming: &HeaderMap) -> HeaderMap {
     let mut out = HeaderMap::new();
-    for (k, v) in incoming.iter() {
+    for (k, v) in incoming {
         let key = k.as_str().to_ascii_lowercase();
         match key.as_str() {
             "content-type" | "accept" | "user-agent" => {
@@ -161,7 +161,7 @@ fn mcp_session_id(headers: &HeaderMap) -> Option<String> {
         .get("mcp-session-id")
         .or_else(|| headers.get("Mcp-Session-Id"))
         .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
 }
 
 fn jsonrpc_error(id: Value, code: i64, message: impl Into<String>) -> Value {

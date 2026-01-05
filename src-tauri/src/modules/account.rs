@@ -5,11 +5,10 @@ use uuid::Uuid;
 
 use crate::models::{Account, AccountIndex, AccountSummary, TokenData, QuotaData};
 use crate::modules;
-use once_cell::sync::Lazy;
 use std::sync::Mutex;
 
 /// 全局账号写入锁，防止并发操作导致索引文件损坏
-static ACCOUNT_INDEX_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+static ACCOUNT_INDEX_LOCK: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|| Mutex::new(()));
 
 // Default data directory, can be overridden via ANTIGRAVITY_DATA_DIR env var
 const DEFAULT_DATA_DIR: &str = ".antigravity_tools";

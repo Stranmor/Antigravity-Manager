@@ -6,7 +6,7 @@
 // - Vec capacity hints for chunk collections
 // - Inlined helper functions for hot paths
 
-use super::models::*;
+use super::models::{UsageMetadata, Usage, GeminiPart, FunctionCall};
 use super::utils::to_claude_usage;
 use crate::proxy::mappers::signature_store::store_thought_signature;
 use bytes::Bytes;
@@ -336,14 +336,13 @@ impl StreamingState {
         };
 
         let usage = usage_metadata
-            .map(to_claude_usage)
-            .unwrap_or(Usage {
+            .map_or(Usage {
                 input_tokens: 0,
                 output_tokens: 0,
                 cache_read_input_tokens: None,
                 cache_creation_input_tokens: None,
                 server_tool_use: None,
-            });
+            }, to_claude_usage);
 
         chunks.push(self.emit(
             "message_delta",

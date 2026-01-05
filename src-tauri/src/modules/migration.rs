@@ -76,12 +76,9 @@ pub async fn import_from_v1() -> Result<Vec<Account>, String> {
             // 优先使用 backup_file, 其次 data_file
             let target_file = backup_file_str.or(data_file_str);
             
-            let target_file = match target_file {
-                Some(path) => path,
-                None => {
-                    crate::modules::logger::log_warn(&format!("账号 {id} ({email_placeholder}) 缺少数据文件路径"));
-                    continue;
-                }
+            let target_file = if let Some(path) = target_file { path } else {
+                crate::modules::logger::log_warn(&format!("账号 {id} ({email_placeholder}) 缺少数据文件路径"));
+                continue;
             };
 
             let mut backup_path = PathBuf::from(target_file);

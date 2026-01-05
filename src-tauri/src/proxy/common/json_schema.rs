@@ -109,7 +109,7 @@ fn clean_json_schema_recursive(value: &mut Value) {
                 let suffix = format!(" [Constraint: {}]", constraints.join(", "));
                 let desc_val = map
                     .entry("description".to_string())
-                    .or_insert_with(|| Value::String("".to_string()));
+                    .or_insert_with(|| Value::String(String::new()));
                 if let Value::String(s) = desc_val {
                     s.push_str(&suffix);
                 }

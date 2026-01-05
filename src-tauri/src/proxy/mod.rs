@@ -30,4 +30,3 @@ pub use config::ZaiDispatchMode;
 pub use token_manager::TokenManager;
 pub use server::AxumServer;
 pub use security::ProxySecurityConfig;
-pub use error::{ProxyError, ProxyResult};

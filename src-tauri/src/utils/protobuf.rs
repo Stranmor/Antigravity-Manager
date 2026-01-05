@@ -20,7 +20,7 @@ pub fn read_varint(data: &[u8], offset: usize) -> Result<(u64, usize), String> {
             return Err("数据不完整".to_string());
         }
         let byte = data[pos];
-        result |= ((byte & 0x7F) as u64) << shift;
+        result |= u64::from(byte & 0x7F) << shift;
         pos += 1;
         if byte & 0x80 == 0 {
             break;

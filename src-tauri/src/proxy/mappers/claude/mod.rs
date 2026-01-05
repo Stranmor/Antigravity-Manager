@@ -231,7 +231,7 @@ fn process_grounding_metadata(
 
     // Build search results array
     let mut search_results = Vec::new();
-    for chunk in grounding_chunks.iter() {
+    for chunk in grounding_chunks {
         if let Some(web) = chunk.get("web") {
             let title = web
                 .get("title")
@@ -255,7 +255,7 @@ fn process_grounding_metadata(
 
     let search_query = search_queries
         .first()
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .unwrap_or_default();
 
     tracing::debug!(

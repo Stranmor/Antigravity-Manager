@@ -55,13 +55,13 @@ pub fn store_thought_signature(sig: &str) {
         if should_store {
             tracing::debug!("[ThoughtSig] 存储新签名 (长度: {}，替换旧长度: {:?})", 
                 sig.len(), 
-                guard.as_ref().map(|s| s.len())
+                guard.as_ref().map(std::string::String::len)
             );
             *guard = Some(sig.to_string());
         } else {
             tracing::debug!("[ThoughtSig] 跳过短签名 (新长度: {}，现有长度: {})", 
                 sig.len(), 
-                guard.as_ref().map(|s| s.len()).unwrap_or(0)
+                guard.as_ref().map_or(0, std::string::String::len)
             );
         }
     }
@@ -109,7 +109,7 @@ pub fn create_openai_sse_stream(
                                     tracing::debug!("Gemini SSE Chunk: {}", json_part);
 
                                     // Handle v1internal wrapper if present
-                                    let actual_data = if let Some(inner) = json.get_mut("response").map(|v| v.take()) {
+                                    let actual_data = if let Some(inner) = json.get_mut("response").map(serde_json::Value::take) {
                                         inner
                                     } else {
                                         json
@@ -260,7 +260,7 @@ pub fn create_legacy_sse_stream(
                                 if json_part == "[DONE]" { continue; }
 
                                 if let Ok(mut json) = serde_json::from_str::<Value>(json_part) {
-                                    let actual_data = if let Some(inner) = json.get_mut("response").map(|v| v.take()) { inner } else { json };
+                                    let actual_data = if let Some(inner) = json.get_mut("response").map(serde_json::Value::take) { inner } else { json };
                                     
                                     let mut content_out = String::with_capacity(CONTENT_BUFFER_CAPACITY);
                                     if let Some(candidates) = actual_data.get("candidates").and_then(|c| c.as_array()) {
@@ -375,7 +375,7 @@ pub fn create_codex_sse_stream(
                             if json_part == "[DONE]" { continue; }
 
                             if let Ok(mut json) = serde_json::from_str::<Value>(json_part) {
-                                let actual_data = if let Some(inner) = json.get_mut("response").map(|v| v.take()) { inner } else { json };
+                                let actual_data = if let Some(inner) = json.get_mut("response").map(serde_json::Value::take) { inner } else { json };
                                 
                                 // Capture finish reason
                                 if let Some(candidates) = actual_data.get("candidates").and_then(|c| c.as_array()) {
@@ -439,13 +439,13 @@ pub fn create_codex_sse_stream(
                                                             tracing::debug!("[Debug] args_obj: {}", serde_json::to_string(&args_obj).unwrap_or_default());
                                                             
                                                             // 解析命令：支持数组格式、字符串格式，以及空 args 情况
-                                                            let cmd_vec: Vec<String> = if args_obj.as_object().map(|o| o.is_empty()).unwrap_or(true) {
+                                                            let cmd_vec: Vec<String> = if args_obj.as_object().is_none_or(serde_json::Map::is_empty) {
                                                                 // args 为空时使用静默成功命令，避免任务中断
                                                                 tracing::debug!("shell command args 为空，使用静默成功命令继续流程");
                                                                 vec!["powershell.exe".to_string(), "-Command".to_string(), "exit 0".to_string()]
                                                             } else if let Some(arr) = args_obj.get("command").and_then(|v| v.as_array()) {
                                                                 // 数组格式
-                                                                arr.iter().filter_map(|v| v.as_str()).map(|s| s.to_string()).collect()
+                                                                arr.iter().filter_map(|v| v.as_str()).map(std::string::ToString::to_string).collect()
                                                             } else if let Some(cmd_str) = args_obj.get("command").and_then(|v| v.as_str()) {
                                                                 // 字符串格式
                                                                 if cmd_str.contains(' ') {
@@ -509,7 +509,7 @@ pub fn create_codex_sse_stream(
                                                             let cmd_vec_done: Vec<String> = if let Some(arr) = args_obj.get("command").and_then(|v| v.as_array()) {
                                                                 arr.iter()
                                                                     .filter_map(|v| v.as_str())
-                                                                    .map(|s| s.to_string())
+                                                                    .map(std::string::ToString::to_string)
                                                                     .collect()
                                                             } else if let Some(cmd_str) = args_obj.get("command").and_then(|v| v.as_str()) {
                                                                 if cmd_str.contains(' ') {

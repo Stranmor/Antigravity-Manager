@@ -1,7 +1,7 @@
 // Claude 非流式响应转换 (Gemini → Claude)
 // 对应 NonStreamingProcessor
 
-use super::models::*;
+use super::models::{Candidate, ContentBlock, GeminiContent, GeminiResponse, ClaudeResponse, GeminiPart, GroundingMetadata, Usage, UsageMetadata};
 use super::utils::to_claude_usage;
 
 /// Known parameter remappings for Gemini → Claude compatibility
@@ -72,8 +72,7 @@ impl NonStreamingProcessor {
             .as_ref()
             .and_then(|c| c.first())
             .and_then(|candidate| candidate.content.as_ref())
-            .map(|content| &content.parts)
-            .unwrap_or(&empty_parts);
+            .map_or(&empty_parts, |content| &content.parts);
 
         // 处理所有 parts
         for part in parts {
@@ -311,14 +310,13 @@ impl NonStreamingProcessor {
         let usage = gemini_response
             .usage_metadata
             .as_ref()
-            .map(to_claude_usage)
-            .unwrap_or(Usage {
+            .map_or(Usage {
                 input_tokens: 0,
                 output_tokens: 0,
                 cache_read_input_tokens: None,
                 cache_creation_input_tokens: None,
                 server_tool_use: None,
-            });
+            }, to_claude_usage);
 
         ClaudeResponse {
             id: gemini_response.response_id.clone().unwrap_or_else(|| {

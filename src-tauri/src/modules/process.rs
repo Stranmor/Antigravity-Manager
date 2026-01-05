@@ -562,7 +562,12 @@ pub fn close_antigravity(timeout_secs: u64) -> Result<(), String> {
     {
         // Linux: 同样尝试识别主进程并委派退出
         let pids = get_antigravity_pids();
-        if !pids.is_empty() {
+        if pids.is_empty() {
+            // pids 为空，说明没有检测到进程，或者都被排除逻辑排除了
+            crate::modules::logger::log_info(
+                "未找到需要关闭的 Antigravity 进程 (可能已被过滤或未运行)",
+            );
+        } else {
             let mut system = System::new();
             system.refresh_processes(sysinfo::ProcessesToUpdate::All);
 
@@ -677,11 +682,6 @@ pub fn close_antigravity(timeout_secs: u64) -> Result<(), String> {
                     thread::sleep(Duration::from_secs(1));
                 }
             }
-        } else {
-            // pids 为空，说明没有检测到进程，或者都被排除逻辑排除了
-            crate::modules::logger::log_info(
-                "未找到需要关闭的 Antigravity 进程 (可能已被过滤或未运行)",
-            );
         }
     }
 
@@ -776,11 +776,10 @@ pub fn start_antigravity() -> Result<(), String> {
                 "Antigravity 启动命令已发送 (手动路径: {path_str}, 参数: {args:?})"
             ));
             return Ok(());
-        } else {
-            crate::modules::logger::log_warn(&format!(
-                "手动配置路径不存在: {path_str}，将回退到自动检测"
-            ));
         }
+        crate::modules::logger::log_warn(&format!(
+            "手动配置路径不存在: {path_str}，将回退到自动检测"
+        ));
     }
 
     #[cfg(target_os = "macos")]

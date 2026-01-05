@@ -24,9 +24,7 @@ pub async fn auth_middleware(
     // Extract request ID from extensions (set by request_id_middleware)
     let request_id = request
         .extensions()
-        .get::<RequestId>()
-        .map(|id| id.as_str().to_string())
-        .unwrap_or_else(|| "unknown".to_string());
+        .get::<RequestId>().map_or_else(|| "unknown".to_string(), |id| id.as_str().to_string());
 
     // 过滤心跳和健康检查请求,避免日志噪音
     if !path.contains("event_logging") && path != "/healthz" {
@@ -70,7 +68,7 @@ pub async fn auth_middleware(
     }
 
     // Constant-time compare is unnecessary here, but keep strict equality and avoid leaking values.
-    let authorized = api_key.map(|k| k == security.api_key).unwrap_or(false);
+    let authorized = api_key.is_some_and(|k| k == security.api_key);
 
     if authorized {
         Ok(next.run(request).await)

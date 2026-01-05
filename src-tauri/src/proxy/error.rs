@@ -139,13 +139,13 @@ impl IntoResponse for ProxyError {
 impl From<reqwest::Error> for ProxyError {
     fn from(err: reqwest::Error) -> Self {
         if err.is_timeout() {
-            ProxyError::NetworkError(format!("Request timeout: {}", err))
+            ProxyError::NetworkError(format!("Request timeout: {err}"))
         } else if err.is_connect() {
-            ProxyError::NetworkError(format!("Connection failed: {}", err))
+            ProxyError::NetworkError(format!("Connection failed: {err}"))
         } else if err.is_decode() {
-            ProxyError::ParseError(format!("Response decode failed: {}", err))
+            ProxyError::ParseError(format!("Response decode failed: {err}"))
         } else {
-            ProxyError::NetworkError(format!("Network error: {}", err))
+            ProxyError::NetworkError(format!("Network error: {err}"))
         }
     }
 }
@@ -153,7 +153,7 @@ impl From<reqwest::Error> for ProxyError {
 /// Convert from serde_json errors to ProxyError
 impl From<serde_json::Error> for ProxyError {
     fn from(err: serde_json::Error) -> Self {
-        ProxyError::ParseError(format!("JSON error: {}", err))
+        ProxyError::ParseError(format!("JSON error: {err}"))
     }
 }
 

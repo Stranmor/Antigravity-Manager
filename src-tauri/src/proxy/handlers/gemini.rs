@@ -132,7 +132,7 @@ pub async fn handle_generate(
                                             match serde_json::from_str::<Value>(json_part) {
                                                 Ok(mut json) => {
                                                     // Unwrap v1internal response wrapper
-                                                    if let Some(inner) = json.get_mut("response").map(|v| v.take()) {
+                                                    if let Some(inner) = json.get_mut("response").map(serde_json::Value::take) {
                                                         let new_line = format!("data: {}\n\n", serde_json::to_string(&inner).unwrap_or_default());
                                                         yield Ok::<Bytes, String>(Bytes::from(new_line));
                                                     } else {
@@ -185,7 +185,7 @@ pub async fn handle_generate(
 
         // 处理错误并重试
         let status_code = status.as_u16();
-        let retry_after = response.headers().get("Retry-After").and_then(|h| h.to_str().ok()).map(|s| s.to_string());
+        let retry_after = response.headers().get("Retry-After").and_then(|h| h.to_str().ok()).map(std::string::ToString::to_string);
         let error_text = response.text().await.unwrap_or_else(|_| format!("HTTP {status_code}"));
         last_error = format!("HTTP {status_code}: {error_text}");
  

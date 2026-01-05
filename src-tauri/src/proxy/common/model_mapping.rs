@@ -4,12 +4,11 @@ use std::num::NonZeroUsize;
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
 use lru::LruCache;
-use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 
 /// LRU cache for resolved model routes (thread-safe)
 /// Cache key is a hash of (original_model, custom_mapping_hash, openai_mapping_hash, anthropic_mapping_hash, apply_claude_family_mapping)
-static MODEL_ROUTE_CACHE: Lazy<Mutex<LruCache<u64, String>>> = Lazy::new(|| {
+static MODEL_ROUTE_CACHE: std::sync::LazyLock<Mutex<LruCache<u64, String>>> = std::sync::LazyLock::new(|| {
     Mutex::new(LruCache::new(
         NonZeroUsize::new(100).expect("MODEL_ROUTE_CACHE: Cache size must be non-zero")
     ))
@@ -54,7 +53,7 @@ pub fn invalidate_model_cache() {
     crate::modules::logger::log_info("[Cache] Model route cache invalidated");
 }
 
-static CLAUDE_TO_GEMINI: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
+static CLAUDE_TO_GEMINI: std::sync::LazyLock<HashMap<&'static str, &'static str>> = std::sync::LazyLock::new(|| {
     let mut m = HashMap::new();
 
     // 直接支持的模型
@@ -122,7 +121,7 @@ pub fn map_claude_model_to_gemini(input: &str) -> String {
 
 /// 获取所有内置支持的模型列表关键字
 pub fn get_supported_models() -> Vec<String> {
-    CLAUDE_TO_GEMINI.keys().map(|s| s.to_string()).collect()
+    CLAUDE_TO_GEMINI.keys().map(std::string::ToString::to_string).collect()
 }
 
 /// 动态获取所有可用模型列表 (包含内置与用户自定义)
@@ -176,7 +175,7 @@ pub async fn get_all_dynamic_models(
     let ratios = ["", "-1x1", "-4x3", "-3x4", "-16x9", "-9x16", "-21x9"];
     
     for res in resolutions {
-        for ratio in ratios.iter() {
+        for ratio in &ratios {
             let mut id = base.to_string();
             id.push_str(res);
             id.push_str(ratio);
@@ -267,7 +266,7 @@ fn resolve_model_route_uncached(
 
     // 2. 检查家族分组映射 (OpenAI 系)
     // GPT-4 系列 (含 GPT-4 经典, o1, o3 等, 排除 4o/mini/turbo)
-    if (lower_model.starts_with("gpt-4") && !lower_model.contains("o") && !lower_model.contains("mini") && !lower_model.contains("turbo")) || 
+    if (lower_model.starts_with("gpt-4") && !lower_model.contains('o') && !lower_model.contains("mini") && !lower_model.contains("turbo")) || 
        lower_model.starts_with("o1-") || lower_model.starts_with("o3-") || lower_model == "gpt-4" {
         if let Some(target) = openai_mapping.get("gpt-4-series") {
             crate::modules::logger::log_info(&format!("[Router] 使用 GPT-4 系列映射: {original_model} -> {target}"));

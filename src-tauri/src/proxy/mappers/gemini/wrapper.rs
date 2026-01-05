@@ -7,10 +7,10 @@ pub fn wrap_request(body: &Value, project_id: &str, mapped_model: &str) -> Value
     let original_model = body.get("model").and_then(|v| v.as_str()).unwrap_or(mapped_model);
     
     // 如果 mapped_model 是空的，则使用 original_model
-    let final_model_name = if !mapped_model.is_empty() {
-        mapped_model
-    } else {
+    let final_model_name = if mapped_model.is_empty() {
         original_model
+    } else {
+        mapped_model
     };
 
     // 复制 body 以便修改

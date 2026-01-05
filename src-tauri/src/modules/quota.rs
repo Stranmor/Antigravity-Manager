@@ -174,8 +174,7 @@ pub async fn fetch_quota_inner(access_token: &str, email: &str) -> crate::error:
                 for (name, info) in quota_response.models {
                     if let Some(quota_info) = info.quota_info {
                         let percentage = quota_info.remaining_fraction
-                            .map(|f| (f * 100.0) as i32)
-                            .unwrap_or(0);
+                            .map_or(0, |f| (f * 100.0) as i32);
                         
                         let reset_time = quota_info.reset_time.unwrap_or_default();
                         

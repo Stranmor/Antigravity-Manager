@@ -1,7 +1,6 @@
 use dashmap::DashMap;
 use std::time::{SystemTime, Duration};
 use regex::Regex;
-use once_cell::sync::Lazy;
 
 // [OPTIMIZATION] Pre-compiled static regex patterns
 // Previous: Compiled on every call with Regex::new().ok()
@@ -9,33 +8,33 @@ use once_cell::sync::Lazy;
 // Benefit: ~100x faster regex matching on hot paths
 
 /// Duration string parser: supports "2h1m1s", "1h30m", "5m", "30s", "500ms"
-static DURATION_REGEX: Lazy<Regex> = Lazy::new(|| {
+static DURATION_REGEX: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?(?:(\d+)ms)?")
         .expect("DURATION_REGEX: Invalid regex pattern - this is a compile-time constant")
 });
 
 /// Patterns for parsing retry times from error messages
-static RETRY_MIN_SEC_REGEX: Lazy<Regex> = Lazy::new(|| {
+static RETRY_MIN_SEC_REGEX: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?i)try again in (\d+)m\s*(\d+)s")
         .expect("RETRY_MIN_SEC_REGEX: Invalid regex pattern - this is a compile-time constant")
 });
 
-static RETRY_SEC_REGEX: Lazy<Regex> = Lazy::new(|| {
+static RETRY_SEC_REGEX: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?i)(?:try again in|backoff for|wait)\s*(\d+)s")
         .expect("RETRY_SEC_REGEX: Invalid regex pattern - this is a compile-time constant")
 });
 
-static QUOTA_RESET_REGEX: Lazy<Regex> = Lazy::new(|| {
+static QUOTA_RESET_REGEX: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?i)quota will reset in (\d+) second")
         .expect("QUOTA_RESET_REGEX: Invalid regex pattern - this is a compile-time constant")
 });
 
-static RETRY_AFTER_SEC_REGEX: Lazy<Regex> = Lazy::new(|| {
+static RETRY_AFTER_SEC_REGEX: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"(?i)retry after (\d+) second")
         .expect("RETRY_AFTER_SEC_REGEX: Invalid regex pattern - this is a compile-time constant")
 });
 
-static WAIT_PAREN_REGEX: Lazy<Regex> = Lazy::new(|| {
+static WAIT_PAREN_REGEX: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"\(wait (\d+)s\)")
         .expect("WAIT_PAREN_REGEX: Invalid regex pattern - this is a compile-time constant")
 });
@@ -86,7 +85,7 @@ impl RateLimitTracker {
     pub fn make_key(account_id: &str, quota_group: Option<&str>) -> String {
         match quota_group {
             Some(group) if !group.is_empty() && group != "gemini" => {
-                format!("{}:{}", account_id, group)
+                format!("{account_id}:{group}")
             }
             _ => account_id.to_string()
         }
@@ -259,12 +258,9 @@ impl RateLimitTracker {
         tracing::debug!("[时间解析] 尝试解析: '{}'", s);
 
         // Use pre-compiled regex for better performance
-        let caps = match DURATION_REGEX.captures(s) {
-            Some(c) => c,
-            None => {
-                tracing::warn!("[时间解析] 正则未匹配: '{}'", s);
-                return None;
-            }
+        let caps = if let Some(c) = DURATION_REGEX.captures(s) { c } else {
+            tracing::warn!("[时间解析] 正则未匹配: '{}'", s);
+            return None;
         };
         
         let hours = caps.get(1)
@@ -324,7 +320,7 @@ impl RateLimitTracker {
                 // 2. OpenAI 常见的 retry_after 字段 (数字)
                 if let Some(retry) = json.get("error")
                     .and_then(|e| e.get("retry_after"))
-                    .and_then(|v| v.as_u64()) {
+                    .and_then(serde_json::Value::as_u64) {
                     return Some(retry);
                 }
             }

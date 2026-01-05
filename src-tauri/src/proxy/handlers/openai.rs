@@ -98,9 +98,7 @@ pub async fn handle_chat_completions(
         );
         // 将 OpenAI 工具转为 Value 数组以便探测联网
         let tools_val: Option<Vec<Value>> = openai_req
-            .tools
-            .as_ref()
-            .map(|list| list.to_vec());
+            .tools.clone();
         let config = crate::proxy::mappers::common_utils::resolve_request_config(
             &openai_req.model,
             &mapped_model,
@@ -199,7 +197,7 @@ pub async fn handle_chat_completions(
 
         // 处理特定错误并重试
         let status_code = status.as_u16();
-        let retry_after = response.headers().get("Retry-After").and_then(|h| h.to_str().ok()).map(|s| s.to_string());
+        let retry_after = response.headers().get("Retry-After").and_then(|h| h.to_str().ok()).map(std::string::ToString::to_string);
         let error_text = response.text().await.unwrap_or_else(|_| format!("HTTP {status_code}"));
         last_error = format!("HTTP {status_code}: {error_text}");
 
@@ -242,14 +240,13 @@ pub async fn handle_chat_completions(
                     // CRITICAL: Do NOT increment `attempt` - 529 retries are "free"
                     // This allows us to keep retrying without exhausting the account pool
                     continue;
-                } else {
-                    tracing::error!(
-                        "[{}] ❌ 529 Overloaded - exhausted {} retries, giving up",
-                        trace_id,
-                        MAX_OVERLOAD_RETRIES
-                    );
-                    // Fall through to normal error handling after max retries
                 }
+                tracing::error!(
+                    "[{}] ❌ 529 Overloaded - exhausted {} retries, giving up",
+                    trace_id,
+                    MAX_OVERLOAD_RETRIES
+                );
+                // Fall through to normal error handling after max retries
             }
 
             // 1. 优先尝试解析 RetryInfo (由 Google Cloud 直接下发)
@@ -542,7 +539,7 @@ pub async fn handle_completions(
                                 o.to_string()
                             }
                         } else {
-                            "".to_string()
+                            String::new()
                         };
 
                         let name = call_id_to_name.get(call_id).cloned().unwrap_or_else(|| {
@@ -642,9 +639,7 @@ pub async fn handle_completions(
         );
         // 将 OpenAI 工具转为 Value 数组以便探测联网
         let tools_val: Option<Vec<Value>> = openai_req
-            .tools
-            .as_ref()
-            .map(|list| list.to_vec());
+            .tools.clone();
         let config = crate::proxy::mappers::common_utils::resolve_request_config(
             &openai_req.model,
             &mapped_model,
@@ -731,7 +726,7 @@ pub async fn handle_completions(
                 json!({
                     "text": match &c.message.content {
                         Some(crate::proxy::mappers::openai::OpenAIContent::String(s)) => s.clone(),
-                        _ => "".to_string()
+                        _ => String::new()
                     },
                     "index": c.index,
                     "logprobs": null,
@@ -752,7 +747,7 @@ pub async fn handle_completions(
 
         // Handle errors and retry
         let status_code = status.as_u16();
-        let retry_after = response.headers().get("Retry-After").and_then(|h| h.to_str().ok()).map(|s| s.to_string());
+        let retry_after = response.headers().get("Retry-After").and_then(|h| h.to_str().ok()).map(std::string::ToString::to_string);
         let error_text = response.text().await.unwrap_or_default();
         last_error = format!("HTTP {status_code}: {error_text}");
 
@@ -780,13 +775,12 @@ pub async fn handle_completions(
 
                     sleep(Duration::from_millis(jittered_delay)).await;
                     continue;
-                } else {
-                    tracing::error!(
-                        "[{}] ❌ 529 Overloaded (Codex) - exhausted {} retries, giving up",
-                        trace_id,
-                        MAX_OVERLOAD_RETRIES
-                    );
                 }
+                tracing::error!(
+                    "[{}] ❌ 529 Overloaded (Codex) - exhausted {} retries, giving up",
+                    trace_id,
+                    MAX_OVERLOAD_RETRIES
+                );
             }
         }
 
@@ -851,7 +845,7 @@ pub async fn handle_images_generations(
         .and_then(|v| v.as_str())
         .unwrap_or("gemini-3-pro-image");
 
-    let n = body.get("n").and_then(|v| v.as_u64()).unwrap_or(1) as usize;
+    let n = body.get("n").and_then(serde_json::Value::as_u64).unwrap_or(1) as usize;
 
     let size = body
         .get("size")
@@ -1032,10 +1026,10 @@ pub async fn handle_images_generations(
     }
 
     if images.is_empty() {
-        let error_msg = if !errors.is_empty() {
-            errors.join("; ")
-        } else {
+        let error_msg = if errors.is_empty() {
             "No images generated".to_string()
+        } else {
+            errors.join("; ")
         };
         tracing::error!("[Images] All {} requests failed. Errors: {}", n, error_msg);
         return Err((StatusCode::BAD_GATEWAY, error_msg));
@@ -1302,10 +1296,10 @@ pub async fn handle_images_edits(
     }
 
     if images.is_empty() {
-        let error_msg = if !errors.is_empty() {
-            errors.join("; ")
-        } else {
+        let error_msg = if errors.is_empty() {
             "No images generated".to_string()
+        } else {
+            errors.join("; ")
         };
         tracing::error!(
             "[Images] All {} edit requests failed. Errors: {}",

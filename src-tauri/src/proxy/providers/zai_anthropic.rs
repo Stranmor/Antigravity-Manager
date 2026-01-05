@@ -68,7 +68,7 @@ fn copy_passthrough_headers(incoming: &HeaderMap) -> HeaderMap {
     // Only forward a conservative set of headers to avoid leaking the local proxy key or cookies.
     let mut out = HeaderMap::new();
 
-    for (k, v) in incoming.iter() {
+    for (k, v) in incoming {
         let key = k.as_str().to_ascii_lowercase();
         match key.as_str() {
             "content-type" | "accept" | "anthropic-version" | "user-agent" => {

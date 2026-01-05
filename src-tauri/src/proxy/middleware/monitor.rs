@@ -34,15 +34,13 @@ pub async fn monitor_middleware(
     // Use request ID from extensions (set by request_id_middleware)
     let request_id = request
         .extensions()
-        .get::<RequestId>()
-        .map(|id| id.as_str().to_string())
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        .get::<RequestId>().map_or_else(|| uuid::Uuid::new_v4().to_string(), |id| id.as_str().to_string());
 
     let mut model = if uri.contains("/v1beta/models/") {
         uri.split("/v1beta/models/")
             .nth(1)
             .and_then(|s| s.split(':').next())
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
     } else {
         None
     };
@@ -50,24 +48,21 @@ pub async fn monitor_middleware(
     let request_body_str;
     let request = if method == "POST" {
         let (parts, body) = request.into_parts();
-        match axum::body::to_bytes(body, 1024 * 1024).await {
-            Ok(bytes) => {
-                if model.is_none() {
-                    model = serde_json::from_slice::<Value>(&bytes).ok().and_then(|v|
-                        v.get("model").and_then(|m| m.as_str()).map(|s| s.to_string())
-                    );
-                }
-                request_body_str = if let Ok(s) = std::str::from_utf8(&bytes) {
-                    Some(s.to_string())
-                } else {
-                    Some("[Binary Request Data]".to_string())
-                };
-                Request::from_parts(parts, Body::from(bytes))
+        if let Ok(bytes) = axum::body::to_bytes(body, 1024 * 1024).await {
+            if model.is_none() {
+                model = serde_json::from_slice::<Value>(&bytes).ok().and_then(|v|
+                    v.get("model").and_then(|m| m.as_str()).map(std::string::ToString::to_string)
+                );
             }
-            Err(_) => {
-                request_body_str = None;
-                Request::from_parts(parts, Body::empty())
-            }
+            request_body_str = if let Ok(s) = std::str::from_utf8(&bytes) {
+                Some(s.to_string())
+            } else {
+                Some("[Binary Request Data]".to_string())
+            };
+            Request::from_parts(parts, Body::from(bytes))
+        } else {
+            request_body_str = None;
+            Request::from_parts(parts, Body::empty())
         }
     } else {
         request_body_str = None;
@@ -83,7 +78,7 @@ pub async fn monitor_middleware(
     let resolved_model = response.headers()
         .get(X_RESOLVED_MODEL_HEADER)
         .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
+        .map(std::string::ToString::to_string);
 
     // Remove internal header before sending response to client
     response.headers_mut().remove(X_RESOLVED_MODEL_HEADER);
@@ -140,10 +135,10 @@ pub async fn monitor_middleware(
                         let json_str = line.trim_start_matches("data: ").trim();
                         if let Ok(json) = serde_json::from_str::<Value>(json_str) {
                             if let Some(usage) = json.get("usage") {
-                                log.input_tokens = usage.get("prompt_tokens").or(usage.get("input_tokens")).and_then(|v| v.as_u64()).map(|v| v as u32);
-                                log.output_tokens = usage.get("completion_tokens").or(usage.get("output_tokens")).and_then(|v| v.as_u64()).map(|v| v as u32);
+                                log.input_tokens = usage.get("prompt_tokens").or(usage.get("input_tokens")).and_then(serde_json::Value::as_u64).map(|v| v as u32);
+                                log.output_tokens = usage.get("completion_tokens").or(usage.get("output_tokens")).and_then(serde_json::Value::as_u64).map(|v| v as u32);
                                 if log.input_tokens.is_none() && log.output_tokens.is_none() {
-                                    log.output_tokens = usage.get("total_tokens").and_then(|v| v.as_u64()).map(|v| v as u32);
+                                    log.output_tokens = usage.get("total_tokens").and_then(serde_json::Value::as_u64).map(|v| v as u32);
                                 }
                                 break;
                             }
@@ -161,34 +156,31 @@ pub async fn monitor_middleware(
         Response::from_parts(parts, Body::from_stream(tokio_stream::wrappers::ReceiverStream::new(rx)))
     } else if content_type.contains("application/json") || content_type.contains("text/") {
         let (parts, body) = response.into_parts();
-        match axum::body::to_bytes(body, 512 * 1024).await {
-            Ok(bytes) => {
-                if let Ok(s) = std::str::from_utf8(&bytes) {
-                    if let Ok(json) = serde_json::from_str::<Value>(s) {
-                        if let Some(usage) = json.get("usage") {
-                            log.input_tokens = usage.get("prompt_tokens").or(usage.get("input_tokens")).and_then(|v| v.as_u64()).map(|v| v as u32);
-                            log.output_tokens = usage.get("completion_tokens").or(usage.get("output_tokens")).and_then(|v| v.as_u64()).map(|v| v as u32);
-                            if log.input_tokens.is_none() && log.output_tokens.is_none() {
-                                log.output_tokens = usage.get("total_tokens").and_then(|v| v.as_u64()).map(|v| v as u32);
-                            }
+        if let Ok(bytes) = axum::body::to_bytes(body, 512 * 1024).await {
+            if let Ok(s) = std::str::from_utf8(&bytes) {
+                if let Ok(json) = serde_json::from_str::<Value>(s) {
+                    if let Some(usage) = json.get("usage") {
+                        log.input_tokens = usage.get("prompt_tokens").or(usage.get("input_tokens")).and_then(serde_json::Value::as_u64).map(|v| v as u32);
+                        log.output_tokens = usage.get("completion_tokens").or(usage.get("output_tokens")).and_then(serde_json::Value::as_u64).map(|v| v as u32);
+                        if log.input_tokens.is_none() && log.output_tokens.is_none() {
+                            log.output_tokens = usage.get("total_tokens").and_then(serde_json::Value::as_u64).map(|v| v as u32);
                         }
                     }
-                    log.response_body = Some(s.to_string());
-                } else {
-                    log.response_body = Some("[Binary Response Data]".to_string());
                 }
-                
-                if log.status >= 400 {
-                    log.error = log.response_body.clone();
-                }
-                monitor.log_request(log).await;
-                Response::from_parts(parts, Body::from(bytes))
+                log.response_body = Some(s.to_string());
+            } else {
+                log.response_body = Some("[Binary Response Data]".to_string());
             }
-            Err(_) => {
-                log.response_body = Some("[Response too large]".to_string());
-                monitor.log_request(log).await;
-                Response::from_parts(parts, Body::empty())
+            
+            if log.status >= 400 {
+                log.error = log.response_body.clone();
             }
+            monitor.log_request(log).await;
+            Response::from_parts(parts, Body::from(bytes))
+        } else {
+            log.response_body = Some("[Response too large]".to_string());
+            monitor.log_request(log).await;
+            Response::from_parts(parts, Body::empty())
         }
     } else {
         log.response_body = Some(format!("[{content_type}]"));

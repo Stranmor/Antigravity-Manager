@@ -2,9 +2,8 @@
 // Duration 解析
 
 use regex::Regex;
-use once_cell::sync::Lazy;
 
-static DURATION_RE: Lazy<Regex> = Lazy::new(|| {
+static DURATION_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
     Regex::new(r"([\d.]+)\s*(ms|s|m|h)")
         .expect("DURATION_RE: Invalid regex pattern - this is a compile-time constant")
 });

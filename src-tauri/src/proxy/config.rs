@@ -4,23 +4,22 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ProxyAuthMode {
+    #[default]
     Off,
     Strict,
     AllExceptHealth,
     Auto,
 }
 
-impl Default for ProxyAuthMode {
-    fn default() -> Self {
-        Self::Off
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ZaiDispatchMode {
     /// Never use z.ai.
+    #[default]
     Off,
     /// Use z.ai for all Anthropic protocol requests.
     Exclusive,
@@ -30,11 +29,6 @@ pub enum ZaiDispatchMode {
     Fallback,
 }
 
-impl Default for ZaiDispatchMode {
-    fn default() -> Self {
-        Self::Off
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ZaiModelDefaults {

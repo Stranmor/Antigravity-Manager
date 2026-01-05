@@ -60,40 +60,37 @@ async fn ensure_oauth_flow_prepared(app_handle: &tauri::AppHandle) -> Result<Str
     // If both are available -> use `http://localhost:<port>` as redirect URI.
     // If only one is available -> use an explicit IP to force correct stack.
     let port: u16;
-    match TcpListener::bind("[::1]:0").await {
-        Ok(l6) => {
-            port = l6
-                .local_addr()
-                .map_err(|e| format!("无法获取本地端口: {e}"))?
-                .port();
-            ipv6_listener = Some(l6);
+    if let Ok(l6) = TcpListener::bind("[::1]:0").await {
+        port = l6
+            .local_addr()
+            .map_err(|e| format!("无法获取本地端口: {e}"))?
+            .port();
+        ipv6_listener = Some(l6);
 
-            match TcpListener::bind(format!("127.0.0.1:{port}")).await {
-                Ok(l4) => ipv4_listener = Some(l4),
-                Err(e) => {
-                    crate::modules::logger::log_warn(&format!(
-                        "无法绑定 IPv4 回调端口 127.0.0.1:{port} (将仅监听 IPv6): {e}"
-                    ));
-                }
+        match TcpListener::bind(format!("127.0.0.1:{port}")).await {
+            Ok(l4) => ipv4_listener = Some(l4),
+            Err(e) => {
+                crate::modules::logger::log_warn(&format!(
+                    "无法绑定 IPv4 回调端口 127.0.0.1:{port} (将仅监听 IPv6): {e}"
+                ));
             }
         }
-        Err(_) => {
-            let l4 = TcpListener::bind("127.0.0.1:0")
-                .await
-                .map_err(|e| format!("无法绑定本地端口: {e}"))?;
-            port = l4
-                .local_addr()
-                .map_err(|e| format!("无法获取本地端口: {e}"))?
-                .port();
-            ipv4_listener = Some(l4);
+    } else {
+        let l4 = TcpListener::bind("127.0.0.1:0")
+            .await
+            .map_err(|e| format!("无法绑定本地端口: {e}"))?;
+        port = l4
+            .local_addr()
+            .map_err(|e| format!("无法获取本地端口: {e}"))?
+            .port();
+        ipv4_listener = Some(l4);
 
-            match TcpListener::bind(format!("[::1]:{port}")).await {
-                Ok(l6) => ipv6_listener = Some(l6),
-                Err(e) => {
-                    crate::modules::logger::log_warn(&format!(
-                        "无法绑定 IPv6 回调端口 [::1]:{port} (将仅监听 IPv4): {e}"
-                    ));
-                }
+        match TcpListener::bind(format!("[::1]:{port}")).await {
+            Ok(l6) => ipv6_listener = Some(l6),
+            Err(e) => {
+                crate::modules::logger::log_warn(&format!(
+                    "无法绑定 IPv6 回调端口 [::1]:{port} (将仅监听 IPv4): {e}"
+                ));
             }
         }
     }

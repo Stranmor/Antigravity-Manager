@@ -1,7 +1,7 @@
 // Claude 请求转换 (Claude → Gemini v1internal)
 // 对应 transformClaudeRequestIn
 
-use super::models::*;
+use super::models::{Message, MessageContent, ContentBlock, ClaudeRequest, SystemPrompt, Tool};
 use crate::proxy::mappers::signature_store::get_thought_signature;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -28,11 +28,11 @@ impl SafetyThreshold {
     /// Get threshold from environment variable or default to Off
     pub fn from_env() -> Self {
         match std::env::var("GEMINI_SAFETY_THRESHOLD").as_deref() {
-            Ok("OFF") | Ok("off") => SafetyThreshold::Off,
-            Ok("LOW") | Ok("low") => SafetyThreshold::BlockLowAndAbove,
-            Ok("MEDIUM") | Ok("medium") => SafetyThreshold::BlockMediumAndAbove,
-            Ok("HIGH") | Ok("high") => SafetyThreshold::BlockOnlyHigh,
-            Ok("NONE") | Ok("none") => SafetyThreshold::BlockNone,
+            Ok("OFF" | "off") => SafetyThreshold::Off,
+            Ok("LOW" | "low") => SafetyThreshold::BlockLowAndAbove,
+            Ok("MEDIUM" | "medium") => SafetyThreshold::BlockMediumAndAbove,
+            Ok("HIGH" | "high") => SafetyThreshold::BlockOnlyHigh,
+            Ok("NONE" | "none") => SafetyThreshold::BlockNone,
             _ => SafetyThreshold::Off, // Default: maintain current behavior
         }
     }
@@ -122,14 +122,13 @@ pub fn transform_claude_request_in(
     let has_web_search_tool = claude_req
         .tools
         .as_ref()
-        .map(|tools| {
+        .is_some_and(|tools| {
             tools.iter().any(|t| {
                 t.is_web_search() 
                     || t.name.as_deref() == Some("google_search")
                     || t.type_.as_deref() == Some("web_search_20250305")
             })
-        })
-        .unwrap_or(false);
+        });
 
     // 用于存储 tool_use id -> name 映射
     let mut tool_id_to_name: HashMap<String, String> = HashMap::new();
@@ -235,15 +234,15 @@ pub fn transform_claude_request_in(
         if needs_signature_check
             && !has_valid_signature_for_function_calls(&claude_req.messages, &global_sig)
         {
-            if !has_thinking_history {
-                tracing::warn!(
-                    "[Thinking-Mode] [FIX #298] First thinking request without valid signature. \
-                     Disabling thinking to prevent API rejection."
-                );
-            } else {
+            if has_thinking_history {
                 tracing::warn!(
                     "[Thinking-Mode] [FIX #295] No valid signature found for function calls. \
                      Disabling thinking to prevent Gemini 3 Pro rejection."
+                );
+            } else {
+                tracing::warn!(
+                    "[Thinking-Mode] [FIX #298] First thinking request without valid signature. \
+                     Disabling thinking to prevent API rejection."
                 );
             }
             is_thinking_enabled = false;
@@ -480,7 +479,7 @@ fn build_contents(
     let mut last_thought_signature: Option<String> = None;
 
     let _msg_count = messages.len();
-    for msg in messages.iter() {
+    for msg in messages {
         let role = if msg.role == "assistant" {
             "model"
         } else {
@@ -678,22 +677,12 @@ fn build_contents(
             let has_thought_part = parts
                 .iter()
                 .any(|p| {
-                    p.get("thought").and_then(|v| v.as_bool()).unwrap_or(false)
+                    p.get("thought").and_then(serde_json::Value::as_bool).unwrap_or(false)
                         || p.get("thoughtSignature").is_some()
                         || p.get("thought").and_then(|v| v.as_str()).is_some() // 某些情况下可能是 text + thought: true 的组合
                 });
 
-            if !has_thought_part {
-                // Prepend a dummy thinking block to satisfy Gemini v1internal requirements
-                parts.insert(
-                    0,
-                    json!({
-                        "text": "Thinking...",
-                        "thought": true
-                    }),
-                );
-                tracing::debug!("Injected dummy thought block for historical assistant message at index {}", contents.len());
-            } else {
+            if has_thought_part {
                 // [Crucial Check] 即使有 thought 块，也必须保证它位于 parts 的首位 (Index 0)
                 // 且必须包含 thought: true 标记
                 let first_is_thought = parts.first().is_some_and(|p| {
@@ -701,7 +690,14 @@ fn build_contents(
                     && p.get("text").is_some() // 对于 v1internal，通常 text + thought: true 才是合规的思维块
                 });
 
-                if !first_is_thought {
+                if first_is_thought {
+                    // 确保首项包含了 thought: true (防止只有 signature 的情况)
+                    if let Some(p0) = parts.get_mut(0) {
+                        if p0.get("thought").is_none() {
+                             p0.as_object_mut().map(|obj| obj.insert("thought".to_string(), json!(true)));
+                        }
+                    }
+                } else {
                     // 如果首项不符合思维块特征，强制补入一个
                     parts.insert(
                         0,
@@ -711,14 +707,17 @@ fn build_contents(
                         }),
                     );
                     tracing::debug!("First part of model message at {} is not a valid thought block. Prepending dummy.", contents.len());
-                } else {
-                    // 确保首项包含了 thought: true (防止只有 signature 的情况)
-                    if let Some(p0) = parts.get_mut(0) {
-                        if p0.get("thought").is_none() {
-                             p0.as_object_mut().map(|obj| obj.insert("thought".to_string(), json!(true)));
-                        }
-                    }
                 }
+            } else {
+                // Prepend a dummy thinking block to satisfy Gemini v1internal requirements
+                parts.insert(
+                    0,
+                    json!({
+                        "text": "Thinking...",
+                        "thought": true
+                    }),
+                );
+                tracing::debug!("Injected dummy thought block for historical assistant message at index {}", contents.len());
             }
         }
 
