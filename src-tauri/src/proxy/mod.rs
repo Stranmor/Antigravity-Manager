@@ -6,6 +6,7 @@ pub mod token_manager;
 pub mod project_resolver;
 pub mod server;
 pub mod security;
+pub mod error;  // Centralized error types
 
 // 新架构模块
 pub mod mappers;           // 协议转换器
@@ -29,3 +30,4 @@ pub use config::ZaiDispatchMode;
 pub use token_manager::TokenManager;
 pub use server::AxumServer;
 pub use security::ProxySecurityConfig;
+pub use error::{ProxyError, ProxyResult};
