@@ -73,3 +73,4 @@ lto = true             # Link-Time Optimization for smaller binary
 codegen-units = 1      # Single codegen unit for better optimization
 panic = "abort"        # Smaller binary, no unwinding
 strip = true           # Strip debug symbols
+trim-paths = "all"     # Remove build paths from binary (Rust 1.77+, security)
