@@ -96,12 +96,19 @@ describe('withErrorHandling', () => {
       () => Promise.reject(new Error('fail')),
       (err) => {
         capturedError = err;
-        // Make the error handler throw an error to test if withErrorHandling catches it
-        throw new Error('Error in error handler');
       }
     );
     expect(capturedError).toBeInstanceOf(Error);
     expect((capturedError as Error).message).toBe('fail');
+  });
+
+  it('propagates error from error handler', async () => {
+    await expect(withErrorHandling(
+      () => Promise.reject(new Error('fail')),
+      () => {
+        throw new Error('Error in error handler');
+      }
+    )).rejects.toThrow('Error in error handler');
   });
 
   it('handles async operations correctly', async () => {
