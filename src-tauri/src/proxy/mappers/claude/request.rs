@@ -1,7 +1,7 @@
 // Claude 请求转换 (Claude → Gemini v1internal)
 // 对应 transformClaudeRequestIn
 
-use super::models::{Message, MessageContent, ContentBlock, ClaudeRequest, SystemPrompt, Tool};
+use super::models::{ImageSource, Message, MessageContent, ContentBlock, ClaudeRequest, SystemPrompt, ThinkingConfig, Tool};
 use crate::proxy::mappers::signature_store::get_thought_signature;
 use serde_json::{json, Value};
 use std::collections::HashMap;

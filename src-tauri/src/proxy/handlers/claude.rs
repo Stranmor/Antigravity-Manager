@@ -17,6 +17,7 @@ use crate::proxy::mappers::claude::{
 };
 use crate::proxy::server::AppState;
 use crate::proxy::handlers::common::WithResolvedModel;
+use crate::proxy::error::ProxyError;
 use axum::http::HeaderMap;
 use std::sync::atomic::Ordering;
 
@@ -361,16 +362,7 @@ pub async fn handle_messages(
     let mut request: crate::proxy::mappers::claude::models::ClaudeRequest = match serde_json::from_value(body) {
         Ok(r) => r,
         Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "type": "error",
-                    "error": {
-                        "type": "invalid_request_error",
-                        "message": format!("Invalid request body: {}", e)
-                    }
-                }))
-            ).into_response();
+            return ProxyError::invalid_request(format!("Invalid request body: {}", e)).into_response();
         }
     };
 
@@ -383,7 +375,7 @@ pub async fn handle_messages(
             Ok(v) => v,
             Err(e) => {
                 tracing::error!("Failed to serialize fixed request for z.ai: {}", e);
-                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+                return ProxyError::internal_error(format!("Failed to serialize request: {}", e)).into_response();
             }
         };
 
@@ -568,16 +560,7 @@ pub async fn handle_messages(
                 } else {
                     e
                 };
-                 return (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    Json(json!({
-                        "type": "error",
-                        "error": {
-                            "type": "overloaded_error",
-                            "message": format!("No available accounts: {}", safe_message)
-                        }
-                    }))
-                ).into_response();
+                return ProxyError::token_error(format!("No available accounts: {}", safe_message)).into_response();
             }
         };
 
@@ -654,16 +637,7 @@ pub async fn handle_messages(
                 b
             },
             Err(e) => {
-                 return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({
-                        "type": "error",
-                        "error": {
-                            "type": "api_error",
-                            "message": format!("Transform error: {}", e)
-                        }
-                    }))
-                ).into_response();
+                return ProxyError::TransformError(format!("Transform error: {}", e)).into_response();
             }
         };
         
@@ -716,7 +690,7 @@ pub async fn handle_messages(
                 // 处理非流式响应
                 let bytes = match response.bytes().await {
                     Ok(b) => b,
-                    Err(e) => return (StatusCode::BAD_GATEWAY, format!("Failed to read body: {e}")).into_response(),
+                    Err(e) => return ProxyError::NetworkError(format!("Failed to read body: {e}")).into_response(),
                 };
                 
                 // Debug print
