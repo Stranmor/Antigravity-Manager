@@ -1,14 +1,20 @@
 import { create } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import { Account } from '../types/account';
 import * as accountService from '../services/accountService';
 
-interface AccountState {
+// =============================================================================
+// State Types (Separated from Actions for SOTA 2026 patterns)
+// =============================================================================
+
+interface AccountStateSlice {
     accounts: Account[];
     currentAccount: Account | null;
     loading: boolean;
     error: string | null;
+}
 
-    // Actions
+interface AccountActionsSlice {
     fetchAccounts: () => Promise<void>;
     fetchCurrentAccount: () => Promise<void>;
     addAccount: (email: string, refreshToken: string) => Promise<void>;
@@ -18,8 +24,6 @@ interface AccountState {
     refreshQuota: (accountId: string) => Promise<void>;
     refreshAllQuotas: () => Promise<accountService.RefreshStats>;
     reorderAccounts: (accountIds: string[]) => Promise<void>;
-
-    // 新增 actions
     startOAuthLogin: () => Promise<void>;
     completeOAuthLogin: () => Promise<void>;
     cancelOAuthLogin: () => Promise<void>;
@@ -30,12 +34,20 @@ interface AccountState {
     toggleProxyStatus: (accountId: string, enable: boolean, reason?: string) => Promise<void>;
 }
 
+type AccountState = AccountStateSlice & AccountActionsSlice;
+
+// =============================================================================
+// Store Implementation
+// =============================================================================
+
 export const useAccountStore = create<AccountState>((set, get) => ({
+    // Initial State
     accounts: [],
     currentAccount: null,
     loading: false,
     error: null,
 
+    // Actions (kept stable, don't cause re-renders when state changes)
     fetchAccounts: async () => {
         set({ loading: true, error: null });
         try {
@@ -137,32 +149,24 @@ export const useAccountStore = create<AccountState>((set, get) => ({
         }
     },
 
-    /**
-     * 重新排序账号列表
-     * 采用乐观更新策略：先更新本地状态再调用后端持久化，以提供流畅的拖拽体验
-     */
     reorderAccounts: async (accountIds: string[]) => {
         const { accounts } = get();
 
-        // 创建 ID 到账号的映射
         const accountMap = new Map(accounts.map(acc => [acc.id, acc]));
-
-        // 按新顺序重建账号数组
         const reorderedAccounts = accountIds
             .map(id => accountMap.get(id))
             .filter((acc): acc is Account => acc !== undefined);
 
-        // 添加未在新顺序中的账号（保持原有顺序）
         const remainingAccounts = accounts.filter(acc => !accountIds.includes(acc.id));
         const finalAccounts = [...reorderedAccounts, ...remainingAccounts];
 
-        // 乐观更新本地状态
+        // Optimistic update
         set({ accounts: finalAccounts });
 
         try {
             await accountService.reorderAccounts(accountIds);
         } catch (error) {
-            // 后端失败时回滚到原始顺序
+            // Rollback on failure
             console.error('[AccountStore] Reorder accounts failed:', error);
             set({ accounts });
             throw error;
@@ -267,3 +271,92 @@ export const useAccountStore = create<AccountState>((set, get) => ({
         }
     },
 }));
+
+// =============================================================================
+// Atomic Selectors (SOTA 2026: Prevents unnecessary re-renders)
+// =============================================================================
+
+/** Select accounts array - only re-renders when accounts change */
+export const useAccounts = () => useAccountStore(state => state.accounts);
+
+/** Select current account - only re-renders when currentAccount changes */
+export const useCurrentAccount = () => useAccountStore(state => state.currentAccount);
+
+/** Select loading state - only re-renders when loading changes */
+export const useAccountLoading = () => useAccountStore(state => state.loading);
+
+/** Select error state - only re-renders when error changes */
+export const useAccountError = () => useAccountStore(state => state.error);
+
+// =============================================================================
+// Composite Selectors with useShallow (for multiple primitive values)
+// =============================================================================
+
+/** Select accounts and currentAccount together with shallow comparison */
+export const useAccountData = () => useAccountStore(
+    useShallow(state => ({
+        accounts: state.accounts,
+        currentAccount: state.currentAccount,
+    }))
+);
+
+/** Select loading/error status together */
+export const useAccountStatus = () => useAccountStore(
+    useShallow(state => ({
+        loading: state.loading,
+        error: state.error,
+    }))
+);
+
+// =============================================================================
+// Action Selectors (Stable references - never cause re-renders)
+// =============================================================================
+
+/** Get all account actions - stable reference, never causes re-renders */
+export const useAccountActions = () => useAccountStore(
+    useShallow(state => ({
+        fetchAccounts: state.fetchAccounts,
+        fetchCurrentAccount: state.fetchCurrentAccount,
+        addAccount: state.addAccount,
+        deleteAccount: state.deleteAccount,
+        deleteAccounts: state.deleteAccounts,
+        switchAccount: state.switchAccount,
+        refreshQuota: state.refreshQuota,
+        refreshAllQuotas: state.refreshAllQuotas,
+        reorderAccounts: state.reorderAccounts,
+        startOAuthLogin: state.startOAuthLogin,
+        completeOAuthLogin: state.completeOAuthLogin,
+        cancelOAuthLogin: state.cancelOAuthLogin,
+        importV1Accounts: state.importV1Accounts,
+        importFromDb: state.importFromDb,
+        importFromCustomDb: state.importFromCustomDb,
+        syncAccountFromDb: state.syncAccountFromDb,
+        toggleProxyStatus: state.toggleProxyStatus,
+    }))
+);
+
+/** Get fetch actions only */
+export const useFetchActions = () => useAccountStore(
+    useShallow(state => ({
+        fetchAccounts: state.fetchAccounts,
+        fetchCurrentAccount: state.fetchCurrentAccount,
+    }))
+);
+
+/** Get OAuth actions only */
+export const useOAuthActions = () => useAccountStore(
+    useShallow(state => ({
+        startOAuthLogin: state.startOAuthLogin,
+        completeOAuthLogin: state.completeOAuthLogin,
+        cancelOAuthLogin: state.cancelOAuthLogin,
+    }))
+);
+
+/** Get import actions only */
+export const useImportActions = () => useAccountStore(
+    useShallow(state => ({
+        importV1Accounts: state.importV1Accounts,
+        importFromDb: state.importFromDb,
+        importFromCustomDb: state.importFromCustomDb,
+    }))
+);

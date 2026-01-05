@@ -131,7 +131,9 @@ describe('AccountDetailsDialog', () => {
 
       const closeButton = screen.getAllByRole('button')[0];
       expect(closeButton).toBeDefined();
-      await user.click(closeButton);
+      if (closeButton) {
+        await user.click(closeButton);
+      }
       expect(onClose).toHaveBeenCalledTimes(1);
     });
 
