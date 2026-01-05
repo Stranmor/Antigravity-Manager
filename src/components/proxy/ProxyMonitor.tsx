@@ -45,16 +45,14 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
     const loadData = async () => {
         try {
             const config = await invoke<AppConfig>('load_config');
-            if (config?.proxy) {
-                setIsLoggingEnabled(config.proxy.enable_logging);
-                await invoke('set_proxy_monitor_enabled', { enabled: config.proxy.enable_logging });
-            }
+            setIsLoggingEnabled(config.proxy.enable_logging);
+            await invoke('set_proxy_monitor_enabled', { enabled: config.proxy.enable_logging });
 
             const history = await invoke<ProxyRequestLog[]>('get_proxy_logs', { limit: 100 });
             if (Array.isArray(history)) setLogs(history);
 
             const currentStats = await invoke<ProxyStats>('get_proxy_stats');
-            if (currentStats) setStats(currentStats);
+            setStats(currentStats);
         } catch {
             console.error("Failed to load proxy data");
         }
@@ -64,12 +62,10 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
         const newState = !isLoggingEnabled;
         try {
             const config = await invoke<AppConfig>('load_config');
-            if (config?.proxy) {
-                config.proxy.enable_logging = newState;
-                await invoke('save_config', { config });
-                await invoke('set_proxy_monitor_enabled', { enabled: newState });
-                setIsLoggingEnabled(newState);
-            }
+            config.proxy.enable_logging = newState;
+            await invoke('save_config', { config });
+            await invoke('set_proxy_monitor_enabled', { enabled: newState });
+            setIsLoggingEnabled(newState);
         } catch {
             console.error("Failed to toggle logging");
         }
@@ -227,8 +223,8 @@ export const ProxyMonitor: React.FC<ProxyMonitorProps> = ({ className }) => {
                                 </td>
                                 <td className="truncate max-w-[240px]">{log.url}</td>
                                 <td className="text-right text-[9px]">
-                                    {log.input_tokens !== null && log.input_tokens !== undefined && <div>I: {formatCompactNumber(log.input_tokens)}</div>}
-                                    {log.output_tokens !== null && log.output_tokens !== undefined && <div>O: {formatCompactNumber(log.output_tokens)}</div>}
+                                    {log.input_tokens !== undefined && <div>I: {formatCompactNumber(log.input_tokens)}</div>}
+                                    {log.output_tokens !== undefined && <div>O: {formatCompactNumber(log.output_tokens)}</div>}
                                 </td>
                                 <td className="text-right">{log.duration}ms</td>
                                 <td className="text-right text-[10px]">{new Date(log.timestamp).toLocaleTimeString()}</td>

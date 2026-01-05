@@ -24,7 +24,7 @@ import {
     Layers,
     Activity
 } from 'lucide-react';
-import { AppConfig, ProxyConfig, StickySessionConfig } from '../types/config';
+import { AppConfig, ProxyConfig, StickySessionConfig, ZaiDispatchMode, ZaiMcpConfig } from '../types/config';
 import HelpTooltip from '../components/common/HelpTooltip';
 import ModalDialog from '../components/common/ModalDialog';
 import { showToast } from '../components/common/ToastContainer';
@@ -124,6 +124,13 @@ function CollapsibleCard({
         </div>
     );
 }
+
+const DEFAULT_MCP_CONFIG: ZaiMcpConfig = {
+    enabled: false,
+    web_search_enabled: false,
+    web_reader_enabled: false,
+    vision_enabled: false
+};
 
 export default function ApiProxy() {
     const { t } = useTranslation();
@@ -784,11 +791,11 @@ print(response.text)`;
                                             />
                                         </div>
                                         <p className="text-[10px] text-gray-500 dark:text-gray-400">
-                                            {(appConfig.proxy.allow_lan_access || false)
+                                            {appConfig.proxy.allow_lan_access === true
                                                 ? t('proxy.config.allow_lan_access_hint_enabled')
                                                 : t('proxy.config.allow_lan_access_hint_disabled')}
                                         </p>
-                                        {(appConfig.proxy.allow_lan_access || false) && (
+                                        {appConfig.proxy.allow_lan_access === true && (
                                             <p className="text-[10px] text-amber-600 dark:text-amber-500">
                                                 {t('proxy.config.allow_lan_access_warning')}
                                             </p>
@@ -953,7 +960,7 @@ print(response.text)`;
                                             <select
                                                 className="select select-sm select-bordered w-full text-xs"
                                                 value={appConfig.proxy.zai?.dispatch_mode || 'off'}
-                                                onChange={(e) => { updateZaiGeneralConfig({ dispatch_mode: e.target.value as any }); }}
+                                                onChange={(e) => { updateZaiGeneralConfig({ dispatch_mode: e.target.value as ZaiDispatchMode }); }}
                                             >
                                                 <option value="off">{t('proxy.config.zai.modes.off')}</option>
                                                 <option value="exclusive">{t('proxy.config.zai.modes.exclusive')}</option>
@@ -1096,7 +1103,7 @@ print(response.text)`;
                                 title={t('proxy.config.zai.mcp.title')}
                                 icon={<Puzzle size={18} className="text-blue-500" />}
                                 enabled={!!appConfig.proxy.zai?.mcp?.enabled}
-                                onToggle={(checked) => { updateZaiGeneralConfig({ mcp: { ...(appConfig.proxy.zai?.mcp || {}), enabled: checked } as any }); }}
+                                onToggle={(checked) => { updateZaiGeneralConfig({ mcp: { ...(appConfig.proxy.zai?.mcp ?? DEFAULT_MCP_CONFIG), enabled: checked } }); }}
                                 rightElement={
                                     <div className="flex gap-2 text-[10px] text-gray-400">
                                         {['web_search', 'web_reader', 'vision'].map(f =>
@@ -1116,7 +1123,7 @@ print(response.text)`;
                                                 type="checkbox"
                                                 className="checkbox checkbox-xs checkbox-primary rounded-md"
                                                 checked={!!appConfig.proxy.zai?.mcp?.web_search_enabled}
-                                                onChange={(e) => { updateZaiGeneralConfig({ mcp: { ...(appConfig.proxy.zai?.mcp || {}), web_search_enabled: e.target.checked } as any }); }}
+                                                onChange={(e) => { updateZaiGeneralConfig({ mcp: { ...(appConfig.proxy.zai?.mcp ?? DEFAULT_MCP_CONFIG), web_search_enabled: e.target.checked } }); }}
                                             />
                                             <span className="text-xs">{t('proxy.config.zai.mcp.web_search')}</span>
                                         </label>
@@ -1125,7 +1132,7 @@ print(response.text)`;
                                                 type="checkbox"
                                                 className="checkbox checkbox-xs checkbox-primary rounded-md"
                                                 checked={!!appConfig.proxy.zai?.mcp?.web_reader_enabled}
-                                                onChange={(e) => { updateZaiGeneralConfig({ mcp: { ...(appConfig.proxy.zai?.mcp || {}), web_reader_enabled: e.target.checked } as any }); }}
+                                                onChange={(e) => { updateZaiGeneralConfig({ mcp: { ...(appConfig.proxy.zai?.mcp ?? DEFAULT_MCP_CONFIG), web_reader_enabled: e.target.checked } }); }}
                                             />
                                             <span className="text-xs">{t('proxy.config.zai.mcp.web_reader')}</span>
                                         </label>
@@ -1134,7 +1141,7 @@ print(response.text)`;
                                                 type="checkbox"
                                                 className="checkbox checkbox-xs checkbox-primary rounded-md"
                                                 checked={!!appConfig.proxy.zai?.mcp?.vision_enabled}
-                                                onChange={(e) => { updateZaiGeneralConfig({ mcp: { ...(appConfig.proxy.zai?.mcp || {}), vision_enabled: e.target.checked } as any }); }}
+                                                onChange={(e) => { updateZaiGeneralConfig({ mcp: { ...(appConfig.proxy.zai?.mcp ?? DEFAULT_MCP_CONFIG), vision_enabled: e.target.checked } }); }}
                                             />
                                             <span className="text-xs">{t('proxy.config.zai.mcp.vision')}</span>
                                         </label>
