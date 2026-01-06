@@ -440,8 +440,8 @@ fn update_daily_stats(conn: &Connection, account_id: &str, log: &ProxyRequestLog
 
     let is_success = log.status >= 200 && log.status < 400;
     let is_rate_limit = log.status == 429;
-    let input_tokens = log.input_tokens.unwrap_or(0) as i64;
-    let output_tokens = log.output_tokens.unwrap_or(0) as i64;
+    let input_tokens = i64::from(log.input_tokens.unwrap_or(0));
+    let output_tokens = i64::from(log.output_tokens.unwrap_or(0));
 
     conn.execute(
         "INSERT INTO daily_account_stats
@@ -460,12 +460,12 @@ fn update_daily_stats(conn: &Connection, account_id: &str, log: &ProxyRequestLog
         params![
             account_id,
             date_str,
-            if is_success { 1 } else { 0 },
-            if !is_success { 1 } else { 0 },
+            i32::from(is_success),
+            i32::from(!is_success),
             input_tokens,
             output_tokens,
             log.duration as i64,
-            if is_rate_limit { 1 } else { 0 },
+            i32::from(is_rate_limit),
             timestamp,
         ],
     ).map_err(|e| e.to_string())?;
@@ -662,7 +662,7 @@ pub fn get_historical_analytics(days: i32) -> Result<HistoricalAnalytics, String
 
     // Calculate date threshold
     let now = time::OffsetDateTime::now_utc();
-    let threshold_date = now - time::Duration::days(days as i64);
+    let threshold_date = now - time::Duration::days(i64::from(days));
     let threshold_str = format!(
         "{:04}-{:02}-{:02}",
         threshold_date.date().year(),

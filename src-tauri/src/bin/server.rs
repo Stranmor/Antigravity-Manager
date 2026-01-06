@@ -425,7 +425,7 @@ fn init_server_logging_with_rotation(data_dir: &std::path::Path, config: &ProxyC
             Some(guards)
         }
         Err(e) => {
-            eprintln!("Failed to initialize log rotation: {}. Falling back to basic logging.", e);
+            eprintln!("Failed to initialize log rotation: {e}. Falling back to basic logging.");
             init_logging();
             None
         }

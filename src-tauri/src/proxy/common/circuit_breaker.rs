@@ -283,9 +283,9 @@ impl CircuitBreakerManager {
         failure_count: Option<i32>,
     ) {
         let account_id = account_id.to_string();
-        let previous = format!("{:?}", previous_state).to_lowercase();
-        let new = format!("{:?}", new_state).to_lowercase();
-        let reason = reason.map(|s| s.to_string());
+        let previous = format!("{previous_state:?}").to_lowercase();
+        let new = format!("{new_state:?}").to_lowercase();
+        let reason = reason.map(std::string::ToString::to_string);
 
         // Fire and forget - don't block the circuit breaker on DB writes
         std::thread::spawn(move || {
