@@ -136,7 +136,7 @@ cargo test --features headless -p antigravity_tools_lib
 - [x] Add end-to-end integration tests with mock HTTP server `[MODE: C]` ✓ Defer - current tests comprehensive
 - [x] Research WebSocket support for real-time streaming `[MODE: R]` ✓ See findings below
 - [ ] Implement request tracing spans for deeper observability `[MODE: B]`
-- [ ] Add Grafana alerting rules for health degradation `[MODE: B]`
+- [x] Add Grafana alerting rules for health degradation `[MODE: B]` (0790cad) ✓ Complete
 
 ## WEBSOCKET VS SSE RESEARCH (2026-01-06)
 **Status: ✓ RESEARCH COMPLETE - SSE PREFERRED**
@@ -161,6 +161,35 @@ cargo test --features headless -p antigravity_tools_lib
 - [LLM Streaming Patterns - Medium](https://medium.com)
 - [API Design for AI - Apidog](https://apidog.com)
 - [Real-time AI Communication - HiveNet](https://hivenet.com)
+
+## GRAFANA ALERTING RULES (2026-01-06)
+**Status: IMPLEMENTED**
+
+**File:** `deploy/grafana/alert-rules.yaml`
+
+**Alert Rules:**
+| Rule | Severity | Condition | Duration |
+|------|----------|-----------|----------|
+| ServerDown | critical | uptime not increasing | 2m |
+| AccountsLow | warning | available_accounts < 2 | 5m |
+| HighErrorRate | warning | error_rate > 10% | 5m |
+| RateLimitingActive | warning | unavailable_accounts > 50% | 5m |
+| LatencyHigh | warning | p95 > 5 seconds | 5m |
+| StreamErrorsHigh | warning | stream_error_rate > 20% | 5m |
+
+**Import Instructions:**
+1. Navigate to Grafana > Alerting > Alert rules
+2. Click Import and select `alert-rules.yaml`
+3. Configure datasource UID to match your Prometheus instance
+
+**Prometheus Metrics Used:**
+- `antigravity_uptime_seconds` - Server uptime gauge
+- `antigravity_accounts_total` - Total registered accounts
+- `antigravity_accounts_available` - Available (non-rate-limited) accounts
+- `antigravity_requests_total{status}` - Request counter with status label
+- `antigravity_request_duration_seconds` - Request latency histogram
+- `antigravity_stream_total` - SSE stream counter
+- `antigravity_stream_errors_total` - SSE error counter
 
 ## JSON FILE LOGGING (2026-01-06)
 **Status: ✓ IMPLEMENTED**
