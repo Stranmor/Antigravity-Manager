@@ -58,8 +58,9 @@ cargo build --profile release-fast # Testing (fast, still optimized)
 - [x] Add Makefile/just for common operations `[MODE: B]` (34d814c)
 - [x] Implement account filtering in Slint UI `[MODE: B]` (3f6f3ed)
 - [x] Add GitHub Actions CI workflow `[MODE: B]` (fae840b)
-- [ ] Sync VPS with latest binary `[MODE: B]`
-- [ ] Fix CI workflow (adjust for headless feature) `[MODE: B]`
+- [x] Sync VPS with latest binary `[MODE: B]` (2026-01-06)
+- [x] Fix CI workflow (adjust for headless feature) `[MODE: B]` (7a9088d)
+- [x] Optimize token rotation with sorted cache `[MODE: B]` (9a9e450)
 
 ## CLI IMPORT TOOL (Complete - 2026-01-06)
 **Status: ✓ IMPLEMENTED AND TESTED**
@@ -244,6 +245,15 @@ ssh vps-production "curl -s http://localhost:9101/api/health | jq"
 - **Multi-window caution**: Each window = 100-200MB memory overhead
 - **Release profile**: Already optimized with LTO, codegen-units=1, panic=abort
 - **tauri-plugin-window-state**: Consider for efficient window toggling
+
+## IMPORTANT: NAMING DISAMBIGUATION
+**⚠️ НЕ ПУТАТЬ:**
+- **`antigravity`** (`/usr/bin/antigravity` → `/opt/Antigravity/bin/antigravity`) — это **Claude IDE Extension** (отдельный проект)
+- **`antigravity_tools`** (`/usr/bin/antigravity_tools`, 382 MB) — это **Antigravity Tools** Tauri desktop app (ЭТОТ проект)
+- **`antigravity-desktop`** (`/usr/bin/antigravity-desktop`, 21 MB) — это **Slint Native UI** (новый легковесный UI для этого проекта)
+- **`antigravity-server`** (`/usr/bin/antigravity-server`, 28 MB) — это **Headless server** для VPS (этот проект)
+
+Antigravity Tools ≠ Antigravity IDE. Это разные продукты!
 
 ## ARCHITECTURAL NOTES
 - Target: Mathematical and Engineering Perfection.
