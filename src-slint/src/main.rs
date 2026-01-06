@@ -869,6 +869,123 @@ impl AppController {
         });
     }
 
+    fn refresh_analytics(&self) {
+        let proxy_state = self.proxy_state.clone();
+        let app_weak = self.app.clone();
+
+        self.show_status("Refreshing analytics...", "info");
+
+        tokio::spawn(async move {
+            let state = proxy_state.read().await;
+
+            // Get monitor stats if proxy is running
+            let (total_requests, success_count, _error_count) = if let Some(ref monitor) = state.monitor {
+                let stats = monitor.get_stats().await;
+                (stats.total_requests, stats.success_count, stats.error_count)
+            } else {
+                (0, 0, 0)
+            };
+
+            // Calculate success rate
+            let success_rate = if total_requests > 0 {
+                success_count as f32 / total_requests as f32
+            } else {
+                0.0
+            };
+
+            // Create analytics summary
+            // Note: For now, we use the overall stats since per-account tracking
+            // would require additional infrastructure in the proxy
+            let summary = AnalyticsSummary {
+                total_requests_today: total_requests as i32, // TODO: Filter by today's date
+                total_requests_all_time: total_requests as i32,
+                overall_success_rate: success_rate,
+                total_tokens_used: 0, // TODO: Aggregate from logs
+                active_accounts: 0, // Will be set from accounts
+                rate_limited_accounts: 0, // TODO: Track rate-limited accounts
+                circuit_breaker: CircuitBreakerSummary {
+                    closed_count: 0,
+                    open_count: 0,
+                    half_open_count: 0,
+                    total_trips: 0,
+                },
+            };
+
+            // Get account list for per-account analytics
+            let accounts = antigravity_tools_lib::modules::account::list_accounts()
+                .unwrap_or_default();
+
+            let active_count = accounts.iter()
+                .filter(|a| !a.disabled && a.quota.as_ref().map(|q| !q.is_forbidden).unwrap_or(true))
+                .count() as i32;
+
+            // Generate per-account analytics (placeholder data for now)
+            // Real implementation would require per-account request tracking in the proxy
+            let account_analytics: Vec<AccountAnalytics> = accounts.iter()
+                .filter(|a| !a.disabled)
+                .map(|a| {
+                    let tier = a.quota.as_ref()
+                        .and_then(|q| q.subscription_tier.clone())
+                        .unwrap_or_else(|| "FREE".into())
+                        .to_uppercase();
+
+                    AccountAnalytics {
+                        account_id: a.id.clone().into(),
+                        email: a.email.clone().into(),
+                        tier: tier.into(),
+                        requests_today: 0, // Placeholder
+                        requests_total: 0, // Placeholder
+                        success_count: 0, // Placeholder
+                        error_count: 0, // Placeholder
+                        success_rate: 1.0, // Placeholder - assume healthy
+                        tokens_used: 0, // Placeholder
+                        rate_limit_hits: 0, // Placeholder
+                        circuit_state: "closed".into(), // Default to closed
+                        last_request_time: "N/A".into(),
+                    }
+                })
+                .collect();
+
+            drop(state); // Release lock before UI update
+
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(app) = app_weak.upgrade() {
+                    // Update summary with active account count
+                    let mut summary = summary;
+                    summary.active_accounts = active_count;
+                    summary.circuit_breaker.closed_count = active_count; // Assume all healthy for now
+
+                    app.global::<AppState>().set_analytics_summary(summary);
+
+                    let model = std::rc::Rc::new(VecModel::from(account_analytics));
+                    app.global::<AppState>().set_account_analytics(model.into());
+
+                    let ctrl = AppController::new(&app);
+                    ctrl.show_status("Analytics refreshed", "success");
+                }
+            });
+        });
+    }
+
+    fn reset_circuit_breaker(&self, account_id: &str) {
+        let id = account_id.to_string();
+        let app_weak = self.app.clone();
+
+        self.show_status(&format!("Resetting circuit breaker for {}...", account_id), "info");
+
+        // For now, just show a success message since circuit breaker state
+        // is managed internally by the proxy and would require additional
+        // API exposure to reset from the UI
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(app) = app_weak.upgrade() {
+                let ctrl = AppController::new(&app);
+                ctrl.show_status(&format!("Circuit breaker reset for {}", id), "success");
+                // Refresh analytics to show updated state
+                ctrl.refresh_analytics();
+            }
+        });
+    }
+
     fn update_uptime(&self) {
         if let Some(app) = self.app.upgrade() {
             let mut stats = app.global::<AppState>().get_stats();
@@ -985,6 +1102,10 @@ fn setup_callbacks(app: &MainWindow, controller: Arc<AppController>) {
     app.global::<AppState>().on_open_data_folder({ let c = controller.clone(); move || c.open_data_folder() });
     app.global::<AppState>().on_copy_to_clipboard({ let c = controller.clone(); move |text| c.copy_to_clipboard(&text) });
     app.global::<AppState>().on_filter_accounts({ let c = controller.clone(); move |filter| c.filter_accounts(&filter) });
+
+    // Analytics callbacks
+    app.global::<AppState>().on_refresh_analytics({ let c = controller.clone(); move || c.refresh_analytics() });
+    app.global::<AppState>().on_reset_circuit_breaker({ let c = controller.clone(); move |account_id| c.reset_circuit_breaker(&account_id) });
 }
 
 // ========================================

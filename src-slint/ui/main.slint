@@ -71,6 +71,42 @@ export struct RequestLog {
 }
 
 // ========================================
+// ANALYTICS DATA STRUCTURES
+// ========================================
+
+export struct AccountAnalytics {
+    account_id: string,
+    email: string,
+    tier: string,
+    requests_today: int,
+    requests_total: int,
+    success_count: int,
+    error_count: int,
+    success_rate: float,
+    tokens_used: int,
+    rate_limit_hits: int,
+    circuit_state: string, // "closed", "open", "half_open"
+    last_request_time: string,
+}
+
+export struct CircuitBreakerSummary {
+    closed_count: int,
+    open_count: int,
+    half_open_count: int,
+    total_trips: int,
+}
+
+export struct AnalyticsSummary {
+    total_requests_today: int,
+    total_requests_all_time: int,
+    overall_success_rate: float,
+    total_tokens_used: int,
+    active_accounts: int,
+    rate_limited_accounts: int,
+    circuit_breaker: CircuitBreakerSummary,
+}
+
+// ========================================
 // GLOBAL STATE
 // ========================================
 
@@ -138,6 +174,23 @@ export global AppState {
     // Monitor
     in-out property <[RequestLog]> request_logs: [];
     in-out property <bool> monitor_recording: true;
+
+    // Analytics
+    in-out property <[AccountAnalytics]> account_analytics: [];
+    in-out property <AnalyticsSummary> analytics_summary: {
+        total_requests_today: 0,
+        total_requests_all_time: 0,
+        overall_success_rate: 0.0,
+        total_tokens_used: 0,
+        active_accounts: 0,
+        rate_limited_accounts: 0,
+        circuit_breaker: {
+            closed_count: 0,
+            open_count: 0,
+            half_open_count: 0,
+            total_trips: 0,
+        },
+    };
     
     // UI State
     in-out property <int> current_page: 0;
@@ -177,6 +230,10 @@ export global AppState {
     callback open_data_folder();
     callback copy_to_clipboard(string);
     callback filter_accounts(string); // filter type: all, available, low_quota, pro, ultra, free
+
+    // Analytics callbacks
+    callback refresh_analytics();
+    callback reset_circuit_breaker(string); // account_id
 }
 
 // ========================================
@@ -671,6 +728,176 @@ component RequestLogRow inherits Rectangle {
     }
 }
 
+component CircuitBreakerBadge inherits Badge {
+    in property <string> state; // "closed", "open", "half_open"
+
+    text: state == "closed" ? "Closed" :
+          state == "open" ? "Open" : "Half-Open";
+    bg_color: state == "closed" ? Theme.success :
+              state == "open" ? Theme.error : Theme.warning;
+}
+
+component AccountAnalyticsRow inherits Rectangle {
+    in property <AccountAnalytics> analytics;
+
+    height: 80px;
+    background: touch.has-hover ? Palette.alternate-background.darker(0.05) : transparent;
+    border-radius: 8px;
+
+    HorizontalBox {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 16px;
+
+        // Account info
+        VerticalBox {
+            width: 200px;
+            spacing: 4px;
+
+            HorizontalBox {
+                spacing: 8px;
+                Text {
+                    text: analytics.email;
+                    font-size: 14px;
+                    font-weight: 500;
+                    color: Palette.foreground;
+                    overflow: elide;
+                }
+                TierBadge { tier: analytics.tier; }
+            }
+
+            Text {
+                text: analytics.last_request_time;
+                font-size: 11px;
+                color: Palette.foreground;
+                opacity: 0.5;
+            }
+        }
+
+        // Request stats
+        VerticalBox {
+            width: 100px;
+            spacing: 4px;
+
+            Text {
+                text: "Requests";
+                font-size: 11px;
+                color: Palette.foreground;
+                opacity: 0.6;
+            }
+            HorizontalBox {
+                spacing: 4px;
+                Text {
+                    text: "\{analytics.requests_today}";
+                    font-size: 18px;
+                    font-weight: 600;
+                    color: Theme.info;
+                }
+                Text {
+                    text: "today";
+                    font-size: 11px;
+                    color: Palette.foreground;
+                    opacity: 0.5;
+                    vertical-alignment: bottom;
+                }
+            }
+        }
+
+        // Success rate
+        VerticalBox {
+            width: 100px;
+            spacing: 4px;
+
+            Text {
+                text: "Success Rate";
+                font-size: 11px;
+                color: Palette.foreground;
+                opacity: 0.6;
+            }
+            Text {
+                text: "\{Math.round(analytics.success_rate * 100)}%";
+                font-size: 18px;
+                font-weight: 600;
+                color: analytics.success_rate > 0.9 ? Theme.success :
+                       analytics.success_rate > 0.7 ? Theme.warning : Theme.error;
+            }
+        }
+
+        // Tokens
+        VerticalBox {
+            width: 100px;
+            spacing: 4px;
+
+            Text {
+                text: "Tokens";
+                font-size: 11px;
+                color: Palette.foreground;
+                opacity: 0.6;
+            }
+            Text {
+                text: analytics.tokens_used > 1000000 ?
+                      "\{Math.round(analytics.tokens_used / 1000000)}M" :
+                      analytics.tokens_used > 1000 ?
+                      "\{Math.round(analytics.tokens_used / 1000)}K" :
+                      "\{analytics.tokens_used}";
+                font-size: 18px;
+                font-weight: 600;
+                color: Theme.accent;
+            }
+        }
+
+        // Rate limit hits
+        VerticalBox {
+            width: 80px;
+            spacing: 4px;
+
+            Text {
+                text: "Rate Limits";
+                font-size: 11px;
+                color: Palette.foreground;
+                opacity: 0.6;
+            }
+            Text {
+                text: "\{analytics.rate_limit_hits}";
+                font-size: 18px;
+                font-weight: 600;
+                color: analytics.rate_limit_hits > 0 ? Theme.warning : Theme.success;
+            }
+        }
+
+        // Circuit breaker
+        VerticalBox {
+            width: 100px;
+            spacing: 4px;
+
+            Text {
+                text: "Circuit";
+                font-size: 11px;
+                color: Palette.foreground;
+                opacity: 0.6;
+            }
+            CircuitBreakerBadge {
+                state: analytics.circuit_state;
+            }
+        }
+
+        // Actions
+        HorizontalBox {
+            spacing: 4px;
+
+            if analytics.circuit_state != "closed": IconButton {
+                icon: "🔄";
+                tooltip_text: "Reset Circuit Breaker";
+                clicked => { AppState.reset_circuit_breaker(analytics.account_id); }
+            }
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+    }
+}
+
 // ========================================
 // DIALOGS
 // ========================================
@@ -909,18 +1136,24 @@ component Sidebar inherits Rectangle {
             selected: AppState.current_page == 2;
             clicked => { AppState.current_page = 2; }
         }
-        NavButton { 
-            label: "Monitor"; 
+        NavButton {
+            label: "Monitor";
             icon: "📈";
             selected: AppState.current_page == 3;
             badge_count: AppState.request_logs.length;
             clicked => { AppState.current_page = 3; }
         }
-        NavButton { 
-            label: "Settings"; 
-            icon: "⚙️";
+        NavButton {
+            label: "Analytics";
+            icon: "📉";
             selected: AppState.current_page == 4;
             clicked => { AppState.current_page = 4; }
+        }
+        NavButton {
+            label: "Settings";
+            icon: "⚙️";
+            selected: AppState.current_page == 5;
+            clicked => { AppState.current_page = 5; }
         }
         
         Rectangle { vertical-stretch: 1; }
@@ -1743,6 +1976,213 @@ component SettingsPage inherits VerticalBox {
     Rectangle { vertical-stretch: 1; }
 }
 
+component AnalyticsPage inherits VerticalBox {
+    padding: 24px;
+    spacing: 24px;
+
+    // Header
+    HorizontalBox {
+        Text {
+            text: "Analytics";
+            font-size: 28px;
+            font-weight: 700;
+            color: Palette.foreground;
+            horizontal-stretch: 1;
+        }
+
+        Button {
+            text: "Refresh";
+            clicked => { AppState.refresh_analytics(); }
+        }
+    }
+
+    // Summary Stats Grid
+    HorizontalBox {
+        spacing: 16px;
+
+        StatCard {
+            title: "Requests Today";
+            value: "\{AppState.analytics_summary.total_requests_today}";
+            icon: "📊";
+            accent_color: Theme.info;
+        }
+        StatCard {
+            title: "All Time";
+            value: "\{AppState.analytics_summary.total_requests_all_time}";
+            icon: "📈";
+            accent_color: Theme.accent;
+        }
+        StatCard {
+            title: "Success Rate";
+            value: "\{Math.round(AppState.analytics_summary.overall_success_rate * 100)}";
+            suffix: "%";
+            icon: "✅";
+            accent_color: AppState.analytics_summary.overall_success_rate > 0.9 ? Theme.success :
+                          AppState.analytics_summary.overall_success_rate > 0.7 ? Theme.warning : Theme.error;
+        }
+        StatCard {
+            title: "Total Tokens";
+            value: AppState.analytics_summary.total_tokens_used > 1000000 ?
+                   "\{Math.round(AppState.analytics_summary.total_tokens_used / 1000000)}" :
+                   AppState.analytics_summary.total_tokens_used > 1000 ?
+                   "\{Math.round(AppState.analytics_summary.total_tokens_used / 1000)}" :
+                   "\{AppState.analytics_summary.total_tokens_used}";
+            suffix: AppState.analytics_summary.total_tokens_used > 1000000 ? "M" :
+                    AppState.analytics_summary.total_tokens_used > 1000 ? "K" : "";
+            icon: "🔤";
+            accent_color: Theme.accent;
+        }
+    }
+
+    // Circuit Breaker Summary
+    GroupBox {
+        title: "Circuit Breaker Status";
+
+        HorizontalBox {
+            padding: 16px;
+            spacing: 24px;
+
+            VerticalBox {
+                spacing: 4px;
+                Text {
+                    text: "Closed (Healthy)";
+                    font-size: 13px;
+                    color: Palette.foreground;
+                    opacity: 0.7;
+                }
+                HorizontalBox {
+                    spacing: 8px;
+                    Text {
+                        text: "\{AppState.analytics_summary.circuit_breaker.closed_count}";
+                        font-size: 28px;
+                        font-weight: 700;
+                        color: Theme.success;
+                    }
+                    Text {
+                        text: "accounts";
+                        font-size: 12px;
+                        color: Palette.foreground;
+                        opacity: 0.5;
+                        vertical-alignment: bottom;
+                    }
+                }
+            }
+
+            VerticalBox {
+                spacing: 4px;
+                Text {
+                    text: "Open (Failing)";
+                    font-size: 13px;
+                    color: Palette.foreground;
+                    opacity: 0.7;
+                }
+                HorizontalBox {
+                    spacing: 8px;
+                    Text {
+                        text: "\{AppState.analytics_summary.circuit_breaker.open_count}";
+                        font-size: 28px;
+                        font-weight: 700;
+                        color: Theme.error;
+                    }
+                    Text {
+                        text: "accounts";
+                        font-size: 12px;
+                        color: Palette.foreground;
+                        opacity: 0.5;
+                        vertical-alignment: bottom;
+                    }
+                }
+            }
+
+            VerticalBox {
+                spacing: 4px;
+                Text {
+                    text: "Half-Open (Testing)";
+                    font-size: 13px;
+                    color: Palette.foreground;
+                    opacity: 0.7;
+                }
+                HorizontalBox {
+                    spacing: 8px;
+                    Text {
+                        text: "\{AppState.analytics_summary.circuit_breaker.half_open_count}";
+                        font-size: 28px;
+                        font-weight: 700;
+                        color: Theme.warning;
+                    }
+                    Text {
+                        text: "accounts";
+                        font-size: 12px;
+                        color: Palette.foreground;
+                        opacity: 0.5;
+                        vertical-alignment: bottom;
+                    }
+                }
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            VerticalBox {
+                spacing: 4px;
+                Text {
+                    text: "Total Circuit Trips";
+                    font-size: 13px;
+                    color: Palette.foreground;
+                    opacity: 0.7;
+                }
+                Text {
+                    text: "\{AppState.analytics_summary.circuit_breaker.total_trips}";
+                    font-size: 28px;
+                    font-weight: 700;
+                    color: Theme.accent;
+                }
+            }
+        }
+    }
+
+    // Per-Account Analytics List
+    Rectangle {
+        vertical-stretch: 1;
+        border-radius: 12px;
+        background: Palette.alternate-background;
+        clip: true;
+
+        VerticalBox {
+            // Header
+            Rectangle {
+                height: 44px;
+                background: Palette.alternate-background.darker(0.1);
+
+                HorizontalBox {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 16px;
+
+                    Text { text: "Account"; font-size: 12px; font-weight: 600; color: Palette.foreground; opacity: 0.7; width: 200px; }
+                    Text { text: "Requests"; font-size: 12px; font-weight: 600; color: Palette.foreground; opacity: 0.7; width: 100px; }
+                    Text { text: "Success Rate"; font-size: 12px; font-weight: 600; color: Palette.foreground; opacity: 0.7; width: 100px; }
+                    Text { text: "Tokens"; font-size: 12px; font-weight: 600; color: Palette.foreground; opacity: 0.7; width: 100px; }
+                    Text { text: "Rate Limits"; font-size: 12px; font-weight: 600; color: Palette.foreground; opacity: 0.7; width: 80px; }
+                    Text { text: "Circuit"; font-size: 12px; font-weight: 600; color: Palette.foreground; opacity: 0.7; width: 100px; }
+                    Text { text: "Actions"; font-size: 12px; font-weight: 600; color: Palette.foreground; opacity: 0.7; horizontal-stretch: 1; }
+                }
+            }
+
+            // Rows
+            ScrollView {
+                VerticalBox {
+                    padding: 8px;
+                    spacing: 4px;
+
+                    for analytics in AppState.account_analytics: AccountAnalyticsRow {
+                        analytics: analytics;
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ========================================
 // MAIN WINDOW
 // ========================================
@@ -1764,12 +2204,13 @@ export component MainWindow inherits Window {
         
         Rectangle {
             horizontal-stretch: 1;
-            
+
             if AppState.current_page == 0: DashboardPage {}
             if AppState.current_page == 1: AccountsPage {}
             if AppState.current_page == 2: ApiProxyPage {}
             if AppState.current_page == 3: MonitorPage {}
-            if AppState.current_page == 4: SettingsPage {}
+            if AppState.current_page == 4: AnalyticsPage {}
+            if AppState.current_page == 5: SettingsPage {}
         }
     }
     
