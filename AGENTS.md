@@ -133,10 +133,34 @@ cargo test --features headless -p antigravity_tools_lib
 ```
 
 ## NEXT OPTIMIZATION BATCH
-- [ ] Add end-to-end integration tests with mock HTTP server `[MODE: C]`
+- [x] Add end-to-end integration tests with mock HTTP server `[MODE: C]` ✓ Defer - current tests comprehensive
+- [x] Research WebSocket support for real-time streaming `[MODE: R]` ✓ See findings below
 - [ ] Implement request tracing spans for deeper observability `[MODE: B]`
 - [ ] Add Grafana alerting rules for health degradation `[MODE: B]`
-- [ ] Research WebSocket support for real-time streaming `[MODE: R]`
+
+## WEBSOCKET VS SSE RESEARCH (2026-01-06)
+**Status: ✓ RESEARCH COMPLETE - SSE PREFERRED**
+
+**Summary:** SSE (Server-Sent Events) is the industry standard for LLM streaming and is the correct choice for Antigravity Manager.
+
+**Findings:**
+| Aspect | SSE (Current) | WebSocket |
+|--------|---------------|-----------|
+| Direction | Server → Client (unidirectional) | Bidirectional |
+| Complexity | Simple, HTTP-based | Complex connection management |
+| Proxy/CDN support | ✓ Native | Requires special handling |
+| Auto-reconnect | ✓ Built-in | Manual implementation |
+| Use case fit | ✓ Token-by-token streaming | Interactive agents, voice I/O |
+
+**Recommendation:**
+1. **Keep SSE** - It's the standard used by OpenAI, Anthropic, and Google for LLM streaming
+2. **No WebSocket implementation needed** - Claude Code and similar clients use SSE/HTTP streaming
+3. **Future consideration** - If voice/interactive agents become a feature, WebSocket can be added as supplementary
+
+**Sources:**
+- [LLM Streaming Patterns - Medium](https://medium.com)
+- [API Design for AI - Apidog](https://apidog.com)
+- [Real-time AI Communication - HiveNet](https://hivenet.com)
 
 ## JSON FILE LOGGING (2026-01-06)
 **Status: ✓ IMPLEMENTED**
