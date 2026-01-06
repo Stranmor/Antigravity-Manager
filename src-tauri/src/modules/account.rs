@@ -173,7 +173,7 @@ pub fn add_account(email: String, name: Option<String>, token: TokenData) -> Res
     // 创建新账号
     let account_id = Uuid::new_v4().to_string();
     let mut account = Account::new(account_id.clone(), email.clone(), token);
-    account.name = name.clone();
+    account.name.clone_from(&name);
 
     // 保存账号数据
     save_account(&account)?;
@@ -214,7 +214,7 @@ pub fn upsert_account(email: String, name: Option<String>, token: TokenData) -> 
                 let old_access_token = account.token.access_token.clone();
                 let old_refresh_token = account.token.refresh_token.clone();
                 account.token = token;
-                account.name = name.clone();
+                account.name.clone_from(&name);
                 // If an account was previously disabled (e.g. invalid_grant), any explicit token upsert
                 // should re-enable it (user manually updated credentials in the UI).
                 if account.disabled
@@ -240,7 +240,7 @@ pub fn upsert_account(email: String, name: Option<String>, token: TokenData) -> 
                 crate::modules::logger::log_warn(&format!("Account {account_id} file missing ({e}), recreating..."));
                 // 索引存在但文件丢失，重新创建
                 let mut account = Account::new(account_id.clone(), email.clone(), token);
-                account.name = name.clone();
+                account.name.clone_from(&name);
                 save_account(&account)?;
 
                 // 同步更新索引中的 name
@@ -510,7 +510,7 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
             account.name.clone()
         };
 
-        account.name = name.clone();
+        account.name.clone_from(&name);
         upsert_account(account.email.clone(), name, token.clone()).map_err(AppError::Account)?;
     }
 
@@ -522,7 +522,7 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
             Ok(user_info) => {
                 let display_name = user_info.get_display_name();
                 modules::logger::log_info(&format!("成功获取用户名: {display_name:?}"));
-                account.name = display_name.clone();
+                account.name.clone_from(&display_name);
                 // 立即保存
                 if let Err(e) = upsert_account(account.email.clone(), display_name, account.token.clone()) {
                      modules::logger::log_warn(&format!("保存用户名失败: {e}"));
@@ -538,10 +538,10 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
     let result: crate::error::AppResult<(QuotaData, Option<String>)> = modules::fetch_quota(&account.token.access_token, &account.email).await;
 
     // 捕获可能更新的 project_id 并保存
-    if let Ok((ref _q, ref project_id)) = result {
+    if let Ok((_, ref project_id)) = result {
         if project_id.is_some() && *project_id != account.token.project_id {
             modules::logger::log_info(&format!("检测到 project_id 更新 ({}), 正在保存...", account.email));
-            account.token.project_id = project_id.clone();
+            account.token.project_id.clone_from(project_id);
             if let Err(e) = upsert_account(account.email.clone(), account.name.clone(), account.token.clone()) {
                 modules::logger::log_warn(&format!("同步保存 project_id 失败: {e}"));
             }
@@ -590,19 +590,19 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
                 } else {
                     account.name.clone()
                 };
-                
+
                 account.token = new_token.clone();
-                account.name = name.clone();
+                account.name.clone_from(&name);
                 upsert_account(account.email.clone(), name, new_token.clone()).map_err(AppError::Account)?;
                 
                 // 重试查询
                 let retry_result: crate::error::AppResult<(QuotaData, Option<String>)> = modules::fetch_quota(&new_token.access_token, &account.email).await;
                 
                 // 同样处理重试时的 project_id 保存
-                if let Ok((ref _q, ref project_id)) = retry_result {
+                if let Ok((_, ref project_id)) = retry_result {
                     if project_id.is_some() && *project_id != account.token.project_id {
                         modules::logger::log_info(&format!("检测到重试后 project_id 更新 ({}), 正在保存...", account.email));
-                        account.token.project_id = project_id.clone();
+                        account.token.project_id.clone_from(project_id);
                         let _ = upsert_account(account.email.clone(), account.name.clone(), account.token.clone());
                     }
                 }

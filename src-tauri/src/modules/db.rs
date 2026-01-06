@@ -111,5 +111,5 @@ pub fn inject_token(
     )
     .map_err(|e| format!("写入 Onboarding 标记失败: {e}"))?;
 
-    Ok(format!("Token 注入成功！\n数据库: {db_path:?}"))
+    Ok(format!("Token 注入成功！\n数据库: {}", db_path.display()))
 }

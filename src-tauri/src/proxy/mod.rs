@@ -24,6 +24,9 @@ pub mod sticky_config;     // 粘性调度配置
 pub mod session_manager;   // 会话指纹管理
 pub mod health;            // 账号健康监控 (auto-disable/recovery)
 
+#[cfg(test)]
+mod tests;
+
 
 pub use config::ProxyConfig;
 pub use config::ProxyAuthMode;

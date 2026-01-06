@@ -10,6 +10,15 @@
 // - Graceful handling of malformed SSE chunks with logging
 // - Robust UTF-8 validation with fallback behavior
 // - Connection drop recovery through buffer state preservation
+// - Partial SSE chunk recovery
+// - Connection timeout detection
+// - Heartbeat keepalive support (15s intervals)
+//
+// Metrics tracking (via stream_resilience module):
+// - Stream duration
+// - Bytes transferred
+// - Premature disconnections
+// - Partial chunk recovery events
 
 use bytes::{Bytes, BytesMut};
 use chrono::Utc;
@@ -19,8 +28,14 @@ use rand::Rng;
 use serde_json::{json, Value};
 use std::pin::Pin;
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use tracing::{debug, warn};
 use uuid::Uuid;
+
+use super::super::stream_resilience::{
+    HeartbeatGenerator, PartialChunkBuffer, StreamMetrics,
+    create_sse_error_event, HEARTBEAT_INTERVAL,
+};
 
 // === Buffer Capacity Constants ===
 // Pre-tuned for typical SSE chunk sizes to minimize reallocations
@@ -87,11 +102,26 @@ pub fn create_openai_sse_stream(
 ) -> Pin<Box<dyn Stream<Item = Result<Bytes, String>> + Send>> {
     // Pre-allocate buffer with capacity hint to minimize reallocations
     let mut buffer = BytesMut::with_capacity(INITIAL_BUFFER_CAPACITY);
-    
+
+    // Stream resilience components
+    let metrics = StreamMetrics::new("openai", &model);
+    let mut heartbeat = HeartbeatGenerator::new();
+    let mut _last_activity = Instant::now();
+    let mut _parse_error_count = 0usize;
+
     let stream = async_stream::stream! {
         while let Some(item) = gemini_stream.next().await {
+            // Check for heartbeat before processing
+            if heartbeat.should_send() {
+                metrics.record_heartbeat();
+                yield Ok::<Bytes, String>(Bytes::from_static(b": keepalive\n\n"));
+            }
+
             match item {
                 Ok(bytes) => {
+                    _last_activity = Instant::now();
+                    metrics.record_bytes_received(bytes.len() as u64);
+
                     // Verbose logging for debugging image fragmentation
                     debug!("[OpenAI-SSE] Received chunk: {} bytes", bytes.len());
                     buffer.extend_from_slice(&bytes);

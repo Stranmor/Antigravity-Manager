@@ -6,3 +6,4 @@ pub mod common_utils;
 pub mod gemini;
 pub mod openai;
 pub mod signature_store;
+pub mod stream_resilience;

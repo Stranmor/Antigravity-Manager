@@ -229,11 +229,10 @@ pub fn cancel_oauth_flow() {
 
 /// 启动 OAuth 流程并等待回调，再交换 token
 pub async fn start_oauth_flow(app_handle: tauri::AppHandle) -> Result<oauth::TokenResponse, String> {
+    use tauri_plugin_opener::OpenerExt;
+
     // 确保已准备好 URL + listener（这样即使用户先授权，也不会卡住）
     let auth_url = ensure_oauth_flow_prepared(&app_handle).await?;
-
-    // 打开默认浏览器
-    use tauri_plugin_opener::OpenerExt;
     app_handle
         .opener()
         .open_url(&auth_url, None::<String>)

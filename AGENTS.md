@@ -19,9 +19,10 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Improve SSE streaming error handling and tests `[MODE: B]` (b016767)
 - [x] Add request tracing with unique IDs for debugging `[MODE: B]` (4a6511d) ✓ Already implemented
 
-## NEXT BATCH (Proposed)
-- [ ] Add Grafana dashboard template for Prometheus metrics `[MODE: B]`
-- [ ] Implement account health monitoring (auto-disable on errors) `[MODE: B]`
+## NEXT BATCH (In Progress)
+- [x] Add Grafana dashboard template for Prometheus metrics `[MODE: B]` (e39bfc5)
+- [ ] Implement account health monitoring (auto-disable on errors) `[MODE: B]` 🔄 Agent working
+- [ ] Improve proxy error handling with request IDs `[MODE: B]` 🔄 Agent working
 - [ ] Create CLI tool for account import from desktop app `[MODE: B]`
 
 ## ADMIN API TEST RESULTS (2026-01-06)

@@ -74,9 +74,7 @@ pub async fn import_from_v1() -> Result<Vec<Account>, String> {
             let data_file_str = acc_info.get("data_file").and_then(|v| v.as_str());
             
             // 优先使用 backup_file, 其次 data_file
-            let target_file = backup_file_str.or(data_file_str);
-            
-            let target_file = if let Some(path) = target_file { path } else {
+            let Some(target_file) = backup_file_str.or(data_file_str) else {
                 crate::modules::logger::log_warn(&format!("账号 {id} ({email_placeholder}) 缺少数据文件路径"));
                 continue;
             };

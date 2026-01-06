@@ -290,8 +290,6 @@ fn join_base_url(base: &str, path: &str) -> String {
 }
 
 fn extract_model_ids(value: &serde_json::Value) -> Vec<String> {
-    let mut out = Vec::new();
-
     fn push_from_item(out: &mut Vec<String>, item: &serde_json::Value) {
         match item {
             serde_json::Value::String(s) => out.push(s.clone()),
@@ -305,6 +303,8 @@ fn extract_model_ids(value: &serde_json::Value) -> Vec<String> {
             _ => {}
         }
     }
+
+    let mut out = Vec::new();
 
     match value {
         serde_json::Value::Array(arr) => {

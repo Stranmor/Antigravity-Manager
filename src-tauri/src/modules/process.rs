@@ -227,7 +227,7 @@ fn get_antigravity_pids() -> Vec<u32> {
             }
         }
 
-        let _name = process.name().to_string_lossy().to_lowercase();
+        let name = process.name().to_string_lossy().to_lowercase();
 
         #[cfg(target_os = "linux")]
         {
@@ -236,7 +236,7 @@ fn get_antigravity_pids() -> Vec<u32> {
                 continue;
             }
             // 2. 额外保护：如果名字包含 "tools" 且不是子进程，很有可能是管理器本身
-            if _name.contains("tools") {
+            if name.contains("tools") {
                 continue;
             }
         }
@@ -264,14 +264,14 @@ fn get_antigravity_pids() -> Vec<u32> {
                             let is_helper_by_args = args
                                 .iter()
                                 .any(|arg| arg.to_string_lossy().contains("--type="));
-                            let is_helper_by_name = _name.contains("helper")
-                                || _name.contains("plugin")
-                                || _name.contains("renderer")
-                                || _name.contains("gpu")
-                                || _name.contains("crashpad")
-                                || _name.contains("utility")
-                                || _name.contains("audio")
-                                || _name.contains("sandbox");
+                            let is_helper_by_name = name.contains("helper")
+                                || name.contains("plugin")
+                                || name.contains("renderer")
+                                || name.contains("gpu")
+                                || name.contains("crashpad")
+                                || name.contains("utility")
+                                || name.contains("audio")
+                                || name.contains("sandbox");
                             if !is_helper_by_args && !is_helper_by_name {
                                 pids.push(pid_u32);
                                 continue;
@@ -304,14 +304,14 @@ fn get_antigravity_pids() -> Vec<u32> {
             .join(" ");
 
         let is_helper = args_str.contains("--type=")
-            || _name.contains("helper")
-            || _name.contains("plugin")
-            || _name.contains("renderer")
-            || _name.contains("gpu")
-            || _name.contains("crashpad")
-            || _name.contains("utility")
-            || _name.contains("audio")
-            || _name.contains("sandbox")
+            || name.contains("helper")
+            || name.contains("plugin")
+            || name.contains("renderer")
+            || name.contains("gpu")
+            || name.contains("crashpad")
+            || name.contains("utility")
+            || name.contains("audio")
+            || name.contains("sandbox")
             || exe_path.contains("crashpad");
 
         #[cfg(target_os = "macos")]

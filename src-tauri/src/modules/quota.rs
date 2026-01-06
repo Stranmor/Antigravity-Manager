@@ -40,7 +40,7 @@ struct Tier {
     id: Option<String>,
     #[allow(dead_code)]
     #[serde(rename = "quotaTier")]
-    quota_tier: Option<String>,
+    tier_quota: Option<String>,
     #[allow(dead_code)]
     name: Option<String>,
     #[allow(dead_code)]
@@ -155,10 +155,9 @@ pub async fn fetch_quota_inner(access_token: &str, email: &str) -> crate::error:
                          last_error = Some(AppError::Unknown(format!("HTTP {status} - {text}")));
                          tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                          continue;
-                    } else {
-                         let text = response.text().await.unwrap_or_default();
-                         return Err(AppError::Unknown(format!("API 错误: {status} - {text}")));
                     }
+                    let text = response.text().await.unwrap_or_default();
+                    return Err(AppError::Unknown(format!("API 错误: {status} - {text}")));
                 }
 
                 let quota_response: QuotaResponse = response

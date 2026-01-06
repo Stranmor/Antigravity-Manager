@@ -71,7 +71,7 @@ pub fn init_logger() {
 
     // 泄漏 _guard 以确保其生命周期持续到程序退出
     // 这是使用 tracing_appender::non_blocking 时的推荐做法（如果不需要手动刷盘）
-    std::mem::forget(_guard);
+    let _ = Box::leak(Box::new(_guard));
     
     info!("日志系统已完成初始化 (终端控制台 + 文件持久化)");
 }
