@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { ArrowRightLeft, RefreshCw, Trash2, Download, Info, Lock, Ban, Diamond, Gem, Circle, Clock, ToggleLeft, ToggleRight } from 'lucide-react';
 import { Account } from '../../types/account';
 import { getQuotaColor, formatTimeRemaining, getTimeRemainingColor } from '../../utils/format';
@@ -22,10 +23,21 @@ interface AccountCardProps {
 
 function AccountCard({ account, selected, onSelect, isCurrent, isRefreshing, isSwitching = false, onSwitch, onRefresh, onViewDetails, onExport, onDelete, onToggleProxy }: AccountCardProps) {
     const { t } = useTranslation();
-    const geminiProModel = account.quota?.models.find(m => m.name === 'gemini-3-pro-high');
-    const geminiFlashModel = account.quota?.models.find(m => m.name === 'gemini-3-flash');
-    const geminiImageModel = account.quota?.models.find(m => m.name === 'gemini-3-pro-image');
-    const claudeModel = account.quota?.models.find(m => m.name === 'claude-sonnet-4-5-thinking');
+    
+    const quotaData = useMemo(() => {
+        if (!account.quota) return null;
+        return {
+            geminiPro: account.quota.models.find(m => m.name === 'gemini-3-pro-high'),
+            geminiFlash: account.quota.models.find(m => m.name === 'gemini-3-flash'),
+            geminiImage: account.quota.models.find(m => m.name === 'gemini-3-pro-image'),
+            claude: account.quota.models.find(m => m.name === 'claude-sonnet-4-5-thinking'),
+        };
+    }, [account.quota]);
+    
+    const geminiProModel = quotaData?.geminiPro;
+    const geminiFlashModel = quotaData?.geminiFlash;
+    const geminiImageModel = quotaData?.geminiImage;
+    const claudeModel = quotaData?.claude;
     const isDisabled = Boolean(account.disabled);
 
     const getColorClass = (percentage: number) => {
@@ -323,4 +335,4 @@ function AccountCard({ account, selected, onSelect, isCurrent, isRefreshing, isS
     );
 }
 
-export default AccountCard;
+export default memo(AccountCard);

@@ -1,3 +1,4 @@
+import { memo, useCallback } from 'react';
 import { Account } from '../../types/account';
 import AccountCard from './AccountCard';
 
@@ -18,6 +19,14 @@ interface AccountGridProps {
 
 
 function AccountGrid({ accounts, selectedIds, refreshingIds, onToggleSelect, currentAccountId, switchingAccountId, onSwitch, onRefresh, onViewDetails, onExport, onDelete, onToggleProxy }: AccountGridProps) {
+    const createSelectHandler = useCallback((id: string) => () => { onToggleSelect(id); }, [onToggleSelect]);
+    const createSwitchHandler = useCallback((id: string) => () => { onSwitch(id); }, [onSwitch]);
+    const createRefreshHandler = useCallback((id: string) => () => { onRefresh(id); }, [onRefresh]);
+    const createDetailsHandler = useCallback((id: string) => () => { onViewDetails(id); }, [onViewDetails]);
+    const createExportHandler = useCallback((id: string) => () => { onExport(id); }, [onExport]);
+    const createDeleteHandler = useCallback((id: string) => () => { onDelete(id); }, [onDelete]);
+    const createProxyHandler = useCallback((id: string) => () => { onToggleProxy(id); }, [onToggleProxy]);
+    
     if (accounts.length === 0) {
         return (
             <div className="bg-white dark:bg-base-100 rounded-2xl p-12 shadow-sm border border-gray-100 dark:border-base-200 text-center">
@@ -35,19 +44,19 @@ function AccountGrid({ accounts, selectedIds, refreshingIds, onToggleSelect, cur
                     account={account}
                     selected={selectedIds.has(account.id)}
                     isRefreshing={refreshingIds.has(account.id)}
-                    onSelect={() => { onToggleSelect(account.id); }}
+                    onSelect={createSelectHandler(account.id)}
                     isCurrent={account.id === currentAccountId}
                     isSwitching={account.id === switchingAccountId}
-                    onSwitch={() => { onSwitch(account.id); }}
-                    onRefresh={() => { onRefresh(account.id); }}
-                    onViewDetails={() => { onViewDetails(account.id); }}
-                    onExport={() => { onExport(account.id); }}
-                    onDelete={() => { onDelete(account.id); }}
-                    onToggleProxy={() => { onToggleProxy(account.id); }}
+                    onSwitch={createSwitchHandler(account.id)}
+                    onRefresh={createRefreshHandler(account.id)}
+                    onViewDetails={createDetailsHandler(account.id)}
+                    onExport={createExportHandler(account.id)}
+                    onDelete={createDeleteHandler(account.id)}
+                    onToggleProxy={createProxyHandler(account.id)}
                 />
             ))}
         </div>
     );
 }
 
-export default AccountGrid;
+export default memo(AccountGrid);

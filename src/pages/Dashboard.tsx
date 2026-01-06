@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Users, Sparkles, Bot, AlertTriangle, ArrowRight, Download, RefreshCw } from 'lucide-react';
-import { useAccountStore } from '../stores/useAccountStore';
+import { useAccounts, useCurrentAccount, useAccountLoading, useAccountActions } from '../stores/useAccountStore';
 import CurrentAccount from '../components/dashboard/CurrentAccount';
 import BestAccounts from '../components/dashboard/BestAccounts';
 import AddAccountDialog from '../components/accounts/AddAccountDialog';
@@ -14,16 +14,11 @@ import { Account } from '../types/account';
 function Dashboard() {
     const { t } = useTranslation();
     const navigate = useNavigate();
-    const {
-        accounts,
-        currentAccount,
-        fetchAccounts,
-        fetchCurrentAccount,
-        switchAccount,
-        addAccount,
-        refreshQuota,
-        loading
-    } = useAccountStore();
+    
+    const accounts = useAccounts();
+    const currentAccount = useCurrentAccount();
+    const loading = useAccountLoading();
+    const { fetchAccounts, fetchCurrentAccount, switchAccount, addAccount, refreshQuota } = useAccountActions();
 
     useEffect(() => {
         void fetchAccounts();

@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { Outlet } from 'react-router-dom';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import Navbar from './Navbar';
@@ -5,6 +6,10 @@ import BackgroundTaskRunner from '../common/BackgroundTaskRunner';
 import ToastContainer from '../common/ToastContainer';
 
 function Layout() {
+    const handleDragStart = useCallback(() => {
+        void getCurrentWindow().startDragging();
+    }, []);
+
     return (
         <div className="h-screen flex flex-col bg-[#FAFBFC] dark:bg-base-300">
             {/* 全局窗口拖拽区域 - 使用 JS 手动触发拖拽，解决 HTML 属性失效问题 */}
@@ -18,9 +23,7 @@ function Layout() {
                     WebkitUserSelect: 'none'
                 }}
                 data-tauri-drag-region
-                onMouseDown={() => {
-                    void getCurrentWindow().startDragging();
-                }}
+                onMouseDown={handleDragStart}
             />
             <BackgroundTaskRunner />
             <ToastContainer />

@@ -1,19 +1,21 @@
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { useConfigStore } from '../../stores/useConfigStore';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
 export default function ThemeManager() {
     const { config, loadConfig } = useConfigStore();
+    const windowShownRef = useRef(false);
 
-    // Load config on mount
     useEffect(() => {
         const init = async () => {
             await loadConfig();
-            // Show window after a short delay to ensure React has painted
-            setTimeout(() => {
-                void getCurrentWindow().show();
-            }, 100);
+            if (!windowShownRef.current) {
+                windowShownRef.current = true;
+                setTimeout(() => {
+                    void getCurrentWindow().show();
+                }, 100);
+            }
         };
         void init();
     }, [loadConfig]);

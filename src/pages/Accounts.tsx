@@ -3,8 +3,8 @@ import { save } from '@tauri-apps/plugin-dialog';
 import { request as invoke } from '../utils/request';
 import { join } from '@tauri-apps/api/path';
 import { Search, RefreshCw, Download, Trash2, LayoutGrid, List, ToggleLeft, ToggleRight } from 'lucide-react';
-import { useAccountStore } from '../stores/useAccountStore';
-import { useConfigStore } from '../stores/useConfigStore';
+import { useAccounts, useCurrentAccount, useAccountLoading, useAccountActions, useAccountStore } from '../stores/useAccountStore';
+import { useConfig } from '../stores/useConfigStore';
 import AccountTable from '../components/accounts/AccountTable';
 import AccountGrid from '../components/accounts/AccountGrid';
 import AccountDetailsDialog from '../components/accounts/AccountDetailsDialog';
@@ -22,20 +22,21 @@ import { useTranslation } from 'react-i18next';
 
 function Accounts() {
     const { t } = useTranslation();
+    
+    const accounts = useAccounts();
+    const currentAccount = useCurrentAccount();
+    const loading = useAccountLoading();
     const {
-        accounts,
-        currentAccount,
         fetchAccounts,
         addAccount,
         deleteAccount,
         deleteAccounts,
         switchAccount,
-        loading,
         refreshQuota,
         toggleProxyStatus,
         reorderAccounts,
-    } = useAccountStore();
-    const { config } = useConfigStore();
+    } = useAccountActions();
+    const config = useConfig();
 
     const [searchQuery, setSearchQuery] = useState('');
     const [filter, setFilter] = useState<FilterType>('all');
@@ -52,16 +53,25 @@ function Accounts() {
 
     useEffect(() => {
         if (!containerRef.current) return;
+        
+        let rafId: number;
         const resizeObserver = new ResizeObserver((entries) => {
-            for (const entry of entries) {
-                setContainerSize({
-                    width: entry.contentRect.width,
-                    height: entry.contentRect.height
-                });
-            }
+            cancelAnimationFrame(rafId);
+            rafId = requestAnimationFrame(() => {
+                for (const entry of entries) {
+                    setContainerSize({
+                        width: entry.contentRect.width,
+                        height: entry.contentRect.height
+                    });
+                }
+            });
         });
+        
         resizeObserver.observe(containerRef.current);
-        return () => { resizeObserver.disconnect(); };
+        return () => {
+            cancelAnimationFrame(rafId);
+            resizeObserver.disconnect();
+        };
     }, []);
 
     // Pagination State
