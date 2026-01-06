@@ -234,6 +234,7 @@ export global AppState {
     // Analytics callbacks
     callback refresh_analytics();
     callback reset_circuit_breaker(string); // account_id
+    callback export_analytics(string) -> bool; // format: "csv" | "json" | "txt"
 }
 
 // ========================================
@@ -1977,6 +1978,8 @@ component SettingsPage inherits VerticalBox {
 }
 
 component AnalyticsPage inherits VerticalBox {
+    in-out property <int> export_format_index: 0; // 0=CSV, 1=JSON, 2=Text
+
     padding: 24px;
     spacing: 24px;
 
@@ -1988,6 +1991,29 @@ component AnalyticsPage inherits VerticalBox {
             font-weight: 700;
             color: Palette.foreground;
             horizontal-stretch: 1;
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+
+            ComboBox {
+                width: 100px;
+                model: ["CSV", "JSON", "Text"];
+                current-index <=> export_format_index;
+            }
+
+            Button {
+                text: "Export";
+                clicked => {
+                    if export_format_index == 0 {
+                        AppState.export_analytics("csv");
+                    } else if export_format_index == 1 {
+                        AppState.export_analytics("json");
+                    } else {
+                        AppState.export_analytics("txt");
+                    }
+                }
+            }
         }
 
         Button {

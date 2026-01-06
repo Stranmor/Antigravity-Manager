@@ -6,8 +6,59 @@ use antigravity_tools_lib::proxy::{AxumServer, TokenManager, ProxySecurityConfig
 use antigravity_tools_lib::proxy::monitor::ProxyMonitor;
 use tray_icon::{TrayIconBuilder, menu::{Menu, MenuItem, PredefinedMenuItem}};
 use tokio::sync::RwLock;
+use serde::Serialize;
 
 slint::include_modules!();
+
+// ========================================
+// EXPORT DATA STRUCTURES
+// ========================================
+
+/// Serializable export data for analytics reports
+#[derive(Debug, Clone, Serialize)]
+struct AnalyticsExportData {
+    /// Export metadata
+    pub export_timestamp: String,
+    pub export_format: String,
+
+    /// Summary statistics
+    pub summary: ExportSummary,
+
+    /// Per-account analytics
+    pub accounts: Vec<ExportAccountAnalytics>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ExportSummary {
+    pub total_requests_today: i32,
+    pub total_requests_all_time: i32,
+    pub overall_success_rate: f32,
+    pub total_tokens_used: i32,
+    pub active_accounts: i32,
+    pub rate_limited_accounts: i32,
+
+    /// Circuit breaker summary
+    pub circuit_breaker_closed: i32,
+    pub circuit_breaker_open: i32,
+    pub circuit_breaker_half_open: i32,
+    pub circuit_breaker_total_trips: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ExportAccountAnalytics {
+    pub account_id: String,
+    pub email: String,
+    pub tier: String,
+    pub requests_today: i32,
+    pub requests_total: i32,
+    pub success_count: i32,
+    pub error_count: i32,
+    pub success_rate: f32,
+    pub tokens_used: i32,
+    pub rate_limit_hits: i32,
+    pub circuit_state: String,
+    pub last_request_time: String,
+}
 
 /// Throttled stats cache for UI updates.
 /// Uses atomics for lock-free access from async context.
@@ -986,6 +1037,146 @@ impl AppController {
         });
     }
 
+    fn export_analytics(&self, format: &str) -> bool {
+        let format_str = format.to_string();
+        let app_weak = self.app.clone();
+
+        self.show_status(&format!("Preparing {} export...", format.to_uppercase()), "info");
+
+        // Collect current analytics data from UI state
+        if let Some(app) = self.app.upgrade() {
+            let summary = app.global::<AppState>().get_analytics_summary();
+            let account_analytics: Vec<AccountAnalytics> = app.global::<AppState>()
+                .get_account_analytics()
+                .iter()
+                .collect();
+
+            // Convert to export format
+            let export_data = AnalyticsExportData {
+                export_timestamp: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                export_format: format_str.clone(),
+                summary: ExportSummary {
+                    total_requests_today: summary.total_requests_today,
+                    total_requests_all_time: summary.total_requests_all_time,
+                    overall_success_rate: summary.overall_success_rate,
+                    total_tokens_used: summary.total_tokens_used,
+                    active_accounts: summary.active_accounts,
+                    rate_limited_accounts: summary.rate_limited_accounts,
+                    circuit_breaker_closed: summary.circuit_breaker.closed_count,
+                    circuit_breaker_open: summary.circuit_breaker.open_count,
+                    circuit_breaker_half_open: summary.circuit_breaker.half_open_count,
+                    circuit_breaker_total_trips: summary.circuit_breaker.total_trips,
+                },
+                accounts: account_analytics.iter().map(|a| ExportAccountAnalytics {
+                    account_id: a.account_id.to_string(),
+                    email: a.email.to_string(),
+                    tier: a.tier.to_string(),
+                    requests_today: a.requests_today,
+                    requests_total: a.requests_total,
+                    success_count: a.success_count,
+                    error_count: a.error_count,
+                    success_rate: a.success_rate,
+                    tokens_used: a.tokens_used,
+                    rate_limit_hits: a.rate_limit_hits,
+                    circuit_state: a.circuit_state.to_string(),
+                    last_request_time: a.last_request_time.to_string(),
+                }).collect(),
+            };
+
+            // Spawn file dialog and export in async context
+            let format_for_export = format_str.clone();
+            tokio::spawn(async move {
+                let (extension, filter_name) = match format_for_export.as_str() {
+                    "csv" => ("csv", "CSV Files"),
+                    "json" => ("json", "JSON Files"),
+                    "txt" => ("txt", "Text Files"),
+                    _ => ("txt", "Text Files"),
+                };
+
+                let default_filename = format!(
+                    "antigravity_analytics_{}.{}",
+                    chrono::Local::now().format("%Y%m%d_%H%M%S"),
+                    extension
+                );
+
+                // Open file save dialog
+                let file_handle = rfd::AsyncFileDialog::new()
+                    .set_title("Export Analytics Report")
+                    .set_file_name(&default_filename)
+                    .add_filter(filter_name, &[extension])
+                    .save_file()
+                    .await;
+
+                if let Some(file) = file_handle {
+                    let path = file.path().to_path_buf();
+
+                    // Generate content based on format
+                    let content_result = match format_for_export.as_str() {
+                        "csv" => generate_csv_export(&export_data),
+                        "json" => generate_json_export(&export_data),
+                        "txt" => Ok(generate_text_export(&export_data)),
+                        _ => Ok(generate_text_export(&export_data)),
+                    };
+
+                    match content_result {
+                        Ok(content) => {
+                            match std::fs::write(&path, content) {
+                                Ok(_) => {
+                                    let path_str = path.to_string_lossy().to_string();
+                                    let _ = slint::invoke_from_event_loop(move || {
+                                        if let Some(app) = app_weak.upgrade() {
+                                            let ctrl = AppController::new(&app);
+                                            ctrl.show_status(
+                                                &format!("Export saved: {}", path_str),
+                                                "success"
+                                            );
+                                        }
+                                    });
+                                }
+                                Err(e) => {
+                                    let err_msg = e.to_string();
+                                    let _ = slint::invoke_from_event_loop(move || {
+                                        if let Some(app) = app_weak.upgrade() {
+                                            let ctrl = AppController::new(&app);
+                                            ctrl.show_status(
+                                                &format!("Export failed: {}", err_msg),
+                                                "error"
+                                            );
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            let err_msg = e.to_string();
+                            let _ = slint::invoke_from_event_loop(move || {
+                                if let Some(app) = app_weak.upgrade() {
+                                    let ctrl = AppController::new(&app);
+                                    ctrl.show_status(
+                                        &format!("Export generation failed: {}", err_msg),
+                                        "error"
+                                    );
+                                }
+                            });
+                        }
+                    }
+                } else {
+                    // User cancelled the dialog
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(app) = app_weak.upgrade() {
+                            let ctrl = AppController::new(&app);
+                            ctrl.show_status("Export cancelled", "info");
+                        }
+                    });
+                }
+            });
+
+            return true;
+        }
+
+        false
+    }
+
     fn update_uptime(&self) {
         if let Some(app) = self.app.upgrade() {
             let mut stats = app.global::<AppState>().get_stats();
@@ -998,12 +1189,152 @@ impl AppController {
 fn format_relative_time(timestamp: i64) -> String {
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
     let diff = now - timestamp;
-    
+
     if diff < 0 { "just now".into() }
     else if diff < 60 { format!("{}s ago", diff) }
     else if diff < 3600 { format!("{}m ago", diff / 60) }
     else if diff < 86400 { format!("{}h ago", diff / 3600) }
     else { format!("{}d ago", diff / 86400) }
+}
+
+// ========================================
+// EXPORT GENERATION FUNCTIONS
+// ========================================
+
+/// Generate CSV export with summary header and per-account rows
+fn generate_csv_export(data: &AnalyticsExportData) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let mut wtr = csv::Writer::from_writer(vec![]);
+
+    // Write metadata comment as first row
+    wtr.write_record(&[
+        "# Antigravity Analytics Export",
+        &data.export_timestamp,
+        &format!("Format: {}", data.export_format),
+    ])?;
+
+    // Write summary section header
+    wtr.write_record(&["# Summary Statistics", "", ""])?;
+    wtr.write_record(&["Metric", "Value", ""])?;
+    wtr.write_record(&["Total Requests Today", &data.summary.total_requests_today.to_string(), ""])?;
+    wtr.write_record(&["Total Requests All Time", &data.summary.total_requests_all_time.to_string(), ""])?;
+    wtr.write_record(&["Overall Success Rate", &format!("{:.2}%", data.summary.overall_success_rate * 100.0), ""])?;
+    wtr.write_record(&["Total Tokens Used", &data.summary.total_tokens_used.to_string(), ""])?;
+    wtr.write_record(&["Active Accounts", &data.summary.active_accounts.to_string(), ""])?;
+    wtr.write_record(&["Rate Limited Accounts", &data.summary.rate_limited_accounts.to_string(), ""])?;
+
+    // Circuit breaker summary
+    wtr.write_record(&["# Circuit Breaker Status", "", ""])?;
+    wtr.write_record(&["Closed (Healthy)", &data.summary.circuit_breaker_closed.to_string(), ""])?;
+    wtr.write_record(&["Open (Failing)", &data.summary.circuit_breaker_open.to_string(), ""])?;
+    wtr.write_record(&["Half-Open (Testing)", &data.summary.circuit_breaker_half_open.to_string(), ""])?;
+    wtr.write_record(&["Total Trips", &data.summary.circuit_breaker_total_trips.to_string(), ""])?;
+
+    // Empty row separator
+    wtr.write_record(&["", "", ""])?;
+
+    // Per-account analytics header
+    wtr.write_record(&[
+        "Account ID",
+        "Email",
+        "Tier",
+        "Requests Today",
+        "Requests Total",
+        "Success Count",
+        "Error Count",
+        "Success Rate",
+        "Tokens Used",
+        "Rate Limit Hits",
+        "Circuit State",
+        "Last Request",
+    ])?;
+
+    // Per-account rows
+    for account in &data.accounts {
+        wtr.write_record(&[
+            &account.account_id,
+            &account.email,
+            &account.tier,
+            &account.requests_today.to_string(),
+            &account.requests_total.to_string(),
+            &account.success_count.to_string(),
+            &account.error_count.to_string(),
+            &format!("{:.2}%", account.success_rate * 100.0),
+            &account.tokens_used.to_string(),
+            &account.rate_limit_hits.to_string(),
+            &account.circuit_state,
+            &account.last_request_time,
+        ])?;
+    }
+
+    let bytes = wtr.into_inner()?;
+    Ok(String::from_utf8(bytes)?)
+}
+
+/// Generate JSON export with full structured data
+fn generate_json_export(data: &AnalyticsExportData) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(serde_json::to_string_pretty(data)?)
+}
+
+/// Generate human-readable plain text report
+fn generate_text_export(data: &AnalyticsExportData) -> String {
+    let mut output = String::new();
+
+    // Header
+    output.push_str("================================================================================\n");
+    output.push_str("                    ANTIGRAVITY ANALYTICS REPORT\n");
+    output.push_str("================================================================================\n\n");
+    output.push_str(&format!("Export Timestamp: {}\n", data.export_timestamp));
+    output.push_str(&format!("Export Format: {}\n\n", data.export_format));
+
+    // Summary Statistics
+    output.push_str("--------------------------------------------------------------------------------\n");
+    output.push_str("                         SUMMARY STATISTICS\n");
+    output.push_str("--------------------------------------------------------------------------------\n\n");
+    output.push_str(&format!("Total Requests Today:     {}\n", data.summary.total_requests_today));
+    output.push_str(&format!("Total Requests All Time:  {}\n", data.summary.total_requests_all_time));
+    output.push_str(&format!("Overall Success Rate:     {:.2}%\n", data.summary.overall_success_rate * 100.0));
+    output.push_str(&format!("Total Tokens Used:        {}\n", data.summary.total_tokens_used));
+    output.push_str(&format!("Active Accounts:          {}\n", data.summary.active_accounts));
+    output.push_str(&format!("Rate Limited Accounts:    {}\n\n", data.summary.rate_limited_accounts));
+
+    // Circuit Breaker Status
+    output.push_str("--------------------------------------------------------------------------------\n");
+    output.push_str("                       CIRCUIT BREAKER STATUS\n");
+    output.push_str("--------------------------------------------------------------------------------\n\n");
+    output.push_str(&format!("Closed (Healthy):    {} accounts\n", data.summary.circuit_breaker_closed));
+    output.push_str(&format!("Open (Failing):      {} accounts\n", data.summary.circuit_breaker_open));
+    output.push_str(&format!("Half-Open (Testing): {} accounts\n", data.summary.circuit_breaker_half_open));
+    output.push_str(&format!("Total Circuit Trips: {}\n\n", data.summary.circuit_breaker_total_trips));
+
+    // Per-Account Analytics
+    output.push_str("--------------------------------------------------------------------------------\n");
+    output.push_str("                       PER-ACCOUNT ANALYTICS\n");
+    output.push_str("--------------------------------------------------------------------------------\n\n");
+
+    if data.accounts.is_empty() {
+        output.push_str("No account data available.\n\n");
+    } else {
+        for (i, account) in data.accounts.iter().enumerate() {
+            output.push_str(&format!("Account #{}: {}\n", i + 1, account.email));
+            output.push_str(&format!("  ID:              {}\n", account.account_id));
+            output.push_str(&format!("  Tier:            {}\n", account.tier));
+            output.push_str(&format!("  Requests Today:  {}\n", account.requests_today));
+            output.push_str(&format!("  Requests Total:  {}\n", account.requests_total));
+            output.push_str(&format!("  Success Count:   {}\n", account.success_count));
+            output.push_str(&format!("  Error Count:     {}\n", account.error_count));
+            output.push_str(&format!("  Success Rate:    {:.2}%\n", account.success_rate * 100.0));
+            output.push_str(&format!("  Tokens Used:     {}\n", account.tokens_used));
+            output.push_str(&format!("  Rate Limit Hits: {}\n", account.rate_limit_hits));
+            output.push_str(&format!("  Circuit State:   {}\n", account.circuit_state));
+            output.push_str(&format!("  Last Request:    {}\n\n", account.last_request_time));
+        }
+    }
+
+    output.push_str("================================================================================\n");
+    output.push_str("                           END OF REPORT\n");
+    output.push_str("================================================================================\n");
+
+    output
 }
 
 fn create_tray_icon(app_weak: slint::Weak<MainWindow>) -> Result<tray_icon::TrayIcon, Box<dyn std::error::Error>> {
@@ -1106,6 +1437,7 @@ fn setup_callbacks(app: &MainWindow, controller: Arc<AppController>) {
     // Analytics callbacks
     app.global::<AppState>().on_refresh_analytics({ let c = controller.clone(); move || c.refresh_analytics() });
     app.global::<AppState>().on_reset_circuit_breaker({ let c = controller.clone(); move |account_id| c.reset_circuit_breaker(&account_id) });
+    app.global::<AppState>().on_export_analytics({ let c = controller.clone(); move |format| c.export_analytics(&format) });
 }
 
 // ========================================
