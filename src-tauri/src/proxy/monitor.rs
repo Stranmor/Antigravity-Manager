@@ -45,7 +45,7 @@ impl ProxyMonitor {
     #[cfg(feature = "desktop")]
     pub fn new(max_logs: usize, app_handle: Option<tauri::AppHandle>) -> Self {
         // Initialize DB
-        if let Err(e) = crate::modules::proxy_db::init_db() {
+        if let Err(e) = crate::proxy::db::init_db() {
             tracing::error!("Failed to initialize proxy DB: {}", e);
         }
 
@@ -61,7 +61,7 @@ impl ProxyMonitor {
     #[cfg(not(feature = "desktop"))]
     pub fn new(max_logs: usize, _app_handle: Option<()>) -> Self {
         // Initialize DB
-        if let Err(e) = crate::modules::proxy_db::init_db() {
+        if let Err(e) = crate::proxy::db::init_db() {
             tracing::error!("Failed to initialize proxy DB: {}", e);
         }
 
@@ -112,7 +112,7 @@ impl ProxyMonitor {
         // Save to DB
         let log_to_save = log.clone();
         tokio::spawn(async move {
-            if let Err(e) = crate::modules::proxy_db::save_log(&log_to_save) {
+            if let Err(e) = crate::proxy::db::save_log(&log_to_save) {
                 tracing::error!("Failed to save proxy log to DB: {}", e);
             }
         });
@@ -137,7 +137,7 @@ impl ProxyMonitor {
 
     pub async fn get_logs(&self, limit: usize) -> Vec<ProxyRequestLog> {
         // Try to get from DB first for true history
-        match crate::modules::proxy_db::get_logs(limit) {
+        match crate::proxy::db::get_logs(limit) {
             Ok(logs) => logs,
             Err(e) => {
                 tracing::error!("Failed to get logs from DB: {}", e);
@@ -149,7 +149,7 @@ impl ProxyMonitor {
     }
 
     pub async fn get_stats(&self) -> ProxyStats {
-        match crate::modules::proxy_db::get_stats() {
+        match crate::proxy::db::get_stats() {
             Ok(stats) => stats,
             Err(e) => {
                 tracing::error!("Failed to get stats from DB: {}", e);
@@ -164,7 +164,7 @@ impl ProxyMonitor {
         let mut stats = self.stats.write().await;
         *stats = ProxyStats::default();
 
-        if let Err(e) = crate::modules::proxy_db::clear_logs() {
+        if let Err(e) = crate::proxy::db::clear_logs() {
             tracing::error!("Failed to clear logs in DB: {}", e);
         }
     }

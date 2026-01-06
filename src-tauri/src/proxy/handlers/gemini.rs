@@ -9,8 +9,7 @@ use crate::proxy::session_manager::SessionManager;
 use crate::proxy::handlers::common::WithResolvedModel;
 use crate::proxy::error::ProxyError;
 use crate::proxy::middleware::request_id::RequestId;
- 
-const MAX_RETRY_ATTEMPTS: usize = 3;
+use crate::proxy::common::retry::MAX_RETRY_ATTEMPTS;
  
 /// 处理 generateContent 和 streamGenerateContent
 /// 路径参数: model_name, method (e.g. "gemini-pro", "generateContent")

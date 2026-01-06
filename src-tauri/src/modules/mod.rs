@@ -12,7 +12,6 @@ pub mod migration;
 pub mod tray;
 #[cfg(feature = "desktop")]
 pub mod i18n;
-pub mod proxy_db;
 
 use crate::models;
 
