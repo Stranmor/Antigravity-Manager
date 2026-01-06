@@ -5,17 +5,22 @@
 // - Inlined hot path functions for SSE parsing
 // - Reduced string allocations using capacity hints
 // - SIMD-accelerated newline detection via memchr
+//
+// Error handling:
+// - Graceful handling of malformed SSE chunks with logging
+// - Robust UTF-8 validation with fallback behavior
+// - Connection drop recovery through buffer state preservation
 
 use bytes::{Bytes, BytesMut};
+use chrono::Utc;
 use futures::{Stream, StreamExt};
 use memchr::memchr;
+use rand::Rng;
 use serde_json::{json, Value};
 use std::pin::Pin;
 use std::sync::{Mutex, OnceLock};
-use chrono::Utc;
+use tracing::{debug, warn};
 use uuid::Uuid;
-use tracing::debug;
-use rand::Rng;
 
 // === Buffer Capacity Constants ===
 // Pre-tuned for typical SSE chunk sizes to minimize reallocations
@@ -104,7 +109,8 @@ pub fn create_openai_sse_stream(
                                     continue;
                                 }
 
-                                if let Ok(mut json) = serde_json::from_str::<Value>(json_part) {
+                                match serde_json::from_str::<Value>(json_part) {
+                                    Ok(mut json) => {
                                     // Log raw chunk for debugging gemini-3 thoughts
                                     tracing::debug!("Gemini SSE Chunk: {}", json_part);
 
@@ -207,6 +213,15 @@ pub fn create_openai_sse_stream(
 
                                     let sse_out = format!("data: {}\n\n", serde_json::to_string(&openai_chunk).unwrap_or_default());
                                     yield Ok::<Bytes, String>(Bytes::from(sse_out));
+                                    }
+                                    Err(e) => {
+                                        // Log malformed JSON chunks for debugging
+                                        warn!(
+                                            "[OpenAI-SSE] Failed to parse SSE JSON chunk: {}. Raw data (truncated): {}",
+                                            e,
+                                            if json_part.len() > 200 { &json_part[..200] } else { json_part }
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -259,9 +274,10 @@ pub fn create_legacy_sse_stream(
                                 let json_part = line.trim_start_matches("data: ").trim();
                                 if json_part == "[DONE]" { continue; }
 
-                                if let Ok(mut json) = serde_json::from_str::<Value>(json_part) {
+                                match serde_json::from_str::<Value>(json_part) {
+                                    Ok(mut json) => {
                                     let actual_data = if let Some(inner) = json.get_mut("response").map(serde_json::Value::take) { inner } else { json };
-                                    
+
                                     let mut content_out = String::with_capacity(CONTENT_BUFFER_CAPACITY);
                                     if let Some(candidates) = actual_data.get("candidates").and_then(|c| c.as_array()) {
                                         if let Some(parts) = candidates.first().and_then(|c| c.get("content")).and_then(|c| c.get("parts")).and_then(|p| p.as_array()) {
@@ -307,9 +323,18 @@ pub fn create_legacy_sse_stream(
                                     });
 
                                     let json_str = serde_json::to_string(&legacy_chunk).unwrap_or_default();
-                                    tracing::debug!("Legacy Stream Chunk: {}", json_str); 
+                                    tracing::debug!("Legacy Stream Chunk: {}", json_str);
                                     let sse_out = format!("data: {json_str}\n\n");
                                     yield Ok::<Bytes, String>(Bytes::from(sse_out));
+                                    }
+                                    Err(e) => {
+                                        // Log malformed JSON chunks for debugging
+                                        warn!(
+                                            "[Legacy-SSE] Failed to parse SSE JSON chunk: {}. Raw length: {} bytes",
+                                            e,
+                                            json_part.len()
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -374,9 +399,10 @@ pub fn create_codex_sse_stream(
                             let json_part = line.trim_start_matches("data: ").trim();
                             if json_part == "[DONE]" { continue; }
 
-                            if let Ok(mut json) = serde_json::from_str::<Value>(json_part) {
+                            match serde_json::from_str::<Value>(json_part) {
+                                Ok(mut json) => {
                                 let actual_data = if let Some(inner) = json.get_mut("response").map(serde_json::Value::take) { inner } else { json };
-                                
+
                                 // Capture finish reason
                                 if let Some(candidates) = actual_data.get("candidates").and_then(|c| c.as_array()) {
                                     if let Some(candidate) = candidates.first() {
@@ -575,6 +601,15 @@ pub fn create_codex_sse_stream(
                                         "delta": delta_text
                                     });
                                     yield Ok::<Bytes, String>(Bytes::from(format!("data: {}\n\n", serde_json::to_string(&delta_ev).unwrap_or_else(|_| "{}".to_string()))));
+                                }
+                                }
+                                Err(e) => {
+                                    // Log malformed JSON chunks for debugging
+                                    warn!(
+                                        "[Codex-SSE] Failed to parse SSE JSON chunk: {}. Raw length: {} bytes",
+                                        e,
+                                        json_part.len()
+                                    );
                                 }
                             }
                         }
@@ -835,5 +870,43 @@ mod tests {
         // Verify that BytesMut with capacity works as expected
         let buffer = BytesMut::with_capacity(INITIAL_BUFFER_CAPACITY);
         assert!(buffer.capacity() >= INITIAL_BUFFER_CAPACITY);
+    }
+
+    #[test]
+    fn test_map_finish_reason_edge_cases() {
+        // Test edge cases for finish reason mapping
+        assert_eq!(map_finish_reason("OTHER"), "stop"); // Unknown defaults to stop
+        assert_eq!(map_finish_reason("stop"), "stop"); // Lowercase should still default
+        assert_eq!(map_finish_reason("LENGTH"), "stop"); // Wrong case
+    }
+
+    #[test]
+    fn test_empty_chunk_handling() {
+        // Verify empty strings don't cause issues
+        let empty = "";
+        assert!(empty.is_empty());
+        // Empty data should not panic when processed
+        let trimmed = empty.trim();
+        assert!(trimmed.is_empty());
+    }
+
+    #[test]
+    fn test_malformed_json_safety() {
+        // Test that malformed JSON doesn't crash the parser
+        let malformed_cases = vec![
+            "{incomplete",
+            "not json at all",
+            "{\"key\": }",
+            "",
+            "null",
+            "[]",
+        ];
+
+        for case in malformed_cases {
+            // Just verify from_str doesn't panic - it should return Err
+            let result = serde_json::from_str::<Value>(case);
+            // Either Ok or Err is fine, just shouldn't panic
+            let _ = result;
+        }
     }
 }

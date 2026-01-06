@@ -5,8 +5,13 @@
 // - Pre-allocated SSE output buffers with capacity hints
 // - Vec capacity hints for chunk collections
 // - Inlined helper functions for hot paths
+//
+// Error handling:
+// - Graceful degradation for malformed SSE chunks
+// - Parse error counting and logging
+// - Safe block closure on stream errors
 
-use super::models::{UsageMetadata, Usage, GeminiPart, FunctionCall};
+use super::models::{FunctionCall, GeminiPart, Usage, UsageMetadata};
 use super::utils::to_claude_usage;
 use crate::proxy::mappers::signature_store::store_thought_signature;
 use bytes::Bytes;
@@ -727,6 +732,7 @@ impl<'a> PartProcessor<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::models::InlineData;
 
     // ============================================================
     // SignatureManager Tests
@@ -1334,7 +1340,7 @@ mod tests {
         let mut state = StreamingState::new();
         state.start_block(BlockType::Text, json!({"type": "text"}));
 
-        let chunks = state.handle_parse_error("malformed data here");
+        let _chunks = state.handle_parse_error("malformed data here");
 
         // Should close current block safely
         assert!(state.get_error_count() == 1);
@@ -1483,5 +1489,73 @@ mod tests {
             .map(|b| String::from_utf8(b.to_vec()).unwrap_or_default())
             .collect::<Vec<_>>()
             .join("")
+    }
+
+    // ============================================================
+    // Edge Case & Robustness Tests
+    // ============================================================
+
+    #[test]
+    fn test_unicode_content_handling() {
+        let state = StreamingState::new();
+        // Test various unicode content including CJK, emoji, and special chars
+        let chunk = state.emit("test", json!({
+            "text": "日本語 テスト 🎉 émojis и кириллица"
+        }));
+        let s = String::from_utf8(chunk.to_vec()).unwrap();
+        assert!(s.contains("日本語"));
+        assert!(s.contains("🎉"));
+    }
+
+    #[test]
+    fn test_very_long_content() {
+        let state = StreamingState::new();
+        // Test with content longer than SSE_OUTPUT_CAPACITY
+        let long_text = "x".repeat(1000);
+        let chunk = state.emit("test", json!({"text": long_text}));
+        let s = String::from_utf8(chunk.to_vec()).unwrap();
+        assert!(s.len() > 1000);
+    }
+
+    #[test]
+    fn test_special_json_characters() {
+        let state = StreamingState::new();
+        // Test JSON special characters that need escaping
+        let chunk = state.emit("test", json!({
+            "text": "quote: \" backslash: \\ newline: \n tab: \t"
+        }));
+        let s = String::from_utf8(chunk.to_vec()).unwrap();
+        // Should be valid JSON
+        let data_line = s.lines().find(|l| l.starts_with("data: ")).unwrap();
+        let json_str = data_line.strip_prefix("data: ").unwrap();
+        let parsed: Result<serde_json::Value, _> = serde_json::from_str(json_str);
+        assert!(parsed.is_ok());
+    }
+
+    #[test]
+    fn test_rapid_block_transitions() {
+        let mut state = StreamingState::new();
+        // Simulate rapid transitions between block types
+        for _ in 0..10 {
+            state.start_block(BlockType::Text, json!({}));
+            state.start_block(BlockType::Thinking, json!({}));
+            state.start_block(BlockType::Function, json!({}));
+        }
+        // Should have incremented block index correctly
+        assert!(state.current_block_index() >= 20);
+    }
+
+    #[test]
+    fn test_error_recovery_threshold() {
+        let mut state = StreamingState::new();
+        // Simulate multiple parse errors
+        for i in 0..10 {
+            state.handle_parse_error(&format!("error {}", i));
+        }
+        assert_eq!(state.get_error_count(), 10);
+
+        // Reset should clear
+        state.reset_error_state();
+        assert_eq!(state.get_error_count(), 0);
     }
 }
