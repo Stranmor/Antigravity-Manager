@@ -33,10 +33,6 @@ use opentelemetry::{KeyValue, InstrumentationScope};
 use opentelemetry_otlp::WithExportConfig;
 #[cfg(feature = "otel")]
 use opentelemetry_sdk::trace::TracerProvider;
-#[cfg(feature = "otel")]
-use tracing_subscriber::layer::SubscriberExt;
-#[cfg(feature = "otel")]
-use tracing_subscriber::util::SubscriberInitExt;
 
 /// Default OTLP endpoint for local development
 #[cfg(feature = "otel")]
@@ -111,6 +107,10 @@ pub fn init_telemetry() -> Result<TelemetryGuard, Box<dyn std::error::Error + Se
 }
 
 /// Initialize OpenTelemetry with custom configuration.
+///
+/// NOTE: This function now sets up OTEL WITHOUT trying to create a new tracing subscriber.
+/// The server logger is expected to already have initialized the global tracing subscriber.
+/// We only set up the OTEL tracer provider and register it globally for direct OTEL API usage.
 #[cfg(feature = "otel")]
 pub fn init_telemetry_with_config(
     config: TelemetryConfig,
@@ -145,22 +145,12 @@ pub fn init_telemetry_with_config(
         .with_resource(resource)
         .build();
 
-    // Create tracer from provider using InstrumentationScope
-    let scope = InstrumentationScope::builder(config.service_name.clone()).build();
-    let tracer = provider.tracer_with_scope(scope);
-
-    // Create OpenTelemetry tracing layer
-    let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
-
-    // Get the existing subscriber and add the OTEL layer
-    // Note: This should be called AFTER the base tracing subscriber is set up
-    tracing_subscriber::registry()
-        .with(otel_layer)
-        .try_init()
-        .map_err(|e| format!("Failed to initialize tracing subscriber with OTEL layer: {e}"))?;
+    // Set the provider globally so OTEL API calls (opentelemetry::global::tracer()) work
+    // This does NOT conflict with tracing-subscriber - it's a separate system
+    opentelemetry::global::set_tracer_provider(provider.clone());
 
     tracing::info!(
-        "OpenTelemetry tracing initialized successfully. Exporting to: {}",
+        "OpenTelemetry provider registered globally. Exporting to: {}",
         config.endpoint
     );
 
