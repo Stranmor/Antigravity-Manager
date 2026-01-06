@@ -293,6 +293,26 @@ pub async fn handle_chat_completions(
             // 记录限流信息 (全局同步)
             token_manager.mark_rate_limited(&email, status_code, retry_after.as_deref(), &error_text);
 
+            // [PERSISTENCE] Record rate limit event to database (fire-and-forget)
+            if status_code == 429 {
+                let account_id_owned = account_id.clone();
+                let quota_group = config.request_type.clone();
+                let retry_after_secs = retry_after.as_ref().and_then(|r| r.parse::<i32>().ok());
+                let reset_at = retry_after_secs.map(|secs| {
+                    time::OffsetDateTime::now_utc().unix_timestamp() + i64::from(secs)
+                });
+                std::thread::spawn(move || {
+                    if let Err(e) = crate::proxy::db::record_rate_limit_event(
+                        &account_id_owned,
+                        reset_at,
+                        Some(&quota_group),
+                        retry_after_secs,
+                    ) {
+                        tracing::warn!("Failed to persist rate limit event: {}", e);
+                    }
+                });
+            }
+
             // [529 RESILIENCE] Special handling for 529 Overloaded errors
             // 529 means the upstream server is overloaded - this is NOT account-specific
             // We retry aggressively with exponential backoff until success or max retries
@@ -923,6 +943,25 @@ pub async fn handle_completions(
         }
 
         if status_code == 429 || status_code == 403 || status_code == 401 {
+            // [PERSISTENCE] Record rate limit event to database (fire-and-forget)
+            if status_code == 429 {
+                let account_id_owned = account_id.clone();
+                let quota_group = config.request_type.clone();
+                let retry_after_secs = retry_after.as_ref().and_then(|r| r.parse::<i32>().ok());
+                let reset_at = retry_after_secs.map(|secs| {
+                    time::OffsetDateTime::now_utc().unix_timestamp() + i64::from(secs)
+                });
+                std::thread::spawn(move || {
+                    if let Err(e) = crate::proxy::db::record_rate_limit_event(
+                        &account_id_owned,
+                        reset_at,
+                        Some(&quota_group),
+                        retry_after_secs,
+                    ) {
+                        tracing::warn!("Failed to persist rate limit event: {}", e);
+                    }
+                });
+            }
             attempt += 1;
             continue;
         }

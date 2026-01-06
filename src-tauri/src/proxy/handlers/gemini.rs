@@ -210,6 +210,26 @@ pub async fn handle_generate(
             // 记录限流信息并自动解绑会话 (使用 account_id 而非 email)
             token_manager.mark_rate_limited_and_unbind(&account_id, status_code, retry_after.as_deref(), &error_text, Some(&config.request_type));
 
+            // [PERSISTENCE] Record rate limit event to database (fire-and-forget)
+            if status_code == 429 {
+                let account_id_owned = account_id.clone();
+                let quota_group = config.request_type.clone();
+                let retry_after_secs = retry_after.as_ref().and_then(|r| r.parse::<i32>().ok());
+                let reset_at = retry_after_secs.map(|secs| {
+                    time::OffsetDateTime::now_utc().unix_timestamp() + i64::from(secs)
+                });
+                std::thread::spawn(move || {
+                    if let Err(e) = crate::proxy::db::record_rate_limit_event(
+                        &account_id_owned,
+                        reset_at,
+                        Some(&quota_group),
+                        retry_after_secs,
+                    ) {
+                        tracing::warn!("Failed to persist rate limit event: {}", e);
+                    }
+                });
+            }
+
             // 只有明确包含 "QUOTA_EXHAUSTED" 才停止，避免误判上游的频率限制提示 (如 "check quota")
             if status_code == 429 && error_text.contains("QUOTA_EXHAUSTED") {
                 error!("Gemini Quota exhausted (429) on account {} attempt {}/{}, stopping to protect pool.", email, attempt + 1, max_attempts);

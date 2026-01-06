@@ -692,6 +692,26 @@ pub async fn handle_messages(
                 &error_text,
                 Some(&config.request_type),  // Per-model rate limiting
             );
+
+            // [PERSISTENCE] Record rate limit event to database (fire-and-forget)
+            if status_code == 429 {
+                let account_id_owned = account_id.clone();
+                let quota_group = config.request_type.clone();
+                let retry_after_secs = retry_after.as_ref().and_then(|r| r.parse::<i32>().ok());
+                let reset_at = retry_after_secs.map(|secs| {
+                    time::OffsetDateTime::now_utc().unix_timestamp() + i64::from(secs)
+                });
+                std::thread::spawn(move || {
+                    if let Err(e) = crate::proxy::db::record_rate_limit_event(
+                        &account_id_owned,
+                        reset_at,
+                        Some(&quota_group),
+                        retry_after_secs,
+                    ) {
+                        tracing::warn!("Failed to persist rate limit event: {}", e);
+                    }
+                });
+            }
         }
 
         // 4. 处理 400 错误 (Thinking 签名失效)
