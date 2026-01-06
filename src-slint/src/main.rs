@@ -944,72 +944,156 @@ impl AppController {
                 0.0
             };
 
-            // Create analytics summary
-            // Note: For now, we use the overall stats since per-account tracking
-            // would require additional infrastructure in the proxy
-            let summary = AnalyticsSummary {
-                total_requests_today: total_requests as i32, // TODO: Filter by today's date
-                total_requests_all_time: total_requests as i32,
-                overall_success_rate: success_rate,
-                total_tokens_used: 0, // TODO: Aggregate from logs
-                active_accounts: 0, // Will be set from accounts
-                rate_limited_accounts: 0, // TODO: Track rate-limited accounts
-                circuit_breaker: CircuitBreakerSummary {
-                    closed_count: 0,
-                    open_count: 0,
-                    half_open_count: 0,
-                    total_trips: 0,
-                },
-            };
+            drop(state); // Release lock before database operations
 
-            // Get account list for per-account analytics
+            // Fetch per-account stats from database
+            let today_stats = antigravity_tools_lib::proxy::db::get_today_stats_all_accounts()
+                .unwrap_or_default();
+
+            // Get account list for email mapping
             let accounts = antigravity_tools_lib::modules::account::list_accounts()
                 .unwrap_or_default();
+
+            // Create a map of account_id -> email/tier for lookup
+            let account_map: std::collections::HashMap<String, (&str, &str)> = accounts.iter()
+                .map(|a| {
+                    let tier = a.quota.as_ref()
+                        .and_then(|q| q.subscription_tier.as_deref())
+                        .unwrap_or("FREE");
+                    (a.id.clone(), (a.email.as_str(), tier))
+                })
+                .collect();
+
+            // Convert database stats to Slint AccountAnalytics
+            let mut account_analytics: Vec<AccountAnalytics> = today_stats.iter()
+                .filter_map(|stat| {
+                    let (email, tier) = account_map.get(&stat.account_id)
+                        .copied()
+                        .unwrap_or(("Unknown", "FREE"));
+
+                    let success_rate = if stat.request_count > 0 {
+                        stat.success_count as f32 / stat.request_count as f32
+                    } else {
+                        1.0
+                    };
+
+                    Some(AccountAnalytics {
+                        account_id: stat.account_id.clone().into(),
+                        email: email.into(),
+                        tier: tier.to_uppercase().into(),
+                        requests_today: stat.request_count as i32,
+                        requests_total: stat.request_count as i32, // Today's view
+                        success_count: stat.success_count as i32,
+                        error_count: stat.error_count as i32,
+                        success_rate,
+                        tokens_used: (stat.input_tokens + stat.output_tokens) as i32,
+                        rate_limit_hits: stat.rate_limit_hits as i32,
+                        circuit_state: "closed".into(), // Default - would need circuit breaker integration
+                        last_request_time: stat.date.clone().into(),
+                    })
+                })
+                .collect();
+
+            // Sort by requests descending for display
+            account_analytics.sort_by(|a, b| b.requests_today.cmp(&a.requests_today));
+
+            // For accounts without any requests today, add them with zero stats
+            for acc in &accounts {
+                if !acc.disabled {
+                    let has_stats = account_analytics.iter().any(|a| a.account_id.to_string() == acc.id);
+                    if !has_stats {
+                        let tier = acc.quota.as_ref()
+                            .and_then(|q| q.subscription_tier.as_deref())
+                            .unwrap_or("FREE")
+                            .to_uppercase();
+
+                        account_analytics.push(AccountAnalytics {
+                            account_id: acc.id.clone().into(),
+                            email: acc.email.clone().into(),
+                            tier: tier.into(),
+                            requests_today: 0,
+                            requests_total: 0,
+                            success_count: 0,
+                            error_count: 0,
+                            success_rate: 1.0,
+                            tokens_used: 0,
+                            rate_limit_hits: 0,
+                            circuit_state: "closed".into(),
+                            last_request_time: "N/A".into(),
+                        });
+                    }
+                }
+            }
+
+            // Calculate totals
+            let total_requests_today: i32 = account_analytics.iter().map(|a| a.requests_today).sum();
+            let total_success: i32 = account_analytics.iter().map(|a| a.success_count).sum();
+            let total_tokens: i32 = account_analytics.iter().map(|a| a.tokens_used).sum();
+            let total_rate_limits: i32 = account_analytics.iter().map(|a| a.rate_limit_hits).sum();
+
+            let overall_success_rate = if total_requests_today > 0 {
+                total_success as f32 / total_requests_today as f32
+            } else {
+                success_rate
+            };
+
+            // Get historical data for all-time totals
+            let all_time_stats = antigravity_tools_lib::proxy::db::get_historical_analytics(365)
+                .map(|h| h.total_requests)
+                .unwrap_or(total_requests as i64);
+
+            // Create top 5 lists
+            let top_used: Vec<AccountAnalytics> = account_analytics.iter()
+                .filter(|a| a.requests_today > 0)
+                .take(5)
+                .cloned()
+                .collect();
+
+            // Top error-prone: sort by error rate (descending), only accounts with errors
+            let mut error_sorted = account_analytics.clone();
+            error_sorted.sort_by(|a, b| {
+                let a_error_rate = if a.requests_today > 0 { 1.0 - a.success_rate } else { 0.0 };
+                let b_error_rate = if b.requests_today > 0 { 1.0 - b.success_rate } else { 0.0 };
+                b_error_rate.partial_cmp(&a_error_rate).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            let top_errors: Vec<AccountAnalytics> = error_sorted.iter()
+                .filter(|a| a.error_count > 0)
+                .take(5)
+                .cloned()
+                .collect();
 
             let active_count = accounts.iter()
                 .filter(|a| !a.disabled && a.quota.as_ref().map(|q| !q.is_forbidden).unwrap_or(true))
                 .count() as i32;
 
-            // Generate per-account analytics (placeholder data for now)
-            // Real implementation would require per-account request tracking in the proxy
-            let account_analytics: Vec<AccountAnalytics> = accounts.iter()
-                .filter(|a| !a.disabled)
-                .map(|a| {
-                    let tier = a.quota.as_ref()
-                        .and_then(|q| q.subscription_tier.clone())
-                        .unwrap_or_else(|| "FREE".into())
-                        .to_uppercase();
-
-                    AccountAnalytics {
-                        account_id: a.id.clone().into(),
-                        email: a.email.clone().into(),
-                        tier: tier.into(),
-                        requests_today: 0, // Placeholder
-                        requests_total: 0, // Placeholder
-                        success_count: 0, // Placeholder
-                        error_count: 0, // Placeholder
-                        success_rate: 1.0, // Placeholder - assume healthy
-                        tokens_used: 0, // Placeholder
-                        rate_limit_hits: 0, // Placeholder
-                        circuit_state: "closed".into(), // Default to closed
-                        last_request_time: "N/A".into(),
-                    }
-                })
-                .collect();
-
-            drop(state); // Release lock before UI update
+            // Create analytics summary
+            let summary = AnalyticsSummary {
+                total_requests_today,
+                total_requests_all_time: all_time_stats.max(total_requests as i64) as i32,
+                overall_success_rate,
+                total_tokens_used: total_tokens,
+                active_accounts: active_count,
+                rate_limited_accounts: account_analytics.iter().filter(|a| a.rate_limit_hits > 0).count() as i32,
+                circuit_breaker: CircuitBreakerSummary {
+                    closed_count: active_count,
+                    open_count: 0,
+                    half_open_count: 0,
+                    total_trips: total_rate_limits.min(100), // Approximate from rate limits
+                },
+            };
 
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(app) = app_weak.upgrade() {
-                    // Update summary with active account count
-                    let mut summary = summary;
-                    summary.active_accounts = active_count;
-                    summary.circuit_breaker.closed_count = active_count; // Assume all healthy for now
-
                     app.global::<AppState>().set_analytics_summary(summary);
 
                     let model = std::rc::Rc::new(VecModel::from(account_analytics));
                     app.global::<AppState>().set_account_analytics(model.into());
+
+                    let top_used_model = std::rc::Rc::new(VecModel::from(top_used));
+                    app.global::<AppState>().set_top_used_accounts(top_used_model.into());
+
+                    let top_errors_model = std::rc::Rc::new(VecModel::from(top_errors));
+                    app.global::<AppState>().set_top_error_accounts(top_errors_model.into());
 
                     let ctrl = AppController::new(&app);
                     ctrl.show_status("Analytics refreshed", "success");
