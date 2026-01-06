@@ -112,9 +112,9 @@ ENV ANTIGRAVITY_DATA_DIR=/var/lib/antigravity \
 # Expose ports
 EXPOSE 8045 9101
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -sf http://localhost:8045/healthz || exit 1
+# Health check (uses detailed health endpoint on admin port)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:9101/api/health/detailed || exit 1
 
 # Run as non-root user
 USER antigravity
