@@ -19,7 +19,7 @@ fn get_oauth_flow_state() -> &'static Mutex<Option<OAuthFlowState>> {
     OAUTH_FLOW_STATE.get_or_init(|| Mutex::new(None))
 }
 
-fn oauth_success_html() -> &'static str {
+const fn oauth_success_html() -> &'static str {
     "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n\
     <html>\
     <body style='font-family: sans-serif; text-align: center; padding: 50px;'>\
@@ -30,7 +30,7 @@ fn oauth_success_html() -> &'static str {
     </html>"
 }
 
-fn oauth_fail_html() -> &'static str {
+const fn oauth_fail_html() -> &'static str {
     "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html; charset=utf-8\r\n\r\n\
     <html>\
     <body style='font-family: sans-serif; text-align: center; padding: 50px;'>\
@@ -143,14 +143,15 @@ async fn ensure_oauth_flow_prepared(app_handle: &tauri::AppHandle) -> Result<Str
                             .map(|(_, v)| v.into_owned())
                     });
 
-                let (result, response_html) = match code {
-                    Some(code) => (Ok(code), oauth_success_html()),
-                    None => (Err("未能在回调中获取 Authorization Code".to_string()), oauth_fail_html()),
-                };
+                let (result, response_html) = code.map_or_else(
+                    || (Err("未能在回调中获取 Authorization Code".to_string()), oauth_fail_html()),
+                    |code| (Ok(code), oauth_success_html())
+                );
                 let _ = stream.write_all(response_html.as_bytes()).await;
                 let _ = stream.flush().await;
 
-                if let Some(sender) = tx.lock().await.take() {
+                let sender = tx.lock().await.take();
+                if let Some(sender) = sender {
                     let _ = app_handle.emit("oauth-callback-received", ());
                     let _ = sender.send(result);
                 }
@@ -159,7 +160,7 @@ async fn ensure_oauth_flow_prepared(app_handle: &tauri::AppHandle) -> Result<Str
     }
 
     if let Some(l6) = ipv6_listener {
-        let tx = code_tx.clone();
+        let tx = code_tx;
         let mut rx = cancel_rx;
         let app_handle = app_handle_for_tasks;
         tokio::spawn(async move {
@@ -181,14 +182,15 @@ async fn ensure_oauth_flow_prepared(app_handle: &tauri::AppHandle) -> Result<Str
                             .map(|(_, v)| v.into_owned())
                     });
 
-                let (result, response_html) = match code {
-                    Some(code) => (Ok(code), oauth_success_html()),
-                    None => (Err("未能在回调中获取 Authorization Code".to_string()), oauth_fail_html()),
-                };
+                let (result, response_html) = code.map_or_else(
+                    || (Err("未能在回调中获取 Authorization Code".to_string()), oauth_fail_html()),
+                    |code| (Ok(code), oauth_success_html())
+                );
                 let _ = stream.write_all(response_html.as_bytes()).await;
                 let _ = stream.flush().await;
 
-                if let Some(sender) = tx.lock().await.take() {
+                let sender = tx.lock().await.take();
+                if let Some(sender) = sender {
                     let _ = app_handle.emit("oauth-callback-received", ());
                     let _ = sender.send(result);
                 }

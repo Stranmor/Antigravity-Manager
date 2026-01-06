@@ -181,8 +181,8 @@ pub fn add_account(email: String, name: Option<String>, token: TokenData) -> Res
     // 更新索引
     index.accounts.push(AccountSummary {
         id: account_id.clone(),
-        email: email.clone(),
-        name: name.clone(),
+        email,
+        name,
         created_at: account.created_at,
         last_used: account.last_used,
     });
@@ -239,7 +239,7 @@ pub fn upsert_account(email: String, name: Option<String>, token: TokenData) -> 
             Err(e) => {
                 crate::modules::logger::log_warn(&format!("Account {account_id} file missing ({e}), recreating..."));
                 // 索引存在但文件丢失，重新创建
-                let mut account = Account::new(account_id.clone(), email.clone(), token);
+                let mut account = Account::new(account_id.clone(), email, token);
                 account.name.clone_from(&name);
                 save_account(&account)?;
 
@@ -383,7 +383,7 @@ pub async fn switch_account(account_id: &str) -> Result<(), String> {
 
     // 如果 Token 更新了，保存回账号文件
     if fresh_token.access_token != account.token.access_token {
-        account.token = fresh_token.clone();
+        account.token = fresh_token;
         save_account(&account)?;
     }
 
@@ -502,10 +502,9 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
 
         // 重新获取用户名 (Token 刷新后顺便获取)
         let name = if account.name.is_none() || account.name.as_ref().is_some_and(|n| n.trim().is_empty()) {
-            match oauth::get_user_info(&token.access_token).await {
-                Ok(user_info) => user_info.get_display_name(),
-                Err(_) => None
-            }
+            oauth::get_user_info(&token.access_token).await
+                .ok()
+                .and_then(|user_info| user_info.get_display_name())
         } else {
             account.name.clone()
         };
@@ -583,10 +582,9 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
 
                 // 重新获取用户名
                 let name = if account.name.is_none() || account.name.as_ref().is_some_and(|n| n.trim().is_empty()) {
-                    match oauth::get_user_info(&token_res.access_token).await {
-                        Ok(user_info) => user_info.get_display_name(),
-                        Err(_) => None
-                    }
+                    oauth::get_user_info(&token_res.access_token).await
+                        .ok()
+                        .and_then(|user_info| user_info.get_display_name())
                 } else {
                     account.name.clone()
                 };

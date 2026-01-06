@@ -53,11 +53,7 @@ pub async fn import_from_v1() -> Result<Vec<Account>, String> {
         
         // 兼容两种格式：直接是 map，或者包含 "accounts" 字段
         let accounts_map = if let Some(map) = v1_index.as_object() {
-            if let Some(accounts) = map.get("accounts").and_then(|v| v.as_object()) {
-                accounts 
-            } else {
-                map
-            }
+            map.get("accounts").and_then(|v| v.as_object()).unwrap_or(map)
         } else {
             continue;
         };
@@ -217,7 +213,7 @@ pub async fn import_from_custom_db_path(path_str: String) -> Result<Account, Str
     );
     
     // 4. 添加或更新账号
-    account::upsert_account(email.clone(), user_info.name, token_data)
+    account::upsert_account(email, user_info.name, token_data)
 }
 
 /// 从默认 IDE 数据库导入当前登录账号

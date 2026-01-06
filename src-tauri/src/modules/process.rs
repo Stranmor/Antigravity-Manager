@@ -704,7 +704,7 @@ pub fn start_antigravity() -> Result<(), String> {
     let manual_path = config
         .as_ref()
         .and_then(|c| c.antigravity_executable.clone());
-    let args = config.and_then(|c| c.antigravity_args.clone());
+    let args = config.and_then(|c| c.antigravity_args);
 
     if let Some(mut path_str) = manual_path {
         let mut path = std::path::PathBuf::from(&path_str);
@@ -880,7 +880,7 @@ fn get_process_info() -> (Option<std::path::PathBuf>, Option<Vec<String>>) {
             let mut args = process.cmd().iter();
             let exe_path = args
                 .next()
-                .map_or(exe.to_string_lossy(), |arg| arg.to_string_lossy())
+                .map_or_else(|| exe.to_string_lossy(), |arg| arg.to_string_lossy())
                 .to_lowercase();
 
             // 从命令行参数中提取真正的参数（跳过可执行文件路径）
