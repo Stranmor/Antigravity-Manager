@@ -17,11 +17,11 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Fix build.rs conditional compilation for headless `[MODE: B]` (9f49ba3)
 - [x] Fix rate limiter ContainerAwareKeyExtractor `[MODE: B]` (6275292)
 - [x] Improve SSE streaming error handling and tests `[MODE: B]` (b016767)
+- [x] Add request tracing with unique IDs for debugging `[MODE: B]` (4a6511d) ✓ Already implemented
 
 ## NEXT BATCH (Proposed)
 - [ ] Add Grafana dashboard template for Prometheus metrics `[MODE: B]`
 - [ ] Implement account health monitoring (auto-disable on errors) `[MODE: B]`
-- [ ] Add request tracing with unique IDs for debugging `[MODE: B]`
 - [ ] Create CLI tool for account import from desktop app `[MODE: B]`
 
 ## ADMIN API TEST RESULTS (2026-01-06)
