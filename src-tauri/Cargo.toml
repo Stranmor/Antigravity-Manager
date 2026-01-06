@@ -90,6 +90,11 @@ cast_sign_loss = "allow"
 cast_precision_loss = "allow"
 unreadable_literal = "allow"
 
+# Headless server binary for VPS/container deployment
+[[bin]]
+name = "antigravity-server"
+path = "src/bin/server.rs"
+
 # Release profile: optimize for size while maintaining performance
 [profile.release]
 opt-level = "s"        # Optimize for size (good balance of size/speed)
@@ -97,3 +102,9 @@ lto = true             # Link-Time Optimization for smaller binary
 codegen-units = 1      # Single codegen unit for better optimization
 panic = "abort"        # Smaller binary, no unwinding
 strip = true           # Strip debug symbols
+
+# Server-optimized profile for container builds
+[profile.server]
+inherits = "release"
+opt-level = "z"        # Maximum size optimization for containers
+lto = "fat"            # Aggressive LTO for smallest binary
