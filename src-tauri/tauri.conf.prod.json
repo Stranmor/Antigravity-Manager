@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Antigravity Tools Dev",
+  "productName": "Antigravity Tools",
   "version": "3.3.15",
-  "identifier": "dev.stranmor.antigravity-tools-dev",
+  "identifier": "dev.stranmor.antigravity-tools",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -35,12 +35,7 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ],
-    "linux": {
-      "deb": {
-        "files": {}
-      }
-    }
+    ]
   },
-  "mainBinaryName": "antigravity_tools_dev"
+  "mainBinaryName": "antigravity_tools"
 }
