@@ -35,13 +35,13 @@ RUN mkdir -p src/bin src/proxy src/commands src/modules src/models src/utils && 
     echo "fn main() {}" > src/main.rs && \
     echo "fn main() {}" > src/bin/server.rs && \
     touch src/proxy/mod.rs src/modules/mod.rs src/models/mod.rs src/utils/mod.rs src/error.rs && \
-    cargo build --release --no-default-features --features headless --bin antigravity-server 2>/dev/null || true
+    cargo build --release --no-default-features --features "headless otel" --bin antigravity-server 2>/dev/null || true
 
 # Copy actual source code
 COPY src-tauri/src ./src
 
-# Build the server binary (release profile, headless mode - no Tauri/GTK deps)
-RUN cargo build --release --no-default-features --features headless --bin antigravity-server && \
+# Build the server binary (release profile, headless mode with OTEL - no Tauri/GTK deps)
+RUN cargo build --release --no-default-features --features "headless otel" --bin antigravity-server && \
     strip /build/target/release/antigravity-server
 
 # ============================================================================
@@ -104,6 +104,8 @@ ENV ANTIGRAVITY_DATA_DIR=/var/lib/antigravity \
     ANTIGRAVITY_ADMIN_PORT=9101 \
     ANTIGRAVITY_ALLOW_LAN=true \
     ANTIGRAVITY_ENABLE_LOGGING=true \
+    OTEL_ENABLED=false \
+    OTEL_EXPORTER_OTLP_ENDPOINT= \
     RUST_LOG=info,antigravity_tools_lib=debug \
     TZ=UTC
 
