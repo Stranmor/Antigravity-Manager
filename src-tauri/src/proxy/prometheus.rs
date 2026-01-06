@@ -6,9 +6,14 @@
 //! - `antigravity_accounts_total` - Gauge of total accounts
 //! - `antigravity_accounts_available` - Gauge of available accounts
 //! - `antigravity_uptime_seconds` - Gauge of server uptime
+//! - `antigravity_log_files_total` - Gauge of total log files
+//! - `antigravity_log_disk_bytes` - Gauge of log disk usage in bytes
+//! - `antigravity_log_rotations_total` - Counter of log rotation events
+//! - `antigravity_log_cleanup_removed_total` - Counter of files removed by cleanup
 
 use metrics::{counter, describe_counter, describe_gauge, describe_histogram, gauge, histogram};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+use std::path::Path;
 use std::sync::OnceLock;
 use std::time::Instant;
 
@@ -51,6 +56,24 @@ pub fn init_metrics() -> PrometheusHandle {
         describe_gauge!(
             "antigravity_uptime_seconds",
             "Server uptime in seconds"
+        );
+
+        // Log rotation metrics
+        describe_gauge!(
+            "antigravity_log_files_total",
+            "Total number of log files in logs directory"
+        );
+        describe_gauge!(
+            "antigravity_log_disk_bytes",
+            "Total disk space used by log files in bytes"
+        );
+        describe_counter!(
+            "antigravity_log_rotations_total",
+            "Total number of log file rotations"
+        );
+        describe_counter!(
+            "antigravity_log_cleanup_removed_total",
+            "Total number of log files removed by cleanup"
         );
 
         handle
@@ -102,6 +125,55 @@ pub fn update_uptime_gauge() {
     if let Some(start) = METRICS_START_TIME.get() {
         let uptime = start.elapsed().as_secs_f64();
         gauge!("antigravity_uptime_seconds").set(uptime);
+    }
+}
+
+/// Update log rotation metrics by scanning the log directory.
+///
+/// # Arguments
+/// * `log_dir` - Path to the logs directory
+///
+/// # Returns
+/// * `(file_count, disk_bytes)` - Tuple of file count and total disk usage
+pub fn update_log_rotation_gauges(log_dir: &Path) -> (usize, u64) {
+    let mut file_count = 0usize;
+    let mut disk_bytes = 0u64;
+
+    if let Ok(entries) = std::fs::read_dir(log_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if matches!(ext, "log" | "gz") {
+                    file_count += 1;
+                    if let Ok(metadata) = path.metadata() {
+                        disk_bytes += metadata.len();
+                    }
+                }
+            }
+        }
+    }
+
+    gauge!("antigravity_log_files_total").set(file_count as f64);
+    gauge!("antigravity_log_disk_bytes").set(disk_bytes as f64);
+
+    (file_count, disk_bytes)
+}
+
+/// Increment the log rotation counter.
+/// Call this after a log file rotation occurs.
+pub fn record_log_rotation() {
+    counter!("antigravity_log_rotations_total").increment(1);
+}
+
+/// Increment the log cleanup counter by the number of files removed.
+/// Call this after cleanup removes old log files.
+///
+/// # Arguments
+/// * `count` - Number of files removed
+pub fn record_log_cleanup(count: usize) {
+    if count > 0 {
+        counter!("antigravity_log_cleanup_removed_total").increment(count as u64);
     }
 }
 

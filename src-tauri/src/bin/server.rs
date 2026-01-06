@@ -780,11 +780,17 @@ async fn get_stats_handler(State(state): State<Arc<AdminState>>) -> impl IntoRes
 /// - antigravity_accounts_total - Gauge of total accounts
 /// - antigravity_accounts_available - Gauge of available accounts
 /// - antigravity_uptime_seconds - Gauge of server uptime
+/// - antigravity_log_files_total - Gauge of log files
+/// - antigravity_log_disk_bytes - Gauge of log disk usage
 async fn metrics_handler(State(state): State<Arc<AdminState>>) -> impl IntoResponse {
     // Update account gauges before rendering
     let total = state.token_manager.len();
     let available = state.token_manager.available_count();
     prometheus::update_account_gauges(total, available);
+
+    // Update log rotation gauges
+    let log_dir = state.data_dir.join("logs");
+    prometheus::update_log_rotation_gauges(&log_dir);
 
     // Render metrics in Prometheus text format
     let metrics_text = prometheus::render_metrics();

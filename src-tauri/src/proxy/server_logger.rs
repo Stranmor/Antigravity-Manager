@@ -21,6 +21,7 @@ use tracing_subscriber::{
 };
 
 use super::config::LogRotationConfig;
+use super::prometheus;
 
 /// Guards for non-blocking log writers that must be kept alive
 pub struct LogGuards {
@@ -265,6 +266,9 @@ pub async fn cleanup_old_logs(log_dir: &Path, max_age_days: u64) -> Result<usize
             }
         }
     }
+
+    // Record cleanup metrics
+    prometheus::record_log_cleanup(removed);
 
     Ok(removed)
 }

@@ -35,8 +35,26 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Apply clippy auto-fixes `[MODE: B]` ✓ 28086f66 (format strings, From conversions)
 - [x] Research and implement request caching for repeated queries `[MODE: R]` ✓ Research complete
 - [ ] Deploy Grafana Tempo on VPS for distributed tracing `[MODE: B]`
-- [ ] Implement automatic VPS binary update script `[MODE: B]`
+- [x] Implement automatic VPS binary update script `[MODE: B]` ✓ Created scripts/deploy-vps.sh (2026-01-07)
 - [ ] Add Prometheus metrics for log rotation (files rotated, disk usage) `[MODE: B]`
+
+## AUTOMATIC VPS DEPLOYMENT (2026-01-07)
+**Status: ✓ IMPLEMENTED**
+
+**Script Location:** `scripts/deploy-vps.sh`
+
+**Capabilities:**
+1. **Local Build:** Executes Podman build using `Containerfile` (headless + otel features).
+2. **Image Shipping:** Pipes `podman save` directly to `ssh podman load` to minimize VPS disk usage.
+3. **Service Management:** Restarts `antigravity-server` service via systemd on VPS.
+4. **Rigorous Verification:** Polls `/api/health/detailed` on the admin port (9101) up to 10 times.
+5. **Error Recovery:** Dumps service logs on health check failure for immediate debugging.
+
+**Usage:**
+```bash
+./scripts/deploy-vps.sh             # Full cycle: Build → Ship → Restart → Verify
+./scripts/deploy-vps.sh --skip-build # Ship existing image tarball
+```
 
 ## OTEL OBSERVABILITY STATUS (2026-01-07)
 **VPS OTEL Testing Results:**
