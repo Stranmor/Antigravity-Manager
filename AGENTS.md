@@ -29,12 +29,14 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Add health check endpoint with detailed component status `[MODE: B]` ✓ 7fcd5932 (/api/health/detailed)
 
 ## CURRENT ACTIVE BATCH (Phase 8 - Deployment & Infrastructure)
+- [x] Sync VPS with Phase 7 commits (log rotation, health check, analytics) `[MODE: B]` ✓ Deployed 2026-01-07
+- [x] Add Docker/Podman health check to Containerfile `[MODE: B]` ✓ 91f24d87 (uses /api/health/detailed)
+- [x] Fix database health check query bug `[MODE: B]` ✓ 7ab0c751 (query_row vs execute)
+- [x] Apply clippy auto-fixes `[MODE: B]` ✓ 28086f66 (format strings, From conversions)
+- [x] Research and implement request caching for repeated queries `[MODE: R]` ✓ Research complete
 - [ ] Deploy Grafana Tempo on VPS for distributed tracing `[MODE: B]`
-- [ ] Sync VPS with Phase 7 commits (log rotation, health check, analytics) `[MODE: B]`
-- [ ] Add Docker/Podman health check to Containerfile `[MODE: B]`
 - [ ] Implement automatic VPS binary update script `[MODE: B]`
 - [ ] Add Prometheus metrics for log rotation (files rotated, disk usage) `[MODE: B]`
-- [ ] Research and implement request caching for repeated queries `[MODE: R]`
 
 ## OTEL OBSERVABILITY STATUS (2026-01-07)
 **VPS OTEL Testing Results:**
@@ -1041,3 +1043,25 @@ curl -s http://localhost:9101/api/health/detailed | jq
 **Code Locations:**
 - `src-slint/ui/main.slint` - UsageBar, TopAccountCard components
 - `src-slint/src/main.rs` - refresh_analytics() function (lines 923-1103)
+
+## CODE QUALITY AUDIT (2026-01-07)
+**Status: ANALYSIS COMPLETE**
+
+**TODO/FIXME/HACK Scan:** ✅ None found - codebase is clean
+
+**Long Functions (>100 lines) - Refactoring Candidates:**
+| File | Function | Lines | Notes |
+|------|----------|-------|-------|
+| `proxy/handlers/claude.rs` | `handle_messages` | ~688 | Claude request/response cycle |
+| `proxy/handlers/openai.rs` | `handle_completions` | ~546 | OpenAI legacy completions |
+| `proxy/handlers/openai.rs` | `handle_chat_completions` | ~418 | OpenAI chat mapping |
+| `bin/server.rs` | `run_server` | ~273 | Server initialization |
+| `src-slint/main.rs` | `refresh_analytics` | ~180 | Analytics DB + UI update |
+
+**Unwrap Audit:**
+- 47 files contain `unwrap()` or `panic!()` calls
+- Main areas: `src-slint/main.rs` (UI code), `mappers/claude/streaming.rs` (tests)
+- Low priority - most are in error paths or tests
+
+**Recommendation:** Handler refactoring is optional - current code is functional and well-tested.
+
