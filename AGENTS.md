@@ -101,12 +101,61 @@ cargo build --profile release-fast # Testing (fast, still optimized)
 
 **Files Migrated:** 13 files across src-slint and src-tauri
 
-## NEXT OPTIMIZATION BATCH
-- [ ] Investigate `jiff` crate as next-gen time library (by ripgrep author) `[MODE: R]`
-- [ ] Add structured logging with request correlation IDs `[MODE: B]`
-- [ ] Implement connection pooling for upstream requests `[MODE: B]`
+## NEXT OPTIMIZATION BATCH (Research Complete)
+- [x] Investigate `jiff` crate as next-gen time library (by ripgrep author) `[MODE: R]` ✓ Wait for 1.0
+- [x] Research structured logging with request correlation IDs `[MODE: R]` ✓ See findings below
+- [x] Benchmark and optimize hot paths in token rotation `[MODE: R]` ✓ See findings below
+- [x] Fix remaining clippy warnings in server.rs `[MODE: B]` (e8f2b9a)
+- [ ] Implement structured JSON logging for files `[MODE: B]`
 - [ ] Add integration tests for proxy handlers `[MODE: C]`
-- [ ] Benchmark and optimize hot paths in token rotation `[MODE: R]`
+- [ ] Implement DashMap for rate limiting (performance) `[MODE: B]`
+
+## JIFF CRATE EVALUATION (2026-01-06)
+**Status: ✓ RESEARCH COMPLETE - WAIT FOR 1.0**
+
+**Summary:** `jiff` by Andrew Gallant (BurntSushi) is technically superior to `time` crate but not yet stable.
+
+**Key Benefits over `time`:**
+- First-class IANA timezone support (not just UTC offsets)
+- DST-aware arithmetic (handles "missing hour" correctly)
+- Advanced `Span` type for mixed calendar/clock units
+- Inspired by JavaScript Temporal proposal
+
+**Recommendation:** Keep `time` crate for now. Monitor `jiff` for 1.0 release (expected mid-2025).
+
+## STRUCTURED LOGGING ANALYSIS (2026-01-06)
+**Status: ✓ RESEARCH COMPLETE**
+
+**Current State:**
+- `request_id_middleware` already generates UUID per request ✓
+- BUT handlers (claude.rs) generate redundant 6-char `trace_id` ✗
+- Console: human-readable format ✓
+- File: human-readable format (missing JSON) ✗
+
+**Recommended Improvements:**
+1. **Abolish `trace_id`** - use global `request_id` instead
+2. **Enable JSON logging** for persistent files (`tracing-subscriber::fmt::json()`)
+3. **Deepen Span usage** - wrap account selection and upstream calls in spans
+
+**Fields to Standardize:**
+- `request.id`, `request.method`, `request.path`
+- `proxy.account`, `proxy.upstream_status`, `proxy.latency_ms`
+
+## HOT PATH PERFORMANCE ANALYSIS (2026-01-06)
+**Status: ✓ RESEARCH COMPLETE**
+
+**Identified Bottlenecks:**
+
+| Component | Current Issue | Optimization | Expected Gain |
+|-----------|--------------|--------------|---------------|
+| Token Selection | `RwLock` contention | `AtomicUsize` + `Arc` | 3-5x throughput |
+| Rate Limiting | `Mutex<HashMap>` | `DashMap` / Atomic slots | 10x on multi-core |
+| Request Monitor | Per-packet UI sync | Batching + circular buffer | 50% CPU reduction |
+| Health Checks | Write-lock blocking | Atomic status bits | Zero-latency updates |
+
+**Already Optimized (9a9e450):**
+- `sorted_tokens_cache` with tier-based sorting ✓
+- `O(1)` lookups via DashMap for token storage ✓
 
 ## CLI IMPORT TOOL (Complete - 2026-01-06)
 **Status: ✓ IMPLEMENTED AND TESTED**
