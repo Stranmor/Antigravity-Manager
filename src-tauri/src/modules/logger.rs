@@ -4,7 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 use crate::modules::account::get_data_dir;
 
-// 自定义本地时区时间格式化器
+// Custom local timezone time formatter for console output
 struct LocalTimer;
 
 impl tracing_subscriber::fmt::time::FormatTime for LocalTimer {
@@ -25,73 +25,74 @@ pub fn get_log_dir() -> Result<PathBuf, String> {
     let log_dir = data_dir.join("logs");
 
     if !log_dir.exists() {
-        fs::create_dir_all(&log_dir).map_err(|e| format!("创建日志目录失败: {e}"))?;
+        fs::create_dir_all(&log_dir).map_err(|e| format!("Failed to create log directory: {e}"))?;
     }
 
     Ok(log_dir)
 }
 
-/// 初始化日志系统
+/// Initialize logging system with human-readable console and JSON file output
 pub fn init_logger() {
-    // 捕获 log 宏日志
+    // Capture log macro logs
     let _ = tracing_log::LogTracer::init();
 
     let log_dir = match get_log_dir() {
         Ok(dir) => dir,
         Err(e) => {
-            eprintln!("无法初始化日志目录: {e}");
+            eprintln!("Failed to initialize log directory: {e}");
             return;
         }
     };
-    
-    // 1. 设置文件 Appender (使用 tracing-appender 实现滚动记录)
-    // 这里使用每天滚动的策略
-    let file_appender = tracing_appender::rolling::daily(log_dir, "app.log");
-    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-    
-    // 2. 终端输出层（使用本地时区）
+
+    // 1. Setup file appender with daily rotation
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "app.log");
+    let (non_blocking_file, file_guard) = tracing_appender::non_blocking(file_appender);
+
+    // 2. Console layer - human-readable format with local timezone
     let console_layer = fmt::Layer::new()
         .with_target(false)
         .with_thread_ids(false)
         .with_level(true)
         .with_timer(LocalTimer);
-        
-    // 3. 文件输出层 (关闭 ANSI 格式化，使用本地时区)
-    let file_layer = fmt::Layer::new()
-        .with_writer(non_blocking)
-        .with_ansi(false)
-        .with_target(true)
-        .with_level(true)
-        .with_timer(LocalTimer);
 
-    // 4. 设置过滤层 (默认使用 INFO 级别以减少日志体积)
+    // 3. File layer - structured JSON format for log analysis
+    // Includes: timestamp (ISO8601), level, target, message, span fields (request_id)
+    let file_layer = fmt::Layer::new()
+        .json()
+        .with_writer(non_blocking_file)
+        .with_target(true)
+        .with_current_span(true)
+        .with_span_list(true)
+        .flatten_event(false);
+
+    // 4. Setup filter layer (default INFO level to reduce log volume)
     let filter_layer = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info"));
 
-    // 5. 初始化全局订阅器 (使用 try_init 避免重复初始化崩溃)
+    // 5. Initialize global subscriber (use try_init to avoid panic on duplicate init)
     let _ = tracing_subscriber::registry()
         .with(filter_layer)
         .with(console_layer)
         .with(file_layer)
         .try_init();
 
-    // 泄漏 guard 以确保其生命周期持续到程序退出
-    // 这是使用 tracing_appender::non_blocking 时的推荐做法（如果不需要手动刷盘）
-    let _ = Box::leak(Box::new(guard));
-    
-    info!("日志系统已完成初始化 (终端控制台 + 文件持久化)");
+    // Leak guards to ensure their lifetime extends until program exit
+    // This is the recommended approach when using tracing_appender::non_blocking
+    let _ = Box::leak(Box::new(file_guard));
+
+    info!("Logging system initialized (console: human-readable, file: JSON)");
 }
 
-/// 清理日志缓存 (采用截断模式以保持 file 句柄有效)
+/// Clear log cache (uses truncate mode to keep file handles valid)
 pub fn clear_logs() -> Result<(), String> {
     let log_dir = get_log_dir()?;
     if log_dir.exists() {
-        // 遍历目录下的所有文件并截断，而不是删除目录
-        let entries = fs::read_dir(&log_dir).map_err(|e| format!("读取日志目录失败: {e}"))?;
+        // Iterate through all files and truncate instead of deleting directory
+        let entries = fs::read_dir(&log_dir).map_err(|e| format!("Failed to read log directory: {e}"))?;
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() {
-                // 使用截断模式打开文件，将大小设为 0
+                // Open file in truncate mode to set size to 0
                 let _ = fs::OpenOptions::new()
                     .write(true)
                     .truncate(true)
@@ -102,17 +103,17 @@ pub fn clear_logs() -> Result<(), String> {
     Ok(())
 }
 
-/// 记录信息日志 (向后兼容接口)
+/// Log info message (backward compatible interface)
 pub fn log_info(message: &str) {
     info!("{}", message);
 }
 
-/// 记录警告日志 (向后兼容接口)
+/// Log warning message (backward compatible interface)
 pub fn log_warn(message: &str) {
     warn!("{}", message);
 }
 
-/// 记录错误日志 (向后兼容接口)
+/// Log error message (backward compatible interface)
 pub fn log_error(message: &str) {
     error!("{}", message);
 }

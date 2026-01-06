@@ -1248,8 +1248,7 @@ mod tests {
         let output = chunks
             .iter()
             .map(|b| String::from_utf8(b.to_vec()).unwrap())
-            .collect::<Vec<_>>()
-            .join("");
+            .collect::<String>();
 
         // Verify sequence:
         // 1. content_block_start with empty input
@@ -1687,8 +1686,7 @@ mod tests {
         chunks
             .iter()
             .map(|b| String::from_utf8(b.to_vec()).unwrap_or_default())
-            .collect::<Vec<_>>()
-            .join("")
+            .collect::<String>()
     }
 
     // ============================================================
@@ -1750,7 +1748,7 @@ mod tests {
         let mut state = StreamingState::new();
         // Simulate multiple parse errors
         for i in 0..10 {
-            state.handle_parse_error(&format!("error {}", i));
+            state.handle_parse_error(&format!("error {i}"));
         }
         assert_eq!(state.get_error_count(), 10);
 

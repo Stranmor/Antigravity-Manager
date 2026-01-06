@@ -883,11 +883,11 @@ mod tests {
 
     #[test]
     fn test_buffer_capacity_constants() {
-        // Verify capacity constants are reasonable
-        assert!(INITIAL_BUFFER_CAPACITY >= 4096);
-        assert!(INITIAL_BUFFER_CAPACITY <= 65536);
-        assert!(CONTENT_BUFFER_CAPACITY >= 256);
-        assert!(CONTENT_BUFFER_CAPACITY <= 8192);
+        // Verify capacity constants are reasonable (compile-time assertions)
+        const { assert!(INITIAL_BUFFER_CAPACITY >= 4096) };
+        const { assert!(INITIAL_BUFFER_CAPACITY <= 65536) };
+        const { assert!(CONTENT_BUFFER_CAPACITY >= 256) };
+        const { assert!(CONTENT_BUFFER_CAPACITY <= 8192) };
     }
 
     #[test]

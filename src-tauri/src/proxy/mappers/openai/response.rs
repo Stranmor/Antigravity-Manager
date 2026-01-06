@@ -185,9 +185,8 @@ mod tests {
         let result = transform_openai_response(&gemini_resp);
         assert_eq!(result.object, "chat.completion");
 
-        let content = match result.choices[0].message.content.as_ref().unwrap() {
-            OpenAIContent::String(s) => s,
-            _ => panic!("Expected string content"),
+        let OpenAIContent::String(content) = result.choices[0].message.content.as_ref().unwrap() else {
+            panic!("Expected string content")
         };
         assert_eq!(content, "Hello!");
         assert_eq!(result.choices[0].finish_reason, Some("stop".to_string()));

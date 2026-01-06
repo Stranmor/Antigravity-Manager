@@ -265,7 +265,7 @@ mod tests {
         let timer = ScopedTimer::new("test_metric");
         sleep(Duration::from_millis(10));
         let elapsed = timer.elapsed_ms();
-        assert!(elapsed >= 9.0 && elapsed < 50.0); // Allow some variance
+        assert!((9.0..50.0).contains(&elapsed)); // Allow some variance
     }
 
     #[test]

@@ -263,7 +263,7 @@ mod rate_limiting {
 
         let wait = tracker.get_remaining_wait("account-6");
         // Wait should be 1-2 seconds (due to timing)
-        assert!(wait >= 1 && wait <= 2, "Expected wait 1-2s, got {wait}");
+        assert!((1..=2).contains(&wait), "Expected wait 1-2s, got {wait}");
     }
 
     /// Test parsing retry time from body (Google API format)
@@ -434,8 +434,8 @@ mod proxy_error {
     fn test_error_codes() {
         assert_eq!(ProxyError::invalid_request("").error_code(), "INVALID_REQUEST");
         assert_eq!(ProxyError::token_error("").error_code(), "TOKEN_ERROR");
-        assert_eq!(ProxyError::RateLimited("".into(), None).error_code(), "RATE_LIMITED");
-        assert_eq!(ProxyError::Overloaded("".into(), None).error_code(), "SERVER_OVERLOADED");
+        assert_eq!(ProxyError::RateLimited(String::new(), None).error_code(), "RATE_LIMITED");
+        assert_eq!(ProxyError::Overloaded(String::new(), None).error_code(), "SERVER_OVERLOADED");
         assert_eq!(ProxyError::upstream_error(500, "").error_code(), "UPSTREAM_ERROR");
     }
 
@@ -471,17 +471,17 @@ mod proxy_error {
 
         // Test each variant
         let errors = vec![
-            ProxyError::InvalidRequest("".into(), Some(rid.clone())),
-            ProxyError::TokenError("".into(), Some(rid.clone())),
-            ProxyError::RateLimited("".into(), Some(rid.clone())),
-            ProxyError::Overloaded("".into(), Some(rid.clone())),
-            ProxyError::TransformError("".into(), Some(rid.clone())),
-            ProxyError::ParseError("".into(), Some(rid.clone())),
-            ProxyError::NetworkError("".into(), Some(rid.clone())),
-            ProxyError::InternalError("".into(), Some(rid.clone())),
+            ProxyError::InvalidRequest(String::new(), Some(rid.clone())),
+            ProxyError::TokenError(String::new(), Some(rid.clone())),
+            ProxyError::RateLimited(String::new(), Some(rid.clone())),
+            ProxyError::Overloaded(String::new(), Some(rid.clone())),
+            ProxyError::TransformError(String::new(), Some(rid.clone())),
+            ProxyError::ParseError(String::new(), Some(rid.clone())),
+            ProxyError::NetworkError(String::new(), Some(rid.clone())),
+            ProxyError::InternalError(String::new(), Some(rid.clone())),
             ProxyError::UpstreamError {
                 status: 500,
-                message: "".into(),
+                message: String::new(),
                 request_id: Some(rid.clone()),
             },
         ];
@@ -777,7 +777,7 @@ mod sticky_session {
     /// Test scheduling mode defaults
     #[test]
     fn test_scheduling_mode_default() {
-        let mode: SchedulingMode = Default::default();
+        let mode: SchedulingMode = SchedulingMode::default();
         assert_eq!(mode, SchedulingMode::Balance);
     }
 

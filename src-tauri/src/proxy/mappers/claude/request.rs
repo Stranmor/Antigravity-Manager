@@ -1075,7 +1075,7 @@ mod tests {
         let resp_text = func_resp["response"]["result"].as_str().unwrap();
         assert!(resp_text.contains("file1.txt"));
         assert!(resp_text.contains("file2.txt"));
-        assert!(resp_text.contains("\n"));
+        assert!(resp_text.contains('\n'));
     }
 
     #[test]
@@ -1273,7 +1273,7 @@ mod tests {
                 role: "assistant".to_string(),
                 content: MessageContent::Array(vec![
                     ContentBlock::Thinking {
-                        thinking: "".to_string(), // 空内容
+                        thinking: String::new(), // Empty content
                         signature: Some("sig".to_string()),
                         cache_control: None,
                     },
