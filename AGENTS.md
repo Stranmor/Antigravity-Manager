@@ -53,11 +53,12 @@ cargo build --profile release-fast # Testing (fast, still optimized)
 ```
 
 ## UPCOMING BATCH
-- [ ] Complete Slint proxy server toggle (actually start/stop axum) `[MODE: B]`
-- [ ] Add clipboard support to Slint UI (arboard integration) `[MODE: B]`
+- [x] Complete Slint proxy server toggle (actually start/stop axum) `[MODE: B]` ✓ Already implemented
+- [x] Add clipboard support to Slint UI (arboard integration) `[MODE: B]` (056f882)
+- [x] Add Makefile/just for common operations `[MODE: B]` (34d814c)
 - [ ] Implement account filtering in Slint UI `[MODE: B]`
-- [ ] Add Makefile/just for common operations `[MODE: B]`
 - [ ] Sync VPS with latest binary `[MODE: B]`
+- [ ] Add GitHub Actions CI workflow `[MODE: B]`
 
 ## CLI IMPORT TOOL (Complete - 2026-01-06)
 **Status: ✓ IMPLEMENTED AND TESTED**
