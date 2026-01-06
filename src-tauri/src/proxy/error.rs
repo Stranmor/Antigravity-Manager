@@ -92,11 +92,17 @@ impl RetryErrorBreakdown {
 pub enum ProxyError {
     /// Request validation failed (malformed input, missing required fields)
     #[error("Invalid request: {0}")]
-    InvalidRequest(String, Option<crate::proxy::middleware::request_id::RequestId>),
+    InvalidRequest(
+        String,
+        Option<crate::proxy::middleware::request_id::RequestId>,
+    ),
 
     /// Token manager errors (no tokens available, refresh failures)
     #[error("Token error: {0}")]
-    TokenError(String, Option<crate::proxy::middleware::request_id::RequestId>),
+    TokenError(
+        String,
+        Option<crate::proxy::middleware::request_id::RequestId>,
+    ),
 
     /// Upstream API returned an error
     #[error("Upstream error ({status}): {message}")]
@@ -108,30 +114,47 @@ pub enum ProxyError {
 
     /// Rate limiting triggered
     #[error("Rate limited: {0}")]
-    RateLimited(String, Option<crate::proxy::middleware::request_id::RequestId>),
+    RateLimited(
+        String,
+        Option<crate::proxy::middleware::request_id::RequestId>,
+    ),
 
     /// Server overloaded (529 errors)
     #[error("Server overloaded: {0}")]
-    Overloaded(String, Option<crate::proxy::middleware::request_id::RequestId>),
+    Overloaded(
+        String,
+        Option<crate::proxy::middleware::request_id::RequestId>,
+    ),
 
     /// Request transformation failed
     #[error("Request transformation failed: {0}")]
-    TransformError(String, Option<crate::proxy::middleware::request_id::RequestId>),
+    TransformError(
+        String,
+        Option<crate::proxy::middleware::request_id::RequestId>,
+    ),
 
     /// Response parsing failed
     #[error("Failed to parse upstream response: {0}")]
-    ParseError(String, Option<crate::proxy::middleware::request_id::RequestId>),
+    ParseError(
+        String,
+        Option<crate::proxy::middleware::request_id::RequestId>,
+    ),
 
     /// Network/connection errors
     #[error("Network error: {0}")]
-    NetworkError(String, Option<crate::proxy::middleware::request_id::RequestId>),
+    NetworkError(
+        String,
+        Option<crate::proxy::middleware::request_id::RequestId>,
+    ),
 
     /// Internal server error (unexpected failures)
     #[error("Internal error: {0}")]
-    InternalError(String, Option<crate::proxy::middleware::request_id::RequestId>),
+    InternalError(
+        String,
+        Option<crate::proxy::middleware::request_id::RequestId>,
+    ),
 
     // === Retry-Specific Error Types ===
-
     /// All retry attempts exhausted
     #[error("Retry exhausted after {attempts} attempts: {last_error}")]
     RetryExhausted {
@@ -154,7 +177,10 @@ pub enum ProxyError {
 
     /// Response building failed (should never happen in production)
     #[error("Failed to build response: {0}")]
-    ResponseBuildError(String, Option<crate::proxy::middleware::request_id::RequestId>),
+    ResponseBuildError(
+        String,
+        Option<crate::proxy::middleware::request_id::RequestId>,
+    ),
 }
 
 impl ProxyError {
@@ -162,22 +188,20 @@ impl ProxyError {
     pub fn status_code(&self) -> StatusCode {
         match self {
             ProxyError::InvalidRequest(_, _) => StatusCode::BAD_REQUEST,
-            ProxyError::TokenError(_, _) => StatusCode::SERVICE_UNAVAILABLE,
+            ProxyError::TokenError(_, _)
+            | ProxyError::RetryExhausted { .. }
+            | ProxyError::CircuitBreakerOpen { .. }
+            | ProxyError::Overloaded(_, _) => StatusCode::SERVICE_UNAVAILABLE,
             ProxyError::UpstreamError { status, .. } => {
                 StatusCode::from_u16(*status).unwrap_or(StatusCode::BAD_GATEWAY)
             }
             ProxyError::RateLimited(_, _) => StatusCode::TOO_MANY_REQUESTS,
-            ProxyError::Overloaded(_, _) => {
-                // 529 is not a standard StatusCode, use 503 as fallback
-                StatusCode::SERVICE_UNAVAILABLE
+            ProxyError::TransformError(_, _)
+            | ProxyError::InternalError(_, _)
+            | ProxyError::ResponseBuildError(_, _) => StatusCode::INTERNAL_SERVER_ERROR,
+            ProxyError::ParseError(_, _) | ProxyError::NetworkError(_, _) => {
+                StatusCode::BAD_GATEWAY
             }
-            ProxyError::TransformError(_, _) => StatusCode::INTERNAL_SERVER_ERROR,
-            ProxyError::ParseError(_, _) => StatusCode::BAD_GATEWAY,
-            ProxyError::NetworkError(_, _) => StatusCode::BAD_GATEWAY,
-            ProxyError::InternalError(_, _) => StatusCode::INTERNAL_SERVER_ERROR,
-            ProxyError::RetryExhausted { .. } => StatusCode::SERVICE_UNAVAILABLE,
-            ProxyError::CircuitBreakerOpen { .. } => StatusCode::SERVICE_UNAVAILABLE,
-            ProxyError::ResponseBuildError(_, _) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
@@ -236,11 +260,14 @@ impl ProxyError {
     }
 
     /// Attach a request ID to this error.
+    #[must_use]
     pub fn with_request_id(self, rid: crate::proxy::middleware::request_id::RequestId) -> Self {
         match self {
             ProxyError::InvalidRequest(m, _) => ProxyError::InvalidRequest(m, Some(rid)),
             ProxyError::TokenError(m, _) => ProxyError::TokenError(m, Some(rid)),
-            ProxyError::UpstreamError { status, message, .. } => ProxyError::UpstreamError {
+            ProxyError::UpstreamError {
+                status, message, ..
+            } => ProxyError::UpstreamError {
                 status,
                 message,
                 request_id: Some(rid),
@@ -351,7 +378,10 @@ impl ProxyError {
             ProxyError::RateLimited(_, _)
                 | ProxyError::Overloaded(_, _)
                 | ProxyError::NetworkError(_, _)
-                | ProxyError::UpstreamError { status: 429 | 503 | 529 | 500 | 502 | 504, .. }
+                | ProxyError::UpstreamError {
+                    status: 429 | 503 | 529 | 500 | 502 | 504,
+                    ..
+                }
         )
     }
 
@@ -367,7 +397,11 @@ impl ProxyError {
     pub fn is_overload(&self) -> bool {
         matches!(
             self,
-            ProxyError::Overloaded(_, _) | ProxyError::UpstreamError { status: 529 | 503, .. }
+            ProxyError::Overloaded(_, _)
+                | ProxyError::UpstreamError {
+                    status: 529 | 503,
+                    ..
+                }
         )
     }
 }
@@ -379,7 +413,9 @@ impl IntoResponse for ProxyError {
         let code = self.error_code();
         let request_id = self.request_id();
         let retry_after_ms = self.retry_after_ms();
-        let (attempt, max_attempts) = self.attempt_info().map_or((None, None), |(a, m)| (Some(a), Some(m)));
+        let (attempt, max_attempts) = self
+            .attempt_info()
+            .map_or((None, None), |(a, m)| (Some(a), Some(m)));
 
         // Log the error for monitoring with structured fields
         tracing::error!(
@@ -462,7 +498,12 @@ mod tests {
             StatusCode::SERVICE_UNAVAILABLE
         );
         assert_eq!(
-            ProxyError::circuit_breaker_open("test", "too many failures", Some(Duration::from_secs(30))).status_code(),
+            ProxyError::circuit_breaker_open(
+                "test",
+                "too many failures",
+                Some(Duration::from_secs(30))
+            )
+            .status_code(),
             StatusCode::SERVICE_UNAVAILABLE
         );
     }
@@ -490,8 +531,14 @@ mod tests {
 
     #[test]
     fn test_error_codes() {
-        assert_eq!(ProxyError::invalid_request("test").error_code(), "INVALID_REQUEST");
-        assert_eq!(ProxyError::retry_exhausted(1, "err", None).error_code(), "RETRY_EXHAUSTED");
+        assert_eq!(
+            ProxyError::invalid_request("test").error_code(),
+            "INVALID_REQUEST"
+        );
+        assert_eq!(
+            ProxyError::retry_exhausted(1, "err", None).error_code(),
+            "RETRY_EXHAUSTED"
+        );
         assert_eq!(
             ProxyError::circuit_breaker_open("ep", "reason", None).error_code(),
             "CIRCUIT_BREAKER_OPEN"

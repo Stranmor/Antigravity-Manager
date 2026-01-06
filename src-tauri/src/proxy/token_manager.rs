@@ -1,12 +1,21 @@
-// 移除冗余的顶层导入，因为这些在代码中已由 full path 或局部导入处理
 use dashmap::DashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
+use crate::proxy::health::HealthMonitor;
 use crate::proxy::rate_limit::RateLimitTracker;
-use crate::proxy::sticky_config::StickySessionConfig;
+use crate::proxy::sticky_config::{SchedulingMode, StickySessionConfig};
+
+#[derive(Debug, Clone)]
+struct SessionBinding {
+    account_id: String,
+    created_at: Instant,
+}
+
+const SESSION_TTL_SECS: u64 = 1800;
 
 #[derive(Debug, Clone)]
 pub struct ProxyToken {
@@ -22,17 +31,17 @@ pub struct ProxyToken {
 }
 
 pub struct TokenManager {
-    tokens: Arc<DashMap<String, ProxyToken>>,  // account_id -> ProxyToken
+    tokens: Arc<DashMap<String, ProxyToken>>,
     current_index: Arc<AtomicUsize>,
-    last_used_account: Arc<tokio::sync::Mutex<Option<(String, std::time::Instant)>>>,
+    last_used_account: Arc<tokio::sync::Mutex<Option<(String, Instant)>>>,
     data_dir: PathBuf,
-    rate_limit_tracker: Arc<RateLimitTracker>,  // 新增: 限流跟踪器
-    sticky_config: Arc<tokio::sync::RwLock<StickySessionConfig>>, // 新增：调度配置
-    session_accounts: Arc<DashMap<String, String>>, // 新增：会话与账号映射 (SessionID -> AccountID)
+    rate_limit_tracker: Arc<RateLimitTracker>,
+    sticky_config: Arc<tokio::sync::RwLock<StickySessionConfig>>,
+    session_accounts: Arc<DashMap<String, SessionBinding>>,
+    health_monitor: Option<Arc<HealthMonitor>>,
 }
 
 impl TokenManager {
-    /// 创建新的 TokenManager
     pub fn new(data_dir: PathBuf) -> Self {
         Self {
             tokens: Arc::new(DashMap::new()),
@@ -42,10 +51,16 @@ impl TokenManager {
             rate_limit_tracker: Arc::new(RateLimitTracker::new()),
             sticky_config: Arc::new(tokio::sync::RwLock::new(StickySessionConfig::default())),
             session_accounts: Arc::new(DashMap::new()),
+            health_monitor: None,
         }
     }
+
+    #[must_use]
+    pub fn with_health_monitor(mut self, monitor: Arc<HealthMonitor>) -> Self {
+        self.health_monitor = Some(monitor);
+        self
+    }
     
-    /// 从主应用账号目录加载所有账号
     pub async fn load_accounts(&self) -> Result<usize, String> {
         let accounts_dir = self.data_dir.join("accounts");
         
@@ -203,7 +218,6 @@ impl TokenManager {
         });
 
         // 0. 读取当前调度配置
-        use crate::proxy::sticky_config::SchedulingMode;
         let scheduling = self.sticky_config.read().await.clone();
 
         let mut attempted: HashSet<String> = HashSet::new();
@@ -220,30 +234,50 @@ impl TokenManager {
             if let Some(sid) = session_id.filter(|_| !rotate && scheduling.mode != SchedulingMode::PerformanceFirst) {
                 
                 // 1. 检查会话是否已绑定账号
-                if let Some(bound_id) = self.session_accounts.get(sid).map(|v| v.clone()) {
-                    // 2. 检查绑定的账号是否限流 (使用 per-model 限流检查)
-                    let reset_sec = self.rate_limit_tracker.get_remaining_wait_for_group(&bound_id, Some(quota_group));
-                    if reset_sec > 0 {
-                        if scheduling.mode == SchedulingMode::CacheFirst && reset_sec <= scheduling.max_wait_seconds {
-                            // 缓存优先模式：限流时间短，执行精准精准避让等待
-                            tracing::warn!("Cache-first: Session {} bound to {} is limited. Executing precise wait for {}s to preserve cache...", sid, bound_id, reset_sec);
-                            tokio::time::sleep(std::time::Duration::from_secs(reset_sec)).await;
-                            
-                            // 等待后若账号可用，优先复用
-                            if let Some(found) = tokens_snapshot.iter().find(|t| t.account_id == bound_id) {
-                                tracing::debug!("Sticky Session: Successfully recovered and reusing bound account {} for session {}", found.email, sid);
-                                target_token = Some(found.clone());
-                            }
-                        } else {
-                            // 平衡模式或等待时间过长：断开绑定，准备换号
-                            tracing::warn!("Avoidance/WaitTimeout: Session {} switching from {} (remaining wait: {}s > limit: {}s).", sid, bound_id, reset_sec, scheduling.max_wait_seconds);
+                if let Some(binding) = self.session_accounts.get(sid).map(|v| v.clone()) {
+                    let bound_account_id = &binding.account_id;
+                    
+                    // 1a. 检查会话 TTL（30分钟后过期）
+                    if binding.created_at.elapsed().as_secs() > SESSION_TTL_SECS {
+                        tracing::debug!("Session {} expired (TTL {}s exceeded), unbinding from account {}", sid, SESSION_TTL_SECS, bound_account_id);
+                        self.session_accounts.remove(sid);
+                        // Continue to Mode B/C for new account selection
+                    } else {
+                        // 1b. 检查账号健康状态 (HealthMonitor)
+                        let is_unhealthy = self.health_monitor
+                            .as_ref()
+                            .is_some_and(|hm| !hm.is_available(bound_account_id));
+                        
+                        if is_unhealthy {
+                            tracing::warn!("Session {} bound account {} is unhealthy, unbinding", sid, bound_account_id);
                             self.session_accounts.remove(sid);
-                        }
-                    } else if !attempted.contains(&bound_id) {
-                        // 3. 账号可用且未被标记为尝试失败，优先复用
-                        if let Some(found) = tokens_snapshot.iter().find(|t| t.account_id == bound_id) {
-                            tracing::debug!("Sticky Session: Successfully reusing bound account {} for session {}", found.email, sid);
-                            target_token = Some(found.clone());
+                            // Continue to Mode B/C for new account selection
+                        } else {
+                            // 2. 检查绑定的账号是否限流 (使用 per-model 限流检查)
+                            let reset_sec = self.rate_limit_tracker.get_remaining_wait_for_group(bound_account_id, Some(quota_group));
+                            if reset_sec > 0 {
+                                if scheduling.mode == SchedulingMode::CacheFirst && reset_sec <= scheduling.max_wait_seconds {
+                                    // 缓存优先模式：限流时间短，执行精准精准避让等待
+                                    tracing::warn!("Cache-first: Session {} bound to {} is limited. Executing precise wait for {}s to preserve cache...", sid, bound_account_id, reset_sec);
+                                    tokio::time::sleep(std::time::Duration::from_secs(reset_sec)).await;
+                                    
+                                    // 等待后若账号可用，优先复用
+                                    if let Some(found) = tokens_snapshot.iter().find(|t| &t.account_id == bound_account_id) {
+                                        tracing::debug!("Sticky Session: Successfully recovered and reusing bound account {} for session {}", found.email, sid);
+                                        target_token = Some(found.clone());
+                                    }
+                                } else {
+                                    // 平衡模式或等待时间过长：断开绑定，准备换号
+                                    tracing::warn!("Avoidance/WaitTimeout: Session {} switching from {} (remaining wait: {}s > limit: {}s).", sid, bound_account_id, reset_sec, scheduling.max_wait_seconds);
+                                    self.session_accounts.remove(sid);
+                                }
+                            } else if !attempted.contains(bound_account_id) {
+                                // 3. 账号可用且未被标记为尝试失败，优先复用
+                                if let Some(found) = tokens_snapshot.iter().find(|t| &t.account_id == bound_account_id) {
+                                    tracing::debug!("Sticky Session: Successfully reusing bound account {} for session {}", found.email, sid);
+                                    target_token = Some(found.clone());
+                                }
+                            }
                         }
                     }
                 }
@@ -278,13 +312,23 @@ impl TokenManager {
                             continue;
                         }
 
+                        // 主动避开健康监控禁用的账号
+                        if let Some(ref hm) = self.health_monitor {
+                            if !hm.is_available(&candidate.account_id) {
+                                continue;
+                            }
+                        }
+
                         target_token = Some(candidate.clone());
                         *last_used = Some((candidate.account_id.clone(), std::time::Instant::now()));
                         
                         // 如果是会话首次分配且需要粘性，在此建立绑定
                         if let Some(sid) = session_id {
                             if scheduling.mode != SchedulingMode::PerformanceFirst {
-                                self.session_accounts.insert(sid.to_string(), candidate.account_id.clone());
+                                self.session_accounts.insert(sid.to_string(), SessionBinding {
+                                    account_id: candidate.account_id.clone(),
+                                    created_at: Instant::now(),
+                                });
                                 tracing::debug!("Sticky Session: Bound new account {} to session {}", candidate.email, sid);
                             }
                         }
@@ -303,6 +347,12 @@ impl TokenManager {
 
                     if self.rate_limit_tracker.is_rate_limited_for_group(&candidate.account_id, Some(quota_group)) {
                         continue;
+                    }
+
+                    if let Some(ref hm) = self.health_monitor {
+                        if !hm.is_available(&candidate.account_id) {
+                            continue;
+                        }
                     }
 
                     target_token = Some(candidate.clone());
@@ -596,8 +646,8 @@ impl TokenManager {
         let mut unbound_sessions = Vec::new();
 
         // 遍历所有会话，找到绑定到该账号的会话并解绑
-        self.session_accounts.retain(|session_id, bound_account_id| {
-            if bound_account_id == account_id {
+        self.session_accounts.retain(|session_id, binding| {
+            if binding.account_id == account_id {
                 tracing::debug!(
                     "Rate-limit unbind: Session {} detached from account {}",
                     session_id,

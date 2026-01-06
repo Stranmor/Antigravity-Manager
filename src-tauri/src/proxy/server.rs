@@ -1,3 +1,4 @@
+use crate::proxy::handlers;
 use crate::proxy::TokenManager;
 use axum::{
     extract::{DefaultBodyLimit, State},
@@ -145,7 +146,6 @@ impl AxumServer {
 
 
         // 构建路由 - 使用新架构的 handlers！
-        use crate::proxy::handlers;
         // 构建路由
         let app = Router::new()
             // OpenAI Protocol
