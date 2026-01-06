@@ -81,6 +81,7 @@ tracing-log = "0.2.0"
 sha2 = "0.10"
 lru = "0.12"
 parking_lot = "0.12"
+tower_governor = "0.8.0"
 
 # Lints configuration (Rust 1.74+)
 [lints.rust]

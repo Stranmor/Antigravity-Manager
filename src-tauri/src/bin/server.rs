@@ -27,6 +27,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tokio::signal;
 use tokio::sync::RwLock;
+use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
 use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -101,6 +102,8 @@ struct AdminState {
     token_manager: Arc<TokenManager>,
     monitor: Arc<ProxyMonitor>,
     proxy_server: RwLock<Option<ProxyServerHandle>>,
+    /// API key for admin authentication (None = auth disabled)
+    api_key: Option<String>,
 }
 
 struct ProxyServerHandle {
@@ -171,6 +174,49 @@ struct ErrorResponse {
 impl ErrorResponse {
     fn new(msg: impl Into<String>) -> Self {
         Self { error: msg.into() }
+    }
+}
+
+// ============================================================================
+// Admin API Authentication Middleware
+// ============================================================================
+
+/// Admin API authentication middleware
+///
+/// Validates the API key from Authorization header (Bearer token) or X-API-Key header.
+/// Returns 401 Unauthorized if the API key is invalid or missing.
+async fn admin_auth_middleware(
+    State(state): State<Arc<AdminState>>,
+    req: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    // If no API key is configured, auth is disabled - allow all requests
+    let Some(expected_key) = &state.api_key else {
+        return Ok(next.run(req).await);
+    };
+
+    // Extract API key from Authorization header (Bearer) or X-API-Key header
+    let provided_key = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .or_else(|| {
+            req.headers()
+                .get("x-api-key")
+                .and_then(|h| h.to_str().ok())
+        });
+
+    match provided_key {
+        Some(key) if key == expected_key => Ok(next.run(req).await),
+        Some(_) => {
+            warn!("Admin API: Invalid API key provided");
+            Err(StatusCode::UNAUTHORIZED)
+        }
+        None => {
+            warn!("Admin API: Missing API key");
+            Err(StatusCode::UNAUTHORIZED)
+        }
     }
 }
 
@@ -645,11 +691,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         token_manager: token_manager.clone(),
         monitor: monitor.clone(),
         proxy_server: RwLock::new(Some(ProxyServerHandle { server, handle })),
+        api_key: server_config.api_key.clone(),
     });
 
-    // Build admin API router
-    let admin_app = Router::new()
-        .route("/api/health", get(health_handler))
+    // Admin API Rate Limiting: 60 requests per minute per IP
+    let governor_config = Arc::new(
+        GovernorConfigBuilder::default()
+            .per_second(1)
+            .burst_size(60)
+            .finish()
+            .unwrap(),
+    );
+
+    // Build authenticated routes (require API key)
+    let authenticated_routes = Router::new()
         .route(
             "/api/accounts",
             get(list_accounts_handler).post(add_account_handler),
@@ -661,7 +716,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             get(get_config_handler).put(update_config_handler),
         )
         .route("/api/stats", get(get_stats_handler))
+        .layer(middleware::from_fn_with_state(
+            admin_state.clone(),
+            admin_auth_middleware,
+        ));
+
+    // Build public routes (no auth required - for monitoring)
+    let public_routes = Router::new().route("/api/health", get(health_handler));
+
+    // Combine routers with rate limiting
+    let admin_app = Router::new()
+        .merge(public_routes)
+        .merge(authenticated_routes)
+        .layer(GovernorLayer::new(governor_config))
         .with_state(admin_state.clone());
+
+    // Log auth status
+    if server_config.api_key.is_some() {
+        info!("Admin API authentication: ENABLED");
+    } else {
+        warn!("Admin API authentication: DISABLED (no ANTIGRAVITY_API_KEY set)");
+    }
 
     // Start admin API server
     let admin_addr = format!("{}:{}", bind_addr, server_config.admin_port);
@@ -684,14 +759,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     info!("");
     info!("Admin API endpoints:");
-    info!("  GET    /api/health          - Health check with stats");
-    info!("  GET    /api/accounts        - List all accounts");
-    info!("  POST   /api/accounts        - Add account (body: {{\"refresh_token\": \"...\"}})");
-    info!("  DELETE /api/accounts/{{id}}   - Delete account");
-    info!("  POST   /api/accounts/reload - Reload accounts from disk");
-    info!("  GET    /api/config          - Get current config");
-    info!("  PUT    /api/config          - Update config (hot reload)");
-    info!("  GET    /api/stats           - Get proxy stats");
+    info!("  GET    /api/health          - Health check with stats (public)");
+    info!("  GET    /api/accounts        - List all accounts (auth required)");
+    info!("  POST   /api/accounts        - Add account (auth required)");
+    info!("  DELETE /api/accounts/{{id}}   - Delete account (auth required)");
+    info!("  POST   /api/accounts/reload - Reload accounts from disk (auth required)");
+    info!("  GET    /api/config          - Get current config (auth required)");
+    info!("  PUT    /api/config          - Update config (auth required)");
+    info!("  GET    /api/stats           - Get proxy stats (auth required)");
+    info!("");
+    info!("Authentication: Use 'Authorization: Bearer <API_KEY>' or 'X-API-Key: <API_KEY>' header");
 
     // Run admin server with graceful shutdown
     tokio::select! {
