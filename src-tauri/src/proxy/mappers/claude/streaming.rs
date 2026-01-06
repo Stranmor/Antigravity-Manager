@@ -2,6 +2,7 @@
 // Optimized for minimal allocations and zero-copy where possible
 //
 // Performance optimizations:
+// - SmallVec for stack-allocated chunk collections (avoids heap for typical cases)
 // - Pre-allocated SSE output buffers with capacity hints
 // - Vec capacity hints for chunk collections
 // - Inlined helper functions for hot paths
@@ -24,17 +25,21 @@ use super::models::{FunctionCall, GeminiPart, Usage, UsageMetadata};
 use super::utils::to_claude_usage;
 use crate::proxy::mappers::signature_store::store_thought_signature;
 use crate::proxy::mappers::stream_resilience::{
-    HeartbeatGenerator, PartialChunkBuffer, StreamMetrics,
+    HeartbeatGenerator, LineVec, PartialChunkBuffer, StreamMetrics,
     CHUNK_TIMEOUT,
 };
 use bytes::Bytes;
 use serde_json::json;
+use smallvec::SmallVec;
 use std::time::Instant;
 
 // === Buffer Capacity Constants ===
 // Pre-tuned for typical Claude SSE event sizes
 const SSE_OUTPUT_CAPACITY: usize = 512;           // Typical SSE event output size
-const CHUNK_VEC_CAPACITY: usize = 4;              // Typical number of chunks per operation
+
+/// Type alias for stack-optimized chunk collections.
+/// Most SSE operations return 1-4 chunks, so 4 elements fits on stack.
+pub type ChunkVec = SmallVec<[Bytes; 4]>;
 
 /// Known parameter remappings for Gemini → Claude compatibility
 /// [FIX] Gemini sometimes uses different parameter names than specified in tool schema
@@ -250,8 +255,8 @@ impl StreamingState {
         &mut self,
         block_type: BlockType,
         content_block: serde_json::Value,
-    ) -> Vec<Bytes> {
-        let mut chunks = Vec::with_capacity(CHUNK_VEC_CAPACITY);
+    ) -> ChunkVec {
+        let mut chunks = ChunkVec::new();
         if self.block_type != BlockType::None {
             chunks.extend(self.end_block());
         }
@@ -270,12 +275,12 @@ impl StreamingState {
     }
 
     /// 结束当前内容块
-    pub fn end_block(&mut self) -> Vec<Bytes> {
+    pub fn end_block(&mut self) -> ChunkVec {
         if self.block_type == BlockType::None {
-            return vec![];
+            return ChunkVec::new();
         }
 
-        let mut chunks = Vec::with_capacity(CHUNK_VEC_CAPACITY);
+        let mut chunks = ChunkVec::new();
 
         // Thinking 块结束时发送暂存的签名
         if self.block_type == BlockType::Thinking && self.signatures.has_pending() {
@@ -322,8 +327,8 @@ impl StreamingState {
         &mut self,
         finish_reason: Option<&str>,
         usage_metadata: Option<&UsageMetadata>,
-    ) -> Vec<Bytes> {
-        let mut chunks = Vec::with_capacity(CHUNK_VEC_CAPACITY);
+    ) -> ChunkVec {
+        let mut chunks = ChunkVec::new();
 
         // 关闭最后一个块
         chunks.extend(self.end_block());
@@ -466,8 +471,8 @@ impl StreamingState {
     /// 2. 递增错误计数器
     /// 3. 在 debug 模式下输出错误信息
     /// 4. Record error in metrics if enabled
-    pub fn handle_parse_error(&mut self, raw_data: &str) -> Vec<Bytes> {
-        let mut chunks = Vec::with_capacity(CHUNK_VEC_CAPACITY);
+    pub fn handle_parse_error(&mut self, raw_data: &str) -> ChunkVec {
+        let mut chunks = ChunkVec::new();
 
         self.parse_error_count += 1;
 
@@ -587,7 +592,7 @@ impl StreamingState {
 
     /// Extract complete SSE lines from partial buffer.
     /// Returns complete lines, leaves incomplete data buffered.
-    pub fn extract_complete_lines(&mut self) -> Vec<Bytes> {
+    pub fn extract_complete_lines(&mut self) -> LineVec {
         let lines = self.partial_buffer.extract_complete_lines();
         if !lines.is_empty() {
             if let Some(ref metrics) = self.metrics {
@@ -635,8 +640,8 @@ impl StreamingState {
 
     /// Perform cleanup on stream end.
     /// Flushes any remaining partial data and finalizes metrics.
-    pub fn cleanup(&mut self) -> Vec<Bytes> {
-        let mut chunks = Vec::new();
+    pub fn cleanup(&mut self) -> ChunkVec {
+        let mut chunks = ChunkVec::new();
 
         // Flush any remaining partial data
         if self.has_pending_chunks() {
@@ -673,8 +678,8 @@ impl<'a> PartProcessor<'a> {
     }
 
     /// 处理单个 part
-    pub fn process(&mut self, part: &GeminiPart) -> Vec<Bytes> {
-        let mut chunks = Vec::with_capacity(CHUNK_VEC_CAPACITY);
+    pub fn process(&mut self, part: &GeminiPart) -> ChunkVec {
+        let mut chunks = ChunkVec::new();
         let signature = part.thought_signature.clone();
 
         // 1. FunctionCall 处理
@@ -732,8 +737,8 @@ impl<'a> PartProcessor<'a> {
     }
 
     /// 处理 Thinking
-    fn process_thinking(&mut self, text: &str, signature: Option<String>) -> Vec<Bytes> {
-        let mut chunks = Vec::with_capacity(CHUNK_VEC_CAPACITY);
+    fn process_thinking(&mut self, text: &str, signature: Option<String>) -> ChunkVec {
+        let mut chunks = ChunkVec::new();
 
         // 处理之前的 trailingSignature
         if self.state.has_trailing_signature() {
@@ -791,8 +796,8 @@ impl<'a> PartProcessor<'a> {
     }
 
     /// 处理普通 Text
-    fn process_text(&mut self, text: &str, signature: Option<String>) -> Vec<Bytes> {
-        let mut chunks = Vec::with_capacity(CHUNK_VEC_CAPACITY);
+    fn process_text(&mut self, text: &str, signature: Option<String>) -> ChunkVec {
+        let mut chunks = ChunkVec::new();
 
         // 空 text 带签名 - 暂存
         if text.is_empty() {
@@ -876,8 +881,8 @@ impl<'a> PartProcessor<'a> {
         &mut self,
         fc: &FunctionCall,
         signature: Option<String>,
-    ) -> Vec<Bytes> {
-        let mut chunks = Vec::with_capacity(CHUNK_VEC_CAPACITY);
+    ) -> ChunkVec {
+        let mut chunks = ChunkVec::new();
 
         self.state.mark_tool_used();
 

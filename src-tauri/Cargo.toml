@@ -29,6 +29,12 @@ desktop = [
     "dep:tauri-build",
 ]
 headless = []
+otel = [
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:tracing-opentelemetry",
+]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [], optional = true }
@@ -88,6 +94,15 @@ clap = { version = "4", features = ["derive"] }
 # Prometheus metrics (SOTA 2025/2026)
 metrics = "0.24"
 metrics-exporter-prometheus = "0.18"
+
+# Memory optimization (SSE streaming)
+smallvec = { version = "1.13", features = ["union", "const_generics"] }
+
+# OpenTelemetry distributed tracing (optional, behind 'otel' feature)
+opentelemetry = { version = "0.27", optional = true }
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"], optional = true }
+opentelemetry-otlp = { version = "0.27", features = ["tonic"], optional = true }
+tracing-opentelemetry = { version = "0.28", optional = true }
 
 # Lints configuration (Rust 1.74+)
 [lints.rust]

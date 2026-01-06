@@ -10,7 +10,7 @@ pub mod utils;
 pub use models::*;
 pub use request::transform_claude_request_in;
 pub use response::transform_response;
-pub use streaming::{PartProcessor, StreamingState};
+pub use streaming::{ChunkVec, PartProcessor, StreamingState};
 
 use bytes::Bytes;
 use futures::Stream;
@@ -67,7 +67,7 @@ pub fn create_claude_sse_stream(
 }
 
 /// 处理单行 SSE 数据
-fn process_sse_line(line: &str, state: &mut StreamingState, trace_id: &str, email: &str) -> Option<Vec<Bytes>> {
+fn process_sse_line(line: &str, state: &mut StreamingState, trace_id: &str, email: &str) -> Option<ChunkVec> {
     if !line.starts_with("data: ") {
         return None;
     }
@@ -91,7 +91,7 @@ fn process_sse_line(line: &str, state: &mut StreamingState, trace_id: &str, emai
         Err(_) => return None,
     };
 
-    let mut chunks = Vec::new();
+    let mut chunks = ChunkVec::new();
 
     // 解包 response 字段 (如果存在)
     let raw_json = json_value.get("response").unwrap_or(&json_value);
@@ -189,7 +189,7 @@ fn process_sse_line(line: &str, state: &mut StreamingState, trace_id: &str, emai
 }
 
 /// 发送强制结束事件
-pub fn emit_force_stop(state: &mut StreamingState) -> Vec<Bytes> {
+pub fn emit_force_stop(state: &mut StreamingState) -> ChunkVec {
     if !state.message_stop_sent {
         let mut chunks = state.emit_finish(None, None);
         if chunks.is_empty() {
@@ -200,14 +200,14 @@ pub fn emit_force_stop(state: &mut StreamingState) -> Vec<Bytes> {
         }
         return chunks;
     }
-    vec![]
+    ChunkVec::new()
 }
 
 /// Process grounding metadata from Gemini's googleSearch and emit as Claude web_search blocks
 fn process_grounding_metadata(
     metadata: &serde_json::Value,
     state: &mut StreamingState,
-) -> Option<Vec<Bytes>> {
+) -> Option<ChunkVec> {
     use serde_json::json;
 
     // Extract search queries and grounding chunks
@@ -264,7 +264,7 @@ fn process_grounding_metadata(
         search_query
     );
 
-    let mut chunks = Vec::new();
+    let mut chunks = ChunkVec::new();
 
     // 1. Emit server_tool_use block (start)
     let server_tool_use_start = json!({

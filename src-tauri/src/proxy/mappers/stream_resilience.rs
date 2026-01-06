@@ -7,9 +7,11 @@
 // - StreamMetrics: Track duration, bytes, errors, disconnections
 // - PartialChunkBuffer: Handle incomplete SSE chunks across network boundaries
 // - Heartbeat generator: Keep connections alive during slow responses
+// - AbortHandler: Uses SmallVec to avoid heap allocations for typical callback counts
 
 use bytes::{Bytes, BytesMut};
 use metrics::{counter, describe_counter, describe_gauge, describe_histogram, gauge, histogram};
+use smallvec::SmallVec;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -240,6 +242,10 @@ impl Drop for StreamMetrics {
     }
 }
 
+/// Type alias for stack-optimized SSE line buffers.
+/// Most SSE chunks contain 1-4 complete lines.
+pub type LineVec = SmallVec<[Bytes; 4]>;
+
 // === Partial Chunk Buffer ===
 
 /// Handles incomplete SSE chunks that may be split across network packets.
@@ -288,8 +294,9 @@ impl PartialChunkBuffer {
 
     /// Attempt to extract complete SSE lines from the buffer.
     /// Returns complete lines and leaves incomplete data in buffer.
-    pub fn extract_complete_lines(&mut self) -> Vec<Bytes> {
-        let mut lines = Vec::new();
+    /// Uses SmallVec for stack allocation in common cases.
+    pub fn extract_complete_lines(&mut self) -> LineVec {
+        let mut lines = LineVec::new();
         let mut search_start = 0;
 
         // Find all complete lines (ending with \n)
@@ -408,10 +415,15 @@ impl Default for HeartbeatGenerator {
 
 // === Stream Abort Detection ===
 
+/// Type alias for abort callback storage.
+/// Most streams have 0-2 cleanup callbacks, so 2 elements fits on stack.
+type AbortCallbackVec = SmallVec<[Box<dyn FnOnce() + Send>; 2]>;
+
 /// Handles graceful cleanup when a stream is aborted by the client.
+/// Uses SmallVec to avoid heap allocation for the common case of 0-2 callbacks.
 pub struct AbortHandler {
     is_aborted: AtomicBool,
-    cleanup_callbacks: std::sync::Mutex<Vec<Box<dyn FnOnce() + Send>>>,
+    cleanup_callbacks: std::sync::Mutex<AbortCallbackVec>,
 }
 
 impl AbortHandler {
@@ -419,7 +431,7 @@ impl AbortHandler {
     pub fn new() -> Self {
         Self {
             is_aborted: AtomicBool::new(false),
-            cleanup_callbacks: std::sync::Mutex::new(Vec::new()),
+            cleanup_callbacks: std::sync::Mutex::new(SmallVec::new()),
         }
     }
 
