@@ -28,6 +28,7 @@ export global AppState {
     callback toggle_account(int);
     callback delete_account(int);
     callback open_settings();
+    callback toggle_dark_mode();
 }
 
 component NavButton inherits Rectangle {
@@ -332,7 +333,10 @@ component SettingsPage inherits VerticalBox {
             }
             Switch {
                 checked: AppState.dark_mode;
-                toggled => { AppState.dark_mode = self.checked; }
+                toggled => { 
+                    AppState.dark_mode = self.checked;
+                    AppState.toggle_dark_mode();
+                }
             }
         }
     }
@@ -366,6 +370,10 @@ export component MainWindow inherits Window {
     width: 1024px;
     height: 700px;
     background: Palette.background;
+    
+    init => {
+        Palette.color-scheme = AppState.dark_mode ? ColorScheme.dark : ColorScheme.light;
+    }
     
     HorizontalBox {
         Sidebar {}
