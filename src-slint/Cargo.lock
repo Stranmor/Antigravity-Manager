@@ -256,6 +256,7 @@ dependencies = [
  "axum",
  "chrono",
  "dirs 5.0.1",
+ "gtk",
  "rand 0.8.5",
  "reqwest",
  "serde",
