@@ -1,4 +1,5 @@
 use dashmap::DashMap;
+use parking_lot::RwLock;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -15,8 +16,6 @@ struct SessionBinding {
     created_at: Instant,
 }
 
-const SESSION_TTL_SECS: u64 = 1800;
-
 #[derive(Debug, Clone)]
 pub struct ProxyToken {
     pub account_id: String,
@@ -32,6 +31,9 @@ pub struct ProxyToken {
 
 pub struct TokenManager {
     tokens: Arc<DashMap<String, ProxyToken>>,
+    /// Pre-sorted tokens cache (sorted by tier: ULTRA > PRO > FREE)
+    /// Invalidated and repopulated on load_accounts()
+    sorted_tokens_cache: Arc<RwLock<Vec<ProxyToken>>>,
     current_index: Arc<AtomicUsize>,
     last_used_account: Arc<tokio::sync::Mutex<Option<(String, Instant)>>>,
     data_dir: PathBuf,
@@ -45,6 +47,7 @@ impl TokenManager {
     pub fn new(data_dir: PathBuf) -> Self {
         Self {
             tokens: Arc::new(DashMap::new()),
+            sorted_tokens_cache: Arc::new(RwLock::new(Vec::new())),
             current_index: Arc::new(AtomicUsize::new(0)),
             last_used_account: Arc::new(tokio::sync::Mutex::new(None)),
             data_dir,
@@ -83,11 +86,11 @@ impl TokenManager {
 
         while let Some(entry) = entries.next_entry().await.map_err(|e| format!("读取目录项失败: {e}"))? {
             let path = entry.path();
-            
+
             if path.extension().and_then(|s| s.to_str()) != Some("json") {
                 continue;
             }
-            
+
             // 尝试加载账号
             match self.load_single_account(&path).await {
                 Ok(Some(token)) => {
@@ -103,8 +106,27 @@ impl TokenManager {
                 }
             }
         }
-        
+
+        // Rebuild the sorted tokens cache (sorted by tier: ULTRA > PRO > FREE)
+        self.rebuild_sorted_cache();
+
         Ok(count)
+    }
+
+    /// Rebuild the sorted tokens cache from the current tokens map.
+    /// Called after load_accounts() or when tokens are modified.
+    fn rebuild_sorted_cache(&self) {
+        let mut sorted: Vec<ProxyToken> = self.tokens.iter().map(|e| e.value().clone()).collect();
+        sorted.sort_by(|a, b| {
+            let tier_priority = |tier: &Option<String>| match tier.as_deref() {
+                Some("ULTRA") => 0,
+                Some("PRO") => 1,
+                Some("FREE") => 2,
+                _ => 3,
+            };
+            tier_priority(&a.subscription_tier).cmp(&tier_priority(&b.subscription_tier))
+        });
+        *self.sorted_tokens_cache.write() = sorted;
     }
     
     /// 加载单个账号
@@ -199,26 +221,16 @@ impl TokenManager {
     /// 返回: (access_token, project_id, email, account_id)
     /// [IMPROVEMENT] 添加 account_id 到返回值，确保 rate limiting 使用正确的键
     pub async fn get_token(&self, quota_group: &str, force_rotate: bool, session_id: Option<&str>) -> Result<(String, String, String, String), String> {
-        let mut tokens_snapshot: Vec<ProxyToken> = self.tokens.iter().map(|e| e.value().clone()).collect();
+        // Use the pre-sorted cache (O(1) read vs O(n log n) sort per call)
+        let tokens_snapshot: Vec<ProxyToken> = self.sorted_tokens_cache.read().clone();
         let total = tokens_snapshot.len();
         if total == 0 {
             return Err("Token pool is empty".to_string());
         }
 
-        // ===== 【优化】根据订阅等级排序 (优先级: ULTRA > PRO > FREE) =====
-        // 理由: ULTRA/PRO 重置快，优先消耗；FREE 重置慢，用于兜底
-        tokens_snapshot.sort_by(|a, b| {
-            let tier_priority = |tier: &Option<String>| match tier.as_deref() {
-                Some("ULTRA") => 0,
-                Some("PRO") => 1,
-                Some("FREE") => 2,
-                _ => 3,
-            };
-            tier_priority(&a.subscription_tier).cmp(&tier_priority(&b.subscription_tier))
-        });
-
         // 0. 读取当前调度配置
         let scheduling = self.sticky_config.read().await.clone();
+        let session_ttl = scheduling.session_ttl_secs;
 
         let mut attempted: HashSet<String> = HashSet::new();
         let mut last_error: Option<String> = None;
@@ -228,18 +240,18 @@ impl TokenManager {
 
             // ===== 【核心】粘性会话与智能调度逻辑 =====
             let mut target_token: Option<ProxyToken> = None;
-            
+
             // 模式 A: 粘性会话处理 (CacheFirst 或 Balance 且有 session_id)
             // SAFETY: We check session_id.is_some() before unwrapping
             if let Some(sid) = session_id.filter(|_| !rotate && scheduling.mode != SchedulingMode::PerformanceFirst) {
-                
+
                 // 1. 检查会话是否已绑定账号
                 if let Some(binding) = self.session_accounts.get(sid).map(|v| v.clone()) {
                     let bound_account_id = &binding.account_id;
-                    
-                    // 1a. 检查会话 TTL（30分钟后过期）
-                    if binding.created_at.elapsed().as_secs() > SESSION_TTL_SECS {
-                        tracing::debug!("Session {} expired (TTL {}s exceeded), unbinding from account {}", sid, SESSION_TTL_SECS, bound_account_id);
+
+                    // 1a. 检查会话 TTL (configurable via session_ttl_secs)
+                    if binding.created_at.elapsed().as_secs() > session_ttl {
+                        tracing::debug!("Session {} expired (TTL {}s exceeded), unbinding from account {}", sid, session_ttl, bound_account_id);
                         self.session_accounts.remove(sid);
                         // Continue to Mode B/C for new account selection
                     } else {
@@ -247,7 +259,7 @@ impl TokenManager {
                         let is_unhealthy = self.health_monitor
                             .as_ref()
                             .is_some_and(|hm| !hm.is_available(bound_account_id));
-                        
+
                         if is_unhealthy {
                             tracing::warn!("Session {} bound account {} is unhealthy, unbinding", sid, bound_account_id);
                             self.session_accounts.remove(sid);
@@ -260,11 +272,11 @@ impl TokenManager {
                                     // 缓存优先模式：限流时间短，执行精准精准避让等待
                                     tracing::warn!("Cache-first: Session {} bound to {} is limited. Executing precise wait for {}s to preserve cache...", sid, bound_account_id, reset_sec);
                                     tokio::time::sleep(std::time::Duration::from_secs(reset_sec)).await;
-                                    
-                                    // 等待后若账号可用，优先复用
-                                    if let Some(found) = tokens_snapshot.iter().find(|t| &t.account_id == bound_account_id) {
+
+                                    // 等待后若账号可用，优先复用 (O(1) lookup via DashMap)
+                                    if let Some(found) = self.tokens.get(bound_account_id) {
                                         tracing::debug!("Sticky Session: Successfully recovered and reusing bound account {} for session {}", found.email, sid);
-                                        target_token = Some(found.clone());
+                                        target_token = Some(found.value().clone());
                                     }
                                 } else {
                                     // 平衡模式或等待时间过长：断开绑定，准备换号
@@ -272,10 +284,10 @@ impl TokenManager {
                                     self.session_accounts.remove(sid);
                                 }
                             } else if !attempted.contains(bound_account_id) {
-                                // 3. 账号可用且未被标记为尝试失败，优先复用
-                                if let Some(found) = tokens_snapshot.iter().find(|t| &t.account_id == bound_account_id) {
+                                // 3. 账号可用且未被标记为尝试失败，优先复用 (O(1) lookup via DashMap)
+                                if let Some(found) = self.tokens.get(bound_account_id) {
                                     tracing::debug!("Sticky Session: Successfully reusing bound account {} for session {}", found.email, sid);
-                                    target_token = Some(found.clone());
+                                    target_token = Some(found.value().clone());
                                 }
                             }
                         }
@@ -413,6 +425,8 @@ impl TokenManager {
                                 .disable_account(&token.account_id, &format!("invalid_grant: {e}"))
                                 .await;
                             self.tokens.remove(&token.account_id);
+                            // Invalidate sorted cache after token removal
+                            self.rebuild_sorted_cache();
                         }
                         // Avoid leaking account emails to API clients; details are still in logs.
                         last_error = Some(format!("Token refresh failed: {e}"));

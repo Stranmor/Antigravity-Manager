@@ -800,6 +800,7 @@ mod sticky_session {
         let config = StickySessionConfig {
             mode: SchedulingMode::CacheFirst,
             max_wait_seconds: 120,
+            session_ttl_secs: 1800,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -807,6 +808,7 @@ mod sticky_session {
 
         assert_eq!(deserialized.mode, SchedulingMode::CacheFirst);
         assert_eq!(deserialized.max_wait_seconds, 120);
+        assert_eq!(deserialized.session_ttl_secs, 1800);
     }
 }
 

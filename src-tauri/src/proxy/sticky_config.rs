@@ -21,6 +21,13 @@ pub struct StickySessionConfig {
     pub mode: SchedulingMode,
     /// 缓存优先模式下的最大等待时间 (秒)
     pub max_wait_seconds: u64,
+    /// 会话绑定 TTL (秒)，超时后解绑账号 (默认 30 分钟)
+    #[serde(default = "default_session_ttl")]
+    pub session_ttl_secs: u64,
+}
+
+fn default_session_ttl() -> u64 {
+    1800 // 30 minutes
 }
 
 impl Default for StickySessionConfig {
@@ -28,6 +35,7 @@ impl Default for StickySessionConfig {
         Self {
             mode: SchedulingMode::Balance,
             max_wait_seconds: 60,
+            session_ttl_secs: default_session_ttl(),
         }
     }
 }
