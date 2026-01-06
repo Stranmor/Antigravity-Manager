@@ -156,7 +156,7 @@ pub async fn handle_chat_completions(
         {
             Ok(r) => r,
             Err(e) => {
-                last_error = e.clone();
+                last_error.clone_from(&e);
                 debug!(
                     "OpenAI Request failed on attempt {}/{}: {}",
                     attempt + 1,
@@ -696,7 +696,7 @@ pub async fn handle_completions(
         {
             Ok(r) => r,
             Err(e) => {
-                last_error = e.clone();
+                last_error.clone_from(&e);
                 continue;
             }
         };
@@ -849,11 +849,10 @@ pub async fn handle_images_generations(
     Json(body): Json<Value>,
 ) -> Response {
     // 1. 解析请求参数
-    let prompt = match body.get("prompt").and_then(|v| v.as_str()) {
-        Some(p) => p,
-        None => return ProxyError::invalid_request("Missing 'prompt' field")
+    let Some(prompt) = body.get("prompt").and_then(|v| v.as_str()) else {
+        return ProxyError::invalid_request("Missing 'prompt' field")
             .with_request_id(request_id)
-            .into_response(),
+            .into_response();
     };
 
     let model = body

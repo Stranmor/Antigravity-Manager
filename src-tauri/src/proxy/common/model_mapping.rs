@@ -125,6 +125,7 @@ pub fn get_supported_models() -> Vec<String> {
 }
 
 /// 动态获取所有可用模型列表 (包含内置与用户自定义)
+#[allow(clippy::implicit_hasher)]
 pub async fn get_all_dynamic_models(
     openai_mapping: &tokio::sync::RwLock<std::collections::HashMap<String, String>>,
     custom_mapping: &tokio::sync::RwLock<std::collections::HashMap<String, String>>,
@@ -206,6 +207,7 @@ pub async fn get_all_dynamic_models(
 ///
 /// # Performance
 /// Uses LRU cache (100 entries) for resolved routes to avoid redundant HashMap lookups.
+#[allow(clippy::implicit_hasher)]
 pub fn resolve_model_route(
     original_model: &str,
     custom_mapping: &std::collections::HashMap<String, String>,
@@ -249,6 +251,7 @@ pub fn resolve_model_route(
 }
 
 /// Internal uncached implementation of model route resolution
+#[allow(clippy::implicit_hasher)]
 fn resolve_model_route_uncached(
     original_model: &str,
     custom_mapping: &std::collections::HashMap<String, String>,

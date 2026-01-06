@@ -11,7 +11,7 @@ impl SessionManager {
     /// 2. X-Session-Id header (if provided by client)  
     /// 3. Content-based fingerprint (fallback)
     pub fn extract_session_id(request: &ClaudeRequest) -> String {
-        if let Some(id) = Self::extract_from_metadata(&request.metadata) {
+        if let Some(id) = Self::extract_from_metadata(request.metadata.as_ref()) {
             return id;
         }
 
@@ -19,9 +19,9 @@ impl SessionManager {
     }
 
     fn extract_from_metadata(
-        metadata: &Option<crate::proxy::mappers::claude::models::Metadata>,
+        metadata: Option<&crate::proxy::mappers::claude::models::Metadata>,
     ) -> Option<String> {
-        let metadata = metadata.as_ref()?;
+        let metadata = metadata?;
         let user_id = metadata.user_id.as_ref()?;
 
         if user_id.is_empty() {
@@ -120,7 +120,7 @@ impl SessionManager {
                             crate::proxy::mappers::openai::models::OpenAIContentBlock::Text {
                                 text,
                             } => Some(text.as_str()),
-                            _ => None,
+                            crate::proxy::mappers::openai::models::OpenAIContentBlock::ImageUrl { .. } => None,
                         })
                         .collect::<Vec<_>>()
                         .join(" "),

@@ -83,7 +83,7 @@ impl ProxyMonitor {
 
     pub async fn log_request(&self, log: ProxyRequestLog) {
         // Always record Prometheus metrics (regardless of logging enabled)
-        self.record_prometheus_metrics(&log);
+        Self::record_prometheus_metrics(&log);
 
         if !self.is_enabled() {
             return;
@@ -125,7 +125,7 @@ impl ProxyMonitor {
     }
 
     /// Record Prometheus metrics for a request
-    fn record_prometheus_metrics(&self, log: &ProxyRequestLog) {
+    fn record_prometheus_metrics(log: &ProxyRequestLog) {
         let provider = prometheus::detect_provider_from_url(&log.url);
         let model = log.resolved_model.as_deref()
             .or(log.model.as_deref())

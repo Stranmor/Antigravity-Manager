@@ -20,7 +20,9 @@ pub fn apply_jitter(delay_ms: u64) -> u64 {
     use rand::Rng;
     let jitter_range = (delay_ms as f64 * JITTER_FACTOR) as i64;
     let jitter: i64 = rand::thread_rng().gen_range(-jitter_range..=jitter_range);
-    ((delay_ms as i64) + jitter).max(1) as u64
+    #[allow(clippy::cast_possible_wrap)]
+    let delay_signed = delay_ms as i64;
+    (delay_signed + jitter).max(1) as u64
 }
 
 pub fn determine_retry_strategy(

@@ -167,7 +167,7 @@ impl RateLimitTracker {
 
         // 3. 从错误消息提取 (优先尝试 JSON 解析，再试正则)
         if retry_after_sec.is_none() {
-            retry_after_sec = self.parse_retry_time_from_body(body);
+            retry_after_sec = Self::parse_retry_time_from_body(body);
         }
 
         // 4. 处理默认值与软避让逻辑（根据限流类型设置不同默认值）
@@ -523,15 +523,13 @@ mod tests {
 
     #[test]
     fn test_parse_retry_time_minutes_seconds() {
-        let tracker = RateLimitTracker::new();
         let body = "Rate limit exceeded. Try again in 2m 30s";
-        let time = tracker.parse_retry_time_from_body(body);
+        let time = RateLimitTracker::parse_retry_time_from_body(body);
         assert_eq!(time, Some(150));
     }
 
     #[test]
     fn test_parse_google_json_delay() {
-        let tracker = RateLimitTracker::new();
         // Test the actual Google API format: error.details[0].metadata.quotaResetDelay
         let body = r#"{
             "error": {
@@ -540,15 +538,14 @@ mod tests {
                 ]
             }
         }"#;
-        let time = tracker.parse_retry_time_from_body(body);
+        let time = RateLimitTracker::parse_retry_time_from_body(body);
         assert_eq!(time, Some(42));
     }
 
     #[test]
     fn test_parse_retry_after_ignore_case() {
-        let tracker = RateLimitTracker::new();
         let body = "Quota limit hit. Retry After 99 Seconds";
-        let time = tracker.parse_retry_time_from_body(body);
+        let time = RateLimitTracker::parse_retry_time_from_body(body);
         assert_eq!(time, Some(99));
     }
 

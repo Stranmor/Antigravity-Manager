@@ -4,7 +4,7 @@ use serde_json::Value;
 ///
 /// 1. [New] 展开 $ref 和 $defs: 将引用替换为实际定义，解决 Gemini 不支持 $ref 的问题
 /// 2. 移除不支持的字段: $schema, additionalProperties, format, default, uniqueItems, validation fields
-/// 3. 处理联合类型: ["string", "null"] -> "string"
+/// 3. 处理联合类型: `["string", "null"]` -> `"string"`
 /// 4. 将 type 字段的值转换为大写 (Gemini v1internal 要求)
 /// 5. 移除数字校验字段: multipleOf, exclusiveMinimum, exclusiveMaximum 等
 pub fn clean_json_schema(value: &mut Value) {

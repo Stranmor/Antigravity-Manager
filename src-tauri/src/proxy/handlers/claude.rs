@@ -505,7 +505,7 @@ pub async fn handle_messages(
     ).await {
             Ok(r) => r,
             Err(e) => {
-                last_error = e.clone();
+                last_error.clone_from(&e);
                 debug!("Request failed on attempt {}/{}: {}", attempt + 1, max_attempts, e);
                 continue;
             }
@@ -734,8 +734,7 @@ pub async fn handle_messages(
 
     ProxyError::Overloaded(
         format!(
-            "All {} attempts failed{}. Last error: {}",
-            max_attempts, retry_info, last_error
+            "All {max_attempts} attempts failed{retry_info}. Last error: {last_error}"
         ),
         Some(request_id),
     )

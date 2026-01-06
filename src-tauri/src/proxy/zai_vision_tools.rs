@@ -315,7 +315,8 @@ pub async fn call_tool(
             let mut prompt = arguments.get("prompt").and_then(|v| v.as_str()).ok_or("Missing prompt")?.to_string();
             if let Some(lang) = arguments.get("language_hint").and_then(|v| v.as_str()) {
                 if !lang.trim().is_empty() {
-                    prompt.push_str(&format!("\n\nLanguage hint: {}", lang.trim()));
+                    use std::fmt::Write;
+                    let _ = write!(prompt, "\n\nLanguage hint: {}", lang.trim());
                 }
             }
             let image = image_source_to_content(image_source, 5)?;
@@ -330,7 +331,8 @@ pub async fn call_tool(
             let mut prompt = arguments.get("prompt").and_then(|v| v.as_str()).ok_or("Missing prompt")?.to_string();
             if let Some(ctx) = arguments.get("context").and_then(|v| v.as_str()) {
                 if !ctx.trim().is_empty() {
-                    prompt.push_str(&format!("\n\nContext: {}", ctx.trim()));
+                    use std::fmt::Write;
+                    let _ = write!(prompt, "\n\nContext: {}", ctx.trim());
                 }
             }
             let image = image_source_to_content(image_source, 5)?;
@@ -345,7 +347,8 @@ pub async fn call_tool(
             let mut prompt = arguments.get("prompt").and_then(|v| v.as_str()).ok_or("Missing prompt")?.to_string();
             if let Some(diagram_type) = arguments.get("diagram_type").and_then(|v| v.as_str()) {
                 if !diagram_type.trim().is_empty() {
-                    prompt.push_str(&format!("\n\nDiagram type: {}", diagram_type.trim()));
+                    use std::fmt::Write;
+                    let _ = write!(prompt, "\n\nDiagram type: {}", diagram_type.trim());
                 }
             }
             let image = image_source_to_content(image_source, 5)?;
@@ -360,7 +363,8 @@ pub async fn call_tool(
             let mut prompt = arguments.get("prompt").and_then(|v| v.as_str()).ok_or("Missing prompt")?.to_string();
             if let Some(focus) = arguments.get("analysis_focus").and_then(|v| v.as_str()) {
                 if !focus.trim().is_empty() {
-                    prompt.push_str(&format!("\n\nFocus: {}", focus.trim()));
+                    use std::fmt::Write;
+                    let _ = write!(prompt, "\n\nFocus: {}", focus.trim());
                 }
             }
             let image = image_source_to_content(image_source, 5)?;
