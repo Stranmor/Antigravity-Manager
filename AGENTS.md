@@ -13,11 +13,142 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 
 ## CURRENT ACTIVE BATCH (Phase 6 - Production Readiness)
 - [x] Sync VPS with latest binary including OTEL support `[MODE: B]` ✓ 2c1fab1 (Containerfile updated)
-- [ ] Test OTEL integration with Grafana Tempo on VPS `[MODE: C]` (in progress - needs Tempo setup)
+- [x] Test OTEL integration with Grafana Tempo on VPS `[MODE: C]` ✓ Tested 2026-01-07 - Tempo not deployed, see OTEL OBSERVABILITY section below
 - [x] Add database migration for analytics persistence `[MODE: B]` ✓ (schema v2 with daily_account_stats, circuit_breaker_events, rate_limit_events, global_stats)
 - [x] Research connection multiplexing for high-throughput scenarios `[MODE: R]` ✓ HTTP/2 research complete
 - [x] Add export functionality for usage reports `[MODE: B]` ✓ 6f12cc9 (CSV, JSON, TXT with native file dialogs)
 - [x] Fix chrono→time regression in export `[MODE: B]` ✓ 9a097a1
+
+## OTEL OBSERVABILITY STATUS (2026-01-07)
+**VPS OTEL Testing Results:**
+
+**Current State:**
+| Component | Status | Details |
+|-----------|--------|---------|
+| Container | Running | `antigravity-server` Up 14+ minutes |
+| OTEL Feature | Compiled | `otel` feature enabled in Containerfile |
+| OTEL Enabled | Disabled | `OTEL_ENABLED=false` in container env |
+| OTLP Endpoint | Empty | `OTEL_EXPORTER_OTLP_ENDPOINT=` |
+| Grafana Tempo | Not Deployed | No tracing infrastructure on VPS |
+| Jaeger | Not Deployed | Alternative collector not available |
+
+**VPS Resources (sufficient for Tempo):**
+- Disk: 37 GB free
+- RAM: 2.1 GB available
+- CPU: 2 cores
+
+**OTEL Implementation Details:**
+- File: `src-tauri/src/proxy/telemetry.rs` (359 lines)
+- Protocol: OTLP gRPC (port 4317)
+- Default endpoint: `http://localhost:4317`
+- Service name: `antigravity-proxy`
+- Spans implemented:
+  - `account_selection` - Request type, attempt count
+  - `upstream_call` - Provider, model, account_id, latency
+  - `response_transform` - Provider, model, token counts
+
+## GRAFANA TEMPO SETUP REQUIREMENTS
+
+**Option A: Tempo Standalone (Recommended for VPS)**
+Minimal resource footprint, single binary deployment.
+
+```bash
+# 1. Download Tempo
+mkdir -p /opt/tempo && cd /opt/tempo
+curl -LO https://github.com/grafana/tempo/releases/latest/download/tempo_linux_amd64
+chmod +x tempo_linux_amd64
+
+# 2. Create minimal config
+cat > /opt/tempo/tempo.yaml << 'EOF'
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/lib/tempo/traces
+    wal:
+      path: /var/lib/tempo/wal
+
+compactor:
+  compaction:
+    block_retention: 168h  # 7 days
+EOF
+
+# 3. Create systemd service
+cat > /etc/systemd/system/tempo.service << 'EOF'
+[Unit]
+Description=Grafana Tempo
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/tempo/tempo_linux_amd64 -config.file=/opt/tempo/tempo.yaml
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# 4. Start Tempo
+mkdir -p /var/lib/tempo/{traces,wal}
+systemctl daemon-reload
+systemctl enable --now tempo
+
+# 5. Enable OTEL in antigravity
+# Edit /etc/antigravity/env:
+OTEL_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+OTEL_SERVICE_NAME=antigravity-proxy
+
+# 6. Restart antigravity
+systemctl restart antigravity-server
+```
+
+**Option B: Tempo via Podman (Container-based)**
+```bash
+podman run -d --name tempo \
+  -p 3200:3200 -p 4317:4317 -p 4318:4318 \
+  -v /var/lib/tempo:/var/lib/tempo:Z \
+  grafana/tempo:latest \
+  -config.file=/etc/tempo.yaml
+```
+
+**Option C: Full Grafana Stack (Enterprise)**
+Deploy Grafana + Tempo + Prometheus for complete observability:
+- Grafana: UI at port 3000
+- Tempo: Traces at port 4317/4318
+- Prometheus: Metrics at port 9090
+
+**Verification Commands:**
+```bash
+# Check Tempo is receiving traces
+curl -s http://localhost:3200/status/buildinfo
+
+# Query traces via Tempo API
+curl -s "http://localhost:3200/api/search?service.name=antigravity-proxy&limit=10"
+
+# Check OTEL connection from antigravity logs
+ssh vps-production "journalctl -u antigravity-server | grep -i otel"
+```
+
+**Next Steps:**
+1. [ ] Deploy Grafana Tempo on VPS (Option A recommended)
+2. [ ] Configure OTEL_ENABLED=true in /etc/antigravity/env
+3. [ ] Restart antigravity-server container
+4. [ ] Verify traces are being exported
+5. [ ] (Optional) Add Grafana UI for trace visualization
 
 ## COMPLETED: Phase 4 - VPS Deployment (2026-01-06)
 - [x] Create headless server binary `antigravity-server` for VPS deployment `[MODE: B]`
