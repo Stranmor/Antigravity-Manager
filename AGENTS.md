@@ -27,7 +27,43 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] **Refactor: Deduplicate handler code (claude, openai, gemini)** `[MODE: B]` (32beac5, d88e4c7)
 - [x] **Refactor: Move proxy_db.rs to proxy/db.rs** `[MODE: B]` (2645ba7)
 - [x] **NEW: Slint Native UI** `[MODE: B]` (54b7f0c, 993d2de) ✓ Complete
-- [ ] Create CLI tool for account import from desktop app `[MODE: B]`
+- [ ] Create CLI tool for account import from desktop app `[MODE: B]` ⚠️ IN PROGRESS
+
+## CLI IMPORT TOOL (WIP - 2026-01-06)
+**Status: PARTIALLY IMPLEMENTED - NEEDS COMPLETION**
+
+**What's Done:**
+- Added clap CLI parser to `src-tauri/src/bin/server.rs`
+- Added `Commands::Import` and `Commands::Serve` subcommands
+- Implemented `import_accounts()` async function
+- Updated `main()` to dispatch based on CLI command
+
+**What's Left:**
+1. **Compile and test** - код добавлен но не скомпилирован
+2. **Fix potential compilation errors** - возможно потребуется исправить закрытие функции `run_server()`
+3. **Test import flow:**
+   ```bash
+   antigravity-server import --from ~/.antigravity_tools --to ~/.antigravity
+   ```
+4. **Handle index merge** - сейчас при конфликте accounts.json просто предупреждает, нужно реализовать merge
+5. **Update AGENTS.md** после завершения
+
+**Code Location:**
+- `src-tauri/src/bin/server.rs` lines ~782-860 (new CLI code)
+- CLI structure: `Cli` struct with `Commands` enum
+
+**Expected Usage:**
+```bash
+# Import from desktop app to server
+antigravity-server import
+
+# Import with custom paths
+antigravity-server import --from /path/to/desktop --to /path/to/server
+
+# Start server (default if no subcommand)
+antigravity-server
+antigravity-server serve
+```
 
 ## SLINT NATIVE UI (2026-01-06)
 **Alternative lightweight desktop UI using Slint 1.9 instead of Tauri WebKit**

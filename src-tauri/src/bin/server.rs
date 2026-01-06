@@ -72,6 +72,7 @@ impl KeyExtractor for ContainerAwareKeyExtractor {
 }
 use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use clap::{Parser, Subcommand};
 
 // Re-use the existing proxy module from the library
 use antigravity_tools_lib::models::{Account, TokenData};
@@ -79,6 +80,36 @@ use antigravity_tools_lib::proxy::{
     config::ProxyConfig, monitor::ProxyMonitor, prometheus, server::AxumServer,
     ProxySecurityConfig, TokenManager,
 };
+
+// ============================================================================
+// CLI Arguments
+// ============================================================================
+
+#[derive(Parser)]
+#[command(name = "antigravity-server")]
+#[command(about = "Antigravity Server - Headless proxy for VPS deployment")]
+#[command(version)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Import accounts from desktop app data directory
+    Import {
+        /// Source directory (default: ~/.antigravity_tools)
+        #[arg(short, long)]
+        from: Option<PathBuf>,
+        
+        /// Target directory (default: ~/.antigravity)
+        #[arg(short, long)]
+        to: Option<PathBuf>,
+    },
+    
+    /// Start the proxy server (default command)
+    Serve,
+}
 
 /// Server start time for uptime calculation
 static SERVER_START_TIME: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
@@ -750,12 +781,84 @@ async fn get_health_summary_handler(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize start time
+    let cli = Cli::parse();
+    
+    match cli.command {
+        Some(Commands::Import { from, to }) => {
+            init_logging();
+            import_accounts(from, to).await
+        }
+        Some(Commands::Serve) | None => {
+            run_server().await
+        }
+    }
+}
+
+async fn import_accounts(from: Option<PathBuf>, to: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+    let source_dir = from.unwrap_or_else(|| {
+        dirs::home_dir()
+            .map(|h| h.join(".antigravity_tools"))
+            .unwrap_or_else(|| PathBuf::from(".antigravity_tools"))
+    });
+    
+    let target_dir = to.unwrap_or_else(|| {
+        dirs::home_dir()
+            .map(|h| h.join(".antigravity"))
+            .unwrap_or_else(|| PathBuf::from(".antigravity"))
+    });
+    
+    info!("Importing accounts from {:?} to {:?}", source_dir, target_dir);
+    
+    let source_accounts = source_dir.join("accounts");
+    let source_index = source_dir.join("accounts.json");
+    
+    if !source_accounts.exists() {
+        error!("Source accounts directory not found: {:?}", source_accounts);
+        return Err("Source accounts directory not found".into());
+    }
+    
+    let target_accounts = target_dir.join("accounts");
+    tokio::fs::create_dir_all(&target_accounts).await?;
+    
+    let mut imported = 0;
+    let mut entries = tokio::fs::read_dir(&source_accounts).await?;
+    
+    while let Some(entry) = entries.next_entry().await? {
+        let path = entry.path();
+        if path.extension().map_or(false, |e| e == "json") {
+            let filename = path.file_name().unwrap();
+            let target_path = target_accounts.join(filename);
+            
+            if target_path.exists() {
+                warn!("Skipping {:?} (already exists)", filename);
+                continue;
+            }
+            
+            tokio::fs::copy(&path, &target_path).await?;
+            info!("Imported: {:?}", filename);
+            imported += 1;
+        }
+    }
+    
+    if source_index.exists() {
+        let target_index = target_dir.join("accounts.json");
+        if !target_index.exists() {
+            tokio::fs::copy(&source_index, &target_index).await?;
+            info!("Imported accounts.json index");
+        } else {
+            warn!("Target accounts.json already exists, merging required manually");
+        }
+    }
+    
+    info!("Import complete: {} accounts imported", imported);
+    Ok(())
+}
+
+async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     let _ = SERVER_START_TIME.get_or_init(Instant::now);
 
     init_logging();
 
-    // Initialize Prometheus metrics recorder (must be called before any metrics are recorded)
     let _ = prometheus::init_metrics();
     info!("Prometheus metrics initialized");
 
