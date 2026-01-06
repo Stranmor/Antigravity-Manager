@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use slint::{VecModel, Model};
 use antigravity_tools_lib::modules::{account, config, oauth};
 use antigravity_tools_lib::proxy::{AxumServer, TokenManager, ProxySecurityConfig};
@@ -8,11 +9,75 @@ use tokio::sync::RwLock;
 
 slint::include_modules!();
 
+/// Throttled stats cache for UI updates.
+/// Uses atomics for lock-free access from async context.
+/// Updates are batched at 10Hz (100ms interval) to prevent excessive UI re-renders.
+struct ThrottledStatsCache {
+    total_requests: AtomicU64,
+    success_count: AtomicU64,
+    error_count: AtomicU64,
+    /// Last time stats were pushed to UI (epoch millis)
+    last_ui_update: AtomicU64,
+}
+
+impl ThrottledStatsCache {
+    const THROTTLE_INTERVAL_MS: u64 = 100; // 10Hz max update rate
+
+    fn new() -> Self {
+        Self {
+            total_requests: AtomicU64::new(0),
+            success_count: AtomicU64::new(0),
+            error_count: AtomicU64::new(0),
+            last_ui_update: AtomicU64::new(0),
+        }
+    }
+
+    /// Update cached stats from monitor data.
+    /// Returns true if values changed (UI update may be needed).
+    fn update(&self, total: u64, success: u64, errors: u64) -> bool {
+        let prev_total = self.total_requests.swap(total, Ordering::Relaxed);
+        let prev_success = self.success_count.swap(success, Ordering::Relaxed);
+        let prev_errors = self.error_count.swap(errors, Ordering::Relaxed);
+
+        prev_total != total || prev_success != success || prev_errors != errors
+    }
+
+    /// Check if enough time has passed since last UI update.
+    /// Returns true if we should update the UI.
+    fn should_update_ui(&self) -> bool {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        let last = self.last_ui_update.load(Ordering::Relaxed);
+
+        if now.saturating_sub(last) >= Self::THROTTLE_INTERVAL_MS {
+            self.last_ui_update.store(now, Ordering::Relaxed);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn get_stats(&self) -> (u64, u64, u64) {
+        (
+            self.total_requests.load(Ordering::Relaxed),
+            self.success_count.load(Ordering::Relaxed),
+            self.error_count.load(Ordering::Relaxed),
+        )
+    }
+}
+
 struct ProxyState {
     server: Option<AxumServer>,
     handle: Option<tokio::task::JoinHandle<()>>,
     token_manager: Option<Arc<TokenManager>>,
     monitor: Option<Arc<ProxyMonitor>>,
+    /// Throttled stats cache for UI updates
+    stats_cache: Arc<ThrottledStatsCache>,
+    /// Handle to the stats polling task
+    stats_poll_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl ProxyState {
@@ -22,6 +87,8 @@ impl ProxyState {
             handle: None,
             token_manager: None,
             monitor: None,
+            stats_cache: Arc::new(ThrottledStatsCache::new()),
+            stats_poll_handle: None,
         }
     }
 }
@@ -200,14 +267,14 @@ impl AppController {
         let quota_pct = a.quota.as_ref()
             .and_then(|q| q.models.first())
             .map(|m| m.percentage)
-            .unwrap_or(0) as i32;
+            .unwrap_or(0);
         
         let is_forbidden = a.quota.as_ref().map(|q| q.is_forbidden).unwrap_or(false);
         
         let model_quotas: Vec<ModelQuota> = a.quota.as_ref()
             .map(|q| q.models.iter().map(|m| ModelQuota {
                 model_name: m.name.clone().into(),
-                percentage: m.percentage as i32,
+                percentage: m.percentage,
                 remaining: 0,
                 total: 100,
                 reset_time: m.reset_time.clone().into(),
@@ -276,6 +343,13 @@ impl AppController {
                 }
                 Err(e) => {
                     tracing::error!("Failed to switch account: {}", e);
+                    let err_msg = e.to_string();
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(app) = app_weak.upgrade() {
+                            let ctrl = AppController::new(&app);
+                            ctrl.show_status(&format!("Switch failed: {}", err_msg), "error");
+                        }
+                    });
                 }
             }
         });
@@ -314,6 +388,13 @@ impl AppController {
                 }
                 Err(e) => {
                     tracing::error!("Failed to load account: {}", e);
+                    let err_msg = e.to_string();
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(app) = app_weak.upgrade() {
+                            let ctrl = AppController::new(&app);
+                            ctrl.show_status(&format!("Failed to load account: {}", err_msg), "error");
+                        }
+                    });
                 }
             }
         });
@@ -380,6 +461,8 @@ impl AppController {
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(app) = app_weak.upgrade() {
                         app.global::<AppState>().set_proxy_running(false);
+                        let ctrl = AppController::new(&app);
+                        ctrl.show_status("Proxy stopped", "success");
                     }
                 });
             } else {
@@ -387,6 +470,13 @@ impl AppController {
                     Ok(c) => c,
                     Err(e) => {
                         tracing::error!("Failed to load config: {}", e);
+                        let err_msg = e.to_string();
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(app) = app_weak.upgrade() {
+                                let ctrl = AppController::new(&app);
+                                ctrl.show_status(&format!("Config error: {}", err_msg), "error");
+                            }
+                        });
                         return;
                     }
                 };
@@ -395,6 +485,13 @@ impl AppController {
                     Ok(d) => d,
                     Err(e) => {
                         tracing::error!("Failed to get data dir: {}", e);
+                        let err_msg = e.to_string();
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(app) = app_weak.upgrade() {
+                                let ctrl = AppController::new(&app);
+                                ctrl.show_status(&format!("Data dir error: {}", err_msg), "error");
+                            }
+                        });
                         return;
                     }
                 };
@@ -403,7 +500,7 @@ impl AppController {
                 token_manager.update_sticky_config(cfg.proxy.scheduling.clone()).await;
 
                 if let Err(e) = token_manager.load_accounts().await {
-                    tracing::warn!("Failed to load accounts: {}", e);
+                    tracing::warn!("Failed to load accounts for proxy: {}", e);
                 }
 
                 let monitor = Arc::new(ProxyMonitor::new(1000, None));
@@ -437,15 +534,20 @@ impl AppController {
                             if let Some(app) = app_weak.upgrade() {
                                 app.global::<AppState>().set_proxy_running(true);
                                 app.global::<AppState>().set_listen_port(port as i32);
+                                let ctrl = AppController::new(&app);
+                                ctrl.show_status(&format!("Proxy started on port {}", port), "success");
                             }
                         });
                         tracing::info!("Proxy started on {}:{}", bind_addr, port);
                     }
                     Err(e) => {
                         tracing::error!("Failed to start proxy: {}", e);
+                        let err_msg = e.to_string();
                         let _ = slint::invoke_from_event_loop(move || {
                             if let Some(app) = app_weak.upgrade() {
                                 app.global::<AppState>().set_proxy_running(false);
+                                let ctrl = AppController::new(&app);
+                                ctrl.show_status(&format!("Proxy failed: {}", err_msg), "error");
                             }
                         });
                     }
@@ -741,26 +843,35 @@ fn format_relative_time(timestamp: i64) -> String {
 }
 
 fn create_tray_icon(app_weak: slint::Weak<MainWindow>) -> Result<tray_icon::TrayIcon, Box<dyn std::error::Error>> {
+    // Initialize GTK for tray icon support (required on Linux)
+    #[cfg(target_os = "linux")]
+    {
+        // Try to initialize GTK, but don't fail if we can't
+        let _ = std::panic::catch_unwind(|| {
+            gtk::init().ok();
+        });
+    }
+
     let menu = Menu::new();
     menu.append(&MenuItem::with_id("show", "Show Window", true, None))?;
     menu.append(&PredefinedMenuItem::separator())?;
     menu.append(&MenuItem::with_id("quit", "Quit", true, None))?;
-    
+
     let icon_rgba: Vec<u8> = (0..16*16)
         .flat_map(|i| {
             let x = i % 16;
             let y = i / 16;
-            vec![(139 + x * 3).min(255) as u8, (92_i32 - y as i32 * 2).max(0) as u8, (246_i32 - x as i32 - y as i32).max(0) as u8, 255]
+            vec![(139 + x * 3).min(255) as u8, (92_i32 - y * 2).max(0) as u8, (246_i32 - x - y).max(0) as u8, 255]
         })
         .collect();
-    
+
     let icon = tray_icon::Icon::from_rgba(icon_rgba, 16, 16)?;
     let tray = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
         .with_tooltip("Antigravity Tools")
         .with_icon(icon)
         .build()?;
-    
+
     let menu_channel = tray_icon::menu::MenuEvent::receiver();
     std::thread::spawn(move || {
         loop {
@@ -774,7 +885,7 @@ fn create_tray_icon(app_weak: slint::Weak<MainWindow>) -> Result<tray_icon::Tray
             }
         }
     });
-    
+
     Ok(tray)
 }
 
