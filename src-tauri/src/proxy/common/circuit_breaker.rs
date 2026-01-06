@@ -104,8 +104,19 @@ impl CircuitBreakerManager {
                             account_id = %account_id,
                             "Circuit breaker transitioning to half-open"
                         );
+                        let previous_state = circuit.state;
                         circuit.state = CircuitState::HalfOpen;
                         circuit.consecutive_successes = 0;
+
+                        // Persist transition to half-open
+                        Self::persist_state_change(
+                            account_id,
+                            previous_state,
+                            CircuitState::HalfOpen,
+                            Some("Timeout elapsed, testing recovery"),
+                            None,
+                        );
+
                         return None; // Allow this request through
                     }
                 }
@@ -133,8 +144,19 @@ impl CircuitBreakerManager {
                             account_id = %account_id,
                             "Circuit breaker transitioning to half-open"
                         );
+                        let previous_state = circuit.state;
                         circuit.state = CircuitState::HalfOpen;
                         circuit.consecutive_successes = 0;
+
+                        // Persist transition to half-open
+                        Self::persist_state_change(
+                            account_id,
+                            previous_state,
+                            CircuitState::HalfOpen,
+                            Some("Timeout elapsed, testing recovery"),
+                            None,
+                        );
+
                         return Ok(()); // Allow this request through
                     }
                     // Return remaining time until half-open
@@ -166,11 +188,21 @@ impl CircuitBreakerManager {
                         account_id = %account_id,
                         "Circuit breaker closing - account recovered"
                     );
+                    let previous_state = circuit.state;
                     circuit.state = CircuitState::Closed;
                     circuit.consecutive_failures = 0;
                     circuit.consecutive_successes = 0;
                     circuit.opened_at = None;
                     circuit.last_failure_reason = None;
+
+                    // Persist recovery to database
+                    Self::persist_state_change(
+                        account_id,
+                        previous_state,
+                        CircuitState::Closed,
+                        Some("Account recovered"),
+                        None,
+                    );
                 }
             }
             CircuitState::Open => {
@@ -188,6 +220,7 @@ impl CircuitBreakerManager {
         let mut circuits = self.circuits.write();
         let circuit = circuits.entry(account_id.to_string()).or_default();
 
+        let previous_state = circuit.state;
         circuit.consecutive_failures += 1;
         circuit.consecutive_successes = 0;
         circuit.last_failure_reason = Some(reason.to_string());
@@ -204,6 +237,15 @@ impl CircuitBreakerManager {
                     circuit.state = CircuitState::Open;
                     circuit.opened_at = Some(Instant::now());
                     self.total_trips.fetch_add(1, Ordering::Relaxed);
+
+                    // Persist state change to database
+                    Self::persist_state_change(
+                        account_id,
+                        previous_state,
+                        CircuitState::Open,
+                        Some(reason),
+                        Some(circuit.consecutive_failures as i32),
+                    );
                 }
             }
             CircuitState::HalfOpen => {
@@ -216,11 +258,47 @@ impl CircuitBreakerManager {
                 circuit.state = CircuitState::Open;
                 circuit.opened_at = Some(Instant::now());
                 self.total_trips.fetch_add(1, Ordering::Relaxed);
+
+                // Persist state change to database
+                Self::persist_state_change(
+                    account_id,
+                    previous_state,
+                    CircuitState::Open,
+                    Some(reason),
+                    Some(circuit.consecutive_failures as i32),
+                );
             }
             CircuitState::Open => {
                 // Already open, just update failure count
             }
         }
+    }
+
+    /// Persist circuit breaker state change to database (fire-and-forget)
+    fn persist_state_change(
+        account_id: &str,
+        previous_state: CircuitState,
+        new_state: CircuitState,
+        reason: Option<&str>,
+        failure_count: Option<i32>,
+    ) {
+        let account_id = account_id.to_string();
+        let previous = format!("{:?}", previous_state).to_lowercase();
+        let new = format!("{:?}", new_state).to_lowercase();
+        let reason = reason.map(|s| s.to_string());
+
+        // Fire and forget - don't block the circuit breaker on DB writes
+        std::thread::spawn(move || {
+            if let Err(e) = crate::proxy::db::record_circuit_breaker_event(
+                &account_id,
+                &previous,
+                &new,
+                reason.as_deref(),
+                failure_count,
+            ) {
+                tracing::warn!("Failed to persist circuit breaker event: {}", e);
+            }
+        });
     }
 
     /// Get the current state of an account's circuit
@@ -240,11 +318,24 @@ impl CircuitBreakerManager {
     pub fn reset(&self, account_id: &str) {
         let mut circuits = self.circuits.write();
         if let Some(circuit) = circuits.get_mut(account_id) {
+            let previous_state = circuit.state;
             info!(
                 account_id = %account_id,
-                previous_state = ?circuit.state,
+                previous_state = ?previous_state,
                 "Circuit breaker reset manually"
             );
+
+            // Persist manual reset to database
+            if previous_state != CircuitState::Closed {
+                Self::persist_state_change(
+                    account_id,
+                    previous_state,
+                    CircuitState::Closed,
+                    Some("Manual reset by user"),
+                    None,
+                );
+            }
+
             *circuit = AccountCircuit::default();
         }
     }
