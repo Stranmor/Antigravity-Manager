@@ -3,7 +3,15 @@
 ## STRATEGIC GOAL
 Optimize the Antigravity Manager codebase for 2026 standards, starting with style consistency and clippy compliance.
 
-## CURRENT ACTIVE BATCH
+## CURRENT ACTIVE BATCH (Phase 5 - Hardening)
+- [ ] Add circuit breaker for upstream API calls `[MODE: B]`
+- [ ] Implement connection pooling for reqwest client `[MODE: B]`
+- [ ] Add graceful shutdown handling for proxy server `[MODE: B]`
+- [ ] Research OpenTelemetry integration (distributed tracing) `[MODE: R]`
+- [ ] Add account usage analytics dashboard in Slint UI `[MODE: B]`
+- [ ] Optimize SSE memory allocation (reduce Box<dyn> overhead) `[MODE: B]`
+
+## COMPLETED: Phase 4 - VPS Deployment (2026-01-06)
 - [x] Create headless server binary `antigravity-server` for VPS deployment `[MODE: B]`
 - [x] Add REST API for account management (CRUD) `[MODE: B]`
 - [x] Create Containerfile for production deployment `[MODE: B]`
@@ -135,8 +143,26 @@ cargo test --features headless -p antigravity_tools_lib
 ## NEXT OPTIMIZATION BATCH
 - [x] Add end-to-end integration tests with mock HTTP server `[MODE: C]` ✓ Defer - current tests comprehensive
 - [x] Research WebSocket support for real-time streaming `[MODE: R]` ✓ See findings below
-- [ ] Implement request tracing spans for deeper observability `[MODE: B]`
+- [x] Implement request tracing spans for deeper observability `[MODE: B]` (84b9ec5) ✓ Complete
 - [x] Add Grafana alerting rules for health degradation `[MODE: B]` (0790cad) ✓ Complete
+- [x] Fix clippy nursery lints in account modules `[MODE: B]` (b842aec) ✓ Complete
+
+## TRACING SPANS IMPLEMENTATION (2026-01-06)
+**Status: ✓ IMPLEMENTED**
+
+**3 Observability Phases Added:**
+1. **account_selection** - Request type, force_rotate, attempt count
+2. **upstream_call** - Provider, model, account_id, method, stream flag, latency_ms
+3. **response_transform** - Provider, model, account_id, latency_ms, input/output tokens
+
+**Files Updated:**
+- `src/proxy/handlers/claude.rs` - 3 spans for handle_claude_request
+- `src/proxy/handlers/openai.rs` - 6 spans (3 for chat, 3 for legacy completions)
+
+**Log Output Example:**
+```
+INFO upstream_call{provider="gemini" model="gemini-2.5-pro" account_id="abc" latency_ms="1234"}: Upstream call completed
+```
 
 ## WEBSOCKET VS SSE RESEARCH (2026-01-06)
 **Status: ✓ RESEARCH COMPLETE - SSE PREFERRED**
