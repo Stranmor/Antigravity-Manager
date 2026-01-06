@@ -10,7 +10,7 @@ use bytes::Bytes;
 use futures::StreamExt;
 use serde_json::{json, Value};
 use tokio::time::{sleep, Duration};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, info_span};
 
 use crate::proxy::mappers::claude::{
     transform_claude_request_in, transform_response, create_claude_sse_stream, ClaudeRequest,
@@ -392,17 +392,33 @@ pub async fn handle_messages(
         let session_id = Some(session_id_str.as_str());
 
         let force_rotate_token = attempt > 0;
-        let (access_token, project_id, email, account_id) = match token_manager.get_token(&config.request_type, force_rotate_token, session_id).await {
-            Ok(t) => t,
-            Err(e) => {
-                let safe_message = if e.contains("invalid_grant") {
-                    "OAuth refresh failed (invalid_grant): refresh_token likely revoked/expired; reauthorize account(s) to restore service.".to_string()
-                } else {
-                    e
-                };
-                return ProxyError::token_error(format!("No available accounts: {safe_message}"))
-                    .with_request_id(request_id.clone())
-                    .into_response();
+
+        // === SPAN: Account Selection Phase ===
+        let account_selection_span = info_span!(
+            "account_selection",
+            request_type = %config.request_type,
+            force_rotate = %force_rotate_token,
+            attempt = %attempt,
+        );
+
+        let (access_token, project_id, email, account_id) = {
+            let _guard = account_selection_span.enter();
+            match token_manager.get_token(&config.request_type, force_rotate_token, session_id).await {
+                Ok(t) => {
+                    info!(account_id = %t.3, email = %t.2, "Account selected successfully");
+                    t
+                },
+                Err(e) => {
+                    let safe_message = if e.contains("invalid_grant") {
+                        "OAuth refresh failed (invalid_grant): refresh_token likely revoked/expired; reauthorize account(s) to restore service.".to_string()
+                    } else {
+                        e
+                    };
+                    error!(error = %safe_message, "Account selection failed");
+                    return ProxyError::token_error(format!("No available accounts: {safe_message}"))
+                        .with_request_id(request_id.clone())
+                        .into_response();
+                }
             }
         };
 
@@ -492,21 +508,42 @@ pub async fn handle_messages(
     let method = if is_stream { "streamGenerateContent" } else { "generateContent" };
     let query = if is_stream { Some("alt=sse") } else { None };
 
+    // === SPAN: Upstream API Call Phase ===
+    let upstream_span = info_span!(
+        "upstream_call",
+        provider = "gemini",
+        model = %resolved_model_for_log,
+        account_id = %account_id,
+        method = %method,
+        stream = %is_stream,
+    );
+
     // [PERF] Time upstream API call
     let _upstream_timer = time_upstream_call("claude", &resolved_model_for_log);
-    let response = match upstream.call_v1_internal(
-        method,
-        &access_token,
-        gemini_body,
-        query
-    ).await {
-            Ok(r) => r,
+    let response = {
+        let _guard = upstream_span.enter();
+        let call_start = std::time::Instant::now();
+
+        match upstream.call_v1_internal(
+            method,
+            &access_token,
+            gemini_body,
+            query
+        ).await {
+            Ok(r) => {
+                let latency_ms = call_start.elapsed().as_millis();
+                info!(latency_ms = %latency_ms, status = %r.status(), "Upstream call completed");
+                r
+            },
             Err(e) => {
+                let latency_ms = call_start.elapsed().as_millis();
+                error!(latency_ms = %latency_ms, error = %e, "Upstream call failed");
                 last_error.clone_from(&e);
                 debug!("Request failed on attempt {}/{}: {}", attempt + 1, max_attempts, e);
                 continue;
             }
-        };
+        }
+    };
 
         let status = response.status();
 
@@ -556,11 +593,36 @@ pub async fn handle_messages(
                 Err(e) => return ProxyError::parse_error(format!("Convert error: {e}")).with_request_id(request_id.clone()).into_response(),
             };
 
+            // === SPAN: Response Transformation Phase ===
+            let response_transform_span = info_span!(
+                "response_transform",
+                provider = "claude",
+                model = %resolved_model_for_log,
+                account_id = %account_id,
+            );
+
             // [PERF] Time response transformation
             let _response_timer = time_response_transform("claude", &resolved_model_for_log);
-            let claude_response = match transform_response(&gemini_response) {
-                Ok(r) => r,
-                Err(e) => return ProxyError::TransformError(format!("Transform error: {e}"), Some(request_id.clone())).into_response(),
+            let claude_response = {
+                let _guard = response_transform_span.enter();
+                let transform_start = std::time::Instant::now();
+
+                match transform_response(&gemini_response) {
+                    Ok(r) => {
+                        let latency_ms = transform_start.elapsed().as_millis();
+                        info!(
+                            latency_ms = %latency_ms,
+                            input_tokens = %r.usage.input_tokens,
+                            output_tokens = %r.usage.output_tokens,
+                            "Response transformation completed"
+                        );
+                        r
+                    },
+                    Err(e) => {
+                        error!(error = %e, "Response transformation failed");
+                        return ProxyError::TransformError(format!("Transform error: {e}"), Some(request_id.clone())).into_response();
+                    }
+                }
             };
             // response_timer is dropped here, recording the duration
 

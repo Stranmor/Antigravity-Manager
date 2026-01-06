@@ -3,7 +3,7 @@ use axum::{extract::Json, extract::State, response::{IntoResponse, Response}, Ex
 use base64::Engine as _;
 use serde_json::{json, Value};
 use tokio::time::{sleep, Duration};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, info_span};
 
 use crate::proxy::mappers::openai::{
     transform_openai_request, transform_openai_response, OpenAIRequest,
@@ -107,17 +107,32 @@ pub async fn handle_chat_completions(
         // 3. 提取 SessionId (粘性指纹)
         let session_id = SessionManager::extract_openai_session_id(&openai_req);
 
+        // === SPAN: Account Selection Phase ===
+        let account_selection_span = info_span!(
+            "account_selection",
+            request_type = %config.request_type,
+            force_rotate = %(attempt > 0),
+            attempt = %attempt,
+        );
+
         // 4. 获取 Token (使用准确的 request_type)
         // 关键：在重试尝试 (attempt > 0) 时强制轮换账号
-        let (access_token, project_id, email, account_id) = match token_manager
-            .get_token(&config.request_type, attempt > 0, Some(&session_id))
-            .await
-        {
-            Ok(t) => t,
-            Err(e) => {
-                return ProxyError::token_error(format!("Token error: {e}"))
-                    .with_request_id(request_id)
-                    .into_response();
+        let (access_token, project_id, email, account_id) = {
+            let _guard = account_selection_span.enter();
+            match token_manager
+                .get_token(&config.request_type, attempt > 0, Some(&session_id))
+                .await
+            {
+                Ok(t) => {
+                    info!(account_id = %t.3, email = %t.2, "Account selected successfully");
+                    t
+                },
+                Err(e) => {
+                    error!(error = %e, "Account selection failed");
+                    return ProxyError::token_error(format!("Token error: {e}"))
+                        .with_request_id(request_id)
+                        .into_response();
+                }
             }
         };
 
@@ -145,22 +160,43 @@ pub async fn handle_chat_completions(
         };
         let query_string = if list_response { Some("alt=sse") } else { None };
 
+        // === SPAN: Upstream API Call Phase ===
+        let upstream_span = info_span!(
+            "upstream_call",
+            provider = "gemini",
+            model = %mapped_model,
+            account_id = %account_id,
+            method = %method,
+            stream = %list_response,
+        );
+
         // [PERF] Time upstream API call
         let _upstream_timer = time_upstream_call("openai", &mapped_model);
-        let response = match upstream
-            .call_v1_internal(method, &access_token, gemini_body, query_string)
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                last_error.clone_from(&e);
-                debug!(
-                    "OpenAI Request failed on attempt {}/{}: {}",
-                    attempt + 1,
-                    max_attempts,
-                    e
-                );
-                continue;
+        let response = {
+            let _guard = upstream_span.enter();
+            let call_start = std::time::Instant::now();
+
+            match upstream
+                .call_v1_internal(method, &access_token, gemini_body, query_string)
+                .await
+            {
+                Ok(r) => {
+                    let latency_ms = call_start.elapsed().as_millis();
+                    info!(latency_ms = %latency_ms, status = %r.status(), "Upstream call completed");
+                    r
+                },
+                Err(e) => {
+                    let latency_ms = call_start.elapsed().as_millis();
+                    error!(latency_ms = %latency_ms, error = %e, "Upstream call failed");
+                    last_error.clone_from(&e);
+                    debug!(
+                        "OpenAI Request failed on attempt {}/{}: {}",
+                        attempt + 1,
+                        max_attempts,
+                        e
+                    );
+                    continue;
+                }
             }
         };
 
@@ -189,9 +225,24 @@ pub async fn handle_chat_completions(
                     .into_response(),
             };
 
+            // === SPAN: Response Transformation Phase ===
+            let response_transform_span = info_span!(
+                "response_transform",
+                provider = "openai",
+                model = %mapped_model,
+                account_id = %account_id,
+            );
+
             // [PERF] Time response transformation
             let _response_timer = time_response_transform("openai", &mapped_model);
-            let openai_response = transform_openai_response(&gemini_resp);
+            let openai_response = {
+                let _guard = response_transform_span.enter();
+                let transform_start = std::time::Instant::now();
+                let resp = transform_openai_response(&gemini_resp);
+                let latency_ms = transform_start.elapsed().as_millis();
+                info!(latency_ms = %latency_ms, "Response transformation completed");
+                resp
+            };
             // response_timer is dropped here, recording the duration
             return Json(openai_response).with_resolved_model(&mapped_model);
         }
@@ -657,15 +708,28 @@ pub async fn handle_completions(
             &tools_val,
         );
 
-        let (access_token, project_id, email, _account_id) =
+        // === SPAN: Account Selection Phase ===
+        let account_selection_span = info_span!(
+            "account_selection",
+            request_type = %config.request_type,
+            attempt = %attempt,
+        );
+
+        let (access_token, project_id, email, account_id) = {
+            let _guard = account_selection_span.enter();
             match token_manager.get_token(&config.request_type, false, None).await {
-                Ok(t) => t,
+                Ok(t) => {
+                    info!(account_id = %t.3, email = %t.2, "Account selected successfully");
+                    t
+                },
                 Err(e) => {
+                    error!(error = %e, "Account selection failed");
                     return ProxyError::token_error(format!("Token error: {e}"))
                         .with_request_id(request_id)
                         .into_response();
                 }
-            };
+            }
+        };
 
         info!("✓ Using account: {} (type: {})", email, config.request_type);
 
@@ -684,14 +748,35 @@ pub async fn handle_completions(
         };
         let query_string = if list_response { Some("alt=sse") } else { None };
 
-        let response = match upstream
-            .call_v1_internal(method, &access_token, gemini_body, query_string)
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                last_error.clone_from(&e);
-                continue;
+        // === SPAN: Upstream API Call Phase ===
+        let upstream_span = info_span!(
+            "upstream_call",
+            provider = "gemini",
+            model = %mapped_model,
+            account_id = %account_id,
+            method = %method,
+            stream = %list_response,
+        );
+
+        let response = {
+            let _guard = upstream_span.enter();
+            let call_start = std::time::Instant::now();
+
+            match upstream
+                .call_v1_internal(method, &access_token, gemini_body, query_string)
+                .await
+            {
+                Ok(r) => {
+                    let latency_ms = call_start.elapsed().as_millis();
+                    info!(latency_ms = %latency_ms, status = %r.status(), "Upstream call completed");
+                    r
+                },
+                Err(e) => {
+                    let latency_ms = call_start.elapsed().as_millis();
+                    error!(latency_ms = %latency_ms, error = %e, "Upstream call failed");
+                    last_error.clone_from(&e);
+                    continue;
+                }
             }
         };
 
@@ -723,7 +808,22 @@ pub async fn handle_completions(
                     .into_response(),
             };
 
-            let chat_resp = transform_openai_response(&gemini_resp);
+            // === SPAN: Response Transformation Phase ===
+            let response_transform_span = info_span!(
+                "response_transform",
+                provider = "openai-legacy",
+                model = %mapped_model,
+                account_id = %account_id,
+            );
+
+            let chat_resp = {
+                let _guard = response_transform_span.enter();
+                let transform_start = std::time::Instant::now();
+                let resp = transform_openai_response(&gemini_resp);
+                let latency_ms = transform_start.elapsed().as_millis();
+                info!(latency_ms = %latency_ms, "Response transformation completed");
+                resp
+            };
 
             // Map Chat Response -> Legacy Completions Response
             let choices = chat_resp.choices.iter().map(|c| {
