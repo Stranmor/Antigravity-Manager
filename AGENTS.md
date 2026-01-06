@@ -107,8 +107,36 @@ cargo build --profile release-fast # Testing (fast, still optimized)
 - [x] Benchmark and optimize hot paths in token rotation `[MODE: R]` ✓ See findings below
 - [x] Fix remaining clippy warnings in server.rs `[MODE: B]` (e8f2b9a)
 - [x] Implement structured JSON logging for files `[MODE: B]` ✓ See JSON Logging section below
-- [ ] Add integration tests for proxy handlers `[MODE: C]`
-- [ ] Implement DashMap for rate limiting (performance) `[MODE: B]`
+- [x] Add integration tests for proxy handlers `[MODE: C]` (1cd699e) ✓ 55+ tests
+- [x] Implement DashMap for rate limiting (performance) `[MODE: B]` ✓ Already implemented
+
+## INTEGRATION TESTS (2026-01-06)
+**Status: ✓ IMPLEMENTED**
+
+**File:** `src-tauri/src/proxy/tests/handler_tests.rs` (1,539 lines)
+
+**Test Coverage:**
+| Category | Tests | Description |
+|----------|-------|-------------|
+| Claude Request | 7 | Text, system prompt, tools, images, thinking, safety |
+| Claude Response | 5 | Text, thinking blocks, function calls, finish reasons |
+| OpenAI Request | 5 | Chat, system, multimodal, tools, tool calls |
+| OpenAI Response | 4 | Text, tools, finish reason mapping, grounding |
+| Error Handling | 12 | 429/500/503/529/401/400, network, parse, retry, circuit |
+| SSE Streaming | 15 | Events, blocks, deltas, signatures, grounding |
+| Rate Limiting | 4 | 429 parsing, soft limits, quota groups |
+| Model Mapping | 3 | Claude→Gemini, passthrough, fallback |
+
+**Run Tests:**
+```bash
+cargo test --features headless -p antigravity_tools_lib
+```
+
+## NEXT OPTIMIZATION BATCH
+- [ ] Add end-to-end integration tests with mock HTTP server `[MODE: C]`
+- [ ] Implement request tracing spans for deeper observability `[MODE: B]`
+- [ ] Add Grafana alerting rules for health degradation `[MODE: B]`
+- [ ] Research WebSocket support for real-time streaming `[MODE: R]`
 
 ## JSON FILE LOGGING (2026-01-06)
 **Status: ✓ IMPLEMENTED**
