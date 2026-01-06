@@ -77,8 +77,16 @@ export struct RequestLog {
 export global AppState {
     // Accounts
     in-out property <[Account]> accounts: [];
+    in-out property <[Account]> filtered_accounts: []; // Filtered view based on current filter
     in-out property <Account> current_account;
     in-out property <[Account]> best_accounts: [];
+    
+    // Filter counts for badges
+    in-out property <int> available_count: 0;
+    in-out property <int> low_quota_count: 0;
+    in-out property <int> pro_count: 0;
+    in-out property <int> ultra_count: 0;
+    in-out property <int> free_count: 0;
     
     // Proxy
     in-out property <ProxyStats> stats: { 
@@ -168,6 +176,7 @@ export global AppState {
     callback toggle_monitor_recording();
     callback open_data_folder();
     callback copy_to_clipboard(string);
+    callback filter_accounts(string); // filter type: all, available, low_quota, pro, ultra, free
 }
 
 // ========================================
@@ -1218,32 +1227,37 @@ component AccountsPage inherits VerticalBox {
             label: "All";
             count: AppState.accounts.length;
             selected: AppState.account_filter == "all";
-            clicked => { AppState.account_filter = "all"; }
+            clicked => { AppState.filter_accounts("all"); }
         }
         FilterTab {
             label: "Available";
+            count: AppState.available_count;
             selected: AppState.account_filter == "available";
-            clicked => { AppState.account_filter = "available"; }
+            clicked => { AppState.filter_accounts("available"); }
         }
         FilterTab {
             label: "Low Quota";
+            count: AppState.low_quota_count;
             selected: AppState.account_filter == "low_quota";
-            clicked => { AppState.account_filter = "low_quota"; }
+            clicked => { AppState.filter_accounts("low_quota"); }
         }
         FilterTab {
             label: "PRO";
+            count: AppState.pro_count;
             selected: AppState.account_filter == "pro";
-            clicked => { AppState.account_filter = "pro"; }
+            clicked => { AppState.filter_accounts("pro"); }
         }
         FilterTab {
             label: "ULTRA";
+            count: AppState.ultra_count;
             selected: AppState.account_filter == "ultra";
-            clicked => { AppState.account_filter = "ultra"; }
+            clicked => { AppState.filter_accounts("ultra"); }
         }
         FilterTab {
             label: "FREE";
+            count: AppState.free_count;
             selected: AppState.account_filter == "free";
-            clicked => { AppState.account_filter = "free"; }
+            clicked => { AppState.filter_accounts("free"); }
         }
         
         Rectangle { horizontal-stretch: 1; }
@@ -1261,7 +1275,7 @@ component AccountsPage inherits VerticalBox {
                 padding: 8px;
                 spacing: 4px;
                 
-                for account in AppState.accounts: AccountRow {
+                for account in AppState.filtered_accounts: AccountRow {
                     account: account;
                 }
             }

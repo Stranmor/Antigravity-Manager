@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use slint::VecModel;
+use slint::{VecModel, Model};
 use antigravity_tools_lib::modules::{account, config, oauth};
 use antigravity_tools_lib::proxy::{AxumServer, TokenManager, ProxySecurityConfig};
 use antigravity_tools_lib::proxy::monitor::ProxyMonitor;
@@ -63,13 +63,65 @@ impl AppController {
                     .map(|a| self.lib_account_to_slint(a, current_id.as_deref()))
                     .collect();
 
+                let available_count = accounts.iter()
+                    .filter(|a| {
+                        let is_forbidden = a.quota.as_ref().map(|q| q.is_forbidden).unwrap_or(false);
+                        let quota_pct = a.quota.as_ref().and_then(|q| q.models.first()).map(|m| m.percentage).unwrap_or(0);
+                        !a.disabled && !is_forbidden && quota_pct > 10
+                    })
+                    .count() as i32;
+                
+                let low_quota_count = accounts.iter()
+                    .filter(|a| {
+                        let quota_pct = a.quota.as_ref().and_then(|q| q.models.first()).map(|m| m.percentage).unwrap_or(0);
+                        quota_pct < 20
+                    })
+                    .count() as i32;
+                
+                let pro_count = accounts.iter()
+                    .filter(|a| {
+                        a.quota.as_ref()
+                            .and_then(|q| q.subscription_tier.as_ref())
+                            .map(|t| t.to_uppercase() == "PRO")
+                            .unwrap_or(false)
+                    })
+                    .count() as i32;
+                
+                let ultra_count = accounts.iter()
+                    .filter(|a| {
+                        a.quota.as_ref()
+                            .and_then(|q| q.subscription_tier.as_ref())
+                            .map(|t| t.to_uppercase() == "ULTRA")
+                            .unwrap_or(false)
+                    })
+                    .count() as i32;
+                
+                let free_count = accounts.iter()
+                    .filter(|a| {
+                        let tier = a.quota.as_ref()
+                            .and_then(|q| q.subscription_tier.as_ref())
+                            .map(|t| t.to_uppercase())
+                            .unwrap_or_else(|| "FREE".to_string());
+                        tier == "FREE"
+                    })
+                    .count() as i32;
+
                 if let Some(app) = self.app.upgrade() {
                     let active_count = accounts.iter()
                         .filter(|a| !a.disabled && a.quota.as_ref().map(|q| !q.is_forbidden).unwrap_or(true))
                         .count() as i32;
                     
-                    let model = std::rc::Rc::new(VecModel::from(accounts_model));
+                    let model = std::rc::Rc::new(VecModel::from(accounts_model.clone()));
                     app.global::<AppState>().set_accounts(model.into());
+                    
+                    app.global::<AppState>().set_available_count(available_count);
+                    app.global::<AppState>().set_low_quota_count(low_quota_count);
+                    app.global::<AppState>().set_pro_count(pro_count);
+                    app.global::<AppState>().set_ultra_count(ultra_count);
+                    app.global::<AppState>().set_free_count(free_count);
+                    
+                    let current_filter = app.global::<AppState>().get_account_filter().to_string();
+                    self.apply_filter_internal(&accounts_model, &current_filter);
                     
                     let best_model = std::rc::Rc::new(VecModel::from(best));
                     app.global::<AppState>().set_best_accounts(best_model.into());
@@ -91,6 +143,51 @@ impl AppController {
                 tracing::error!("Failed to load accounts: {}", e);
                 self.show_status("Failed to load accounts", "error");
             }
+        }
+    }
+
+    fn apply_filter_internal(&self, accounts: &[Account], filter: &str) {
+        let filtered: Vec<Account> = accounts
+            .iter()
+            .filter(|a| {
+                match filter {
+                    "available" => {
+                        a.enabled && !a.is_forbidden && a.quota_percentage > 10
+                    }
+                    "low_quota" => {
+                        a.quota_percentage < 20
+                    }
+                    "pro" => {
+                        a.tier.to_string().to_uppercase() == "PRO"
+                    }
+                    "ultra" => {
+                        a.tier.to_string().to_uppercase() == "ULTRA"
+                    }
+                    "free" => {
+                        let tier = a.tier.to_string().to_uppercase();
+                        tier == "FREE" || tier.is_empty()
+                    }
+                    _ => true,
+                }
+            })
+            .cloned()
+            .collect();
+        
+        if let Some(app) = self.app.upgrade() {
+            let model = std::rc::Rc::new(VecModel::from(filtered));
+            app.global::<AppState>().set_filtered_accounts(model.into());
+        }
+    }
+
+    fn filter_accounts(&self, filter: &str) {
+        if let Some(app) = self.app.upgrade() {
+            app.global::<AppState>().set_account_filter(filter.into());
+            
+            let accounts: Vec<Account> = app.global::<AppState>().get_accounts()
+                .iter()
+                .collect();
+            
+            self.apply_filter_internal(&accounts, filter);
         }
     }
 
@@ -729,4 +826,5 @@ fn setup_callbacks(app: &MainWindow, controller: Arc<AppController>) {
     app.global::<AppState>().on_toggle_monitor_recording({ let c = controller.clone(); move || c.toggle_monitor_recording() });
     app.global::<AppState>().on_open_data_folder({ let c = controller.clone(); move || c.open_data_folder() });
     app.global::<AppState>().on_copy_to_clipboard({ let c = controller.clone(); move |text| c.copy_to_clipboard(&text) });
+    app.global::<AppState>().on_filter_accounts({ let c = controller.clone(); move |filter| c.filter_accounts(&filter) });
 }
