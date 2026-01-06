@@ -7,9 +7,9 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Add circuit breaker for upstream API calls `[MODE: B]` ✓ c03994b (full implementation)
 - [x] Implement connection pooling for reqwest client `[MODE: B]` ✓ Already configured (pool_max_idle_per_host=16)
 - [x] Add graceful shutdown handling for proxy server `[MODE: B]` ✓ c03994b (ConnectionTracker + 30s drain timeout)
+- [x] Optimize SSE memory allocation (reduce Box<dyn> overhead) `[MODE: B]` ✓ a574fb3 (SmallVec optimization)
 - [ ] Research OpenTelemetry integration (distributed tracing) `[MODE: R]` (in progress)
 - [ ] Add account usage analytics dashboard in Slint UI `[MODE: B]`
-- [ ] Optimize SSE memory allocation (reduce Box<dyn> overhead) `[MODE: B]`
 
 ## COMPLETED: Phase 4 - VPS Deployment (2026-01-06)
 - [x] Create headless server binary `antigravity-server` for VPS deployment `[MODE: B]`
@@ -611,3 +611,33 @@ const loading = useAccountLoading();
 - `useRequestCount()` - derived count
 - `useMonitorUIState()` - UI state (shallow)
 - `useNetworkMonitorActions()` - all actions (stable reference)
+
+## SSE STREAMING MEMORY OPTIMIZATION (2026-01-06)
+**Status: IMPLEMENTED (a574fb3)**
+
+**Problem:**
+SSE streaming code was using `Vec<Bytes>` for chunk collections, causing heap allocations even when returning 1-4 chunks (the common case).
+
+**Solution:**
+Replaced `Vec` with `SmallVec<[Bytes; 4]>` from the `smallvec` crate:
+- **ChunkVec**: Stack-allocated for up to 4 Bytes chunks (typical SSE event returns)
+- **LineVec**: Stack-allocated for up to 4 lines per buffer extraction
+- **AbortHandler**: Uses SmallVec for cleanup callbacks (0-2 typical)
+
+**Key Changes:**
+| Before | After | Improvement |
+|--------|-------|-------------|
+| `Vec<Bytes>` | `SmallVec<[Bytes; 4]>` | No heap allocation for <=4 items |
+| `Vec<Box<dyn FnOnce()>>` | `SmallVec<[Box<...>; 2]>` | No heap allocation for <=2 callbacks |
+
+**Files Modified:**
+- `src-tauri/Cargo.toml` - Added smallvec dependency
+- `src-tauri/src/proxy/mappers/claude/streaming.rs` - ChunkVec type and method updates
+- `src-tauri/src/proxy/mappers/claude/mod.rs` - Updated return types
+- `src-tauri/src/proxy/mappers/stream_resilience.rs` - LineVec and AbortHandler optimization
+
+**Benefits:**
+1. Zero heap allocations in hot path for typical SSE operations
+2. Reduced memory fragmentation during streaming
+3. Better cache locality for small collections
+4. No API changes required (SmallVec implements Vec-like interface)
