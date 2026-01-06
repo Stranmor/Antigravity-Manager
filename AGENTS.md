@@ -11,13 +11,22 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Add OpenTelemetry distributed tracing `[MODE: B]` ✓ 199369e (feature-gated behind `otel`)
 - [x] Add account usage analytics dashboard in Slint UI `[MODE: B]` ✓ 8425c51 (full Analytics page)
 
-## CURRENT ACTIVE BATCH (Phase 6 - Production Readiness)
+## COMPLETED: Phase 6 - Production Readiness (2026-01-07)
 - [x] Sync VPS with latest binary including OTEL support `[MODE: B]` ✓ 2c1fab1 (Containerfile updated)
 - [x] Test OTEL integration with Grafana Tempo on VPS `[MODE: C]` ✓ Tested 2026-01-07 - Tempo not deployed, see OTEL OBSERVABILITY section below
-- [x] Add database migration for analytics persistence `[MODE: B]` ✓ (schema v2 with daily_account_stats, circuit_breaker_events, rate_limit_events, global_stats)
+- [x] Add database migration for analytics persistence `[MODE: B]` ✓ 85ef068 (schema v2 with daily_account_stats, circuit_breaker_events, rate_limit_events, global_stats)
 - [x] Research connection multiplexing for high-throughput scenarios `[MODE: R]` ✓ HTTP/2 research complete
 - [x] Add export functionality for usage reports `[MODE: B]` ✓ 6f12cc9 (CSV, JSON, TXT with native file dialogs)
 - [x] Fix chrono→time regression in export `[MODE: B]` ✓ 9a097a1
+- [x] Wire circuit breaker state changes to analytics DB `[MODE: B]` ✓ cbae7e7 (fire-and-forget persistence)
+
+## CURRENT ACTIVE BATCH (Phase 7 - Polish & Optimization)
+- [ ] Deploy Grafana Tempo on VPS for distributed tracing `[MODE: B]`
+- [ ] Add rate limit tracking to analytics persistence `[MODE: B]`
+- [ ] Implement account usage visualization in Slint analytics page `[MODE: B]`
+- [ ] Add keyboard shortcuts to Slint UI (Ctrl+R refresh, etc.) `[MODE: B]`
+- [ ] Implement log rotation for proxy logs `[MODE: B]`
+- [ ] Add health check endpoint with detailed component status `[MODE: B]`
 
 ## OTEL OBSERVABILITY STATUS (2026-01-07)
 **VPS OTEL Testing Results:**
