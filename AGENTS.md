@@ -64,11 +64,49 @@ cargo build --profile release-fast # Testing (fast, still optimized)
 - [x] Fix clippy warnings in proxy mappers `[MODE: B]` (68c36db)
 
 ## CODE QUALITY BATCH (2026-01-06)
+**Status: ✓ COMPLETE**
 - [x] Fix remaining clippy warnings (format!, clone_on_ref_ptr) `[MODE: B]` (6524fce)
 - [x] Eliminate unwrap() calls in src-slint/main.rs `[MODE: B]` (ffb9b41)
 - [x] Add UI update throttling for dashboard telemetry `[MODE: B]` (1be8b80)
-- [ ] Migrate from chrono to time crate (SOTA 2026) `[MODE: R]`
-- [ ] Add property-based tests for account filtering `[MODE: C]`
+- [x] Migrate from chrono to time crate (SOTA 2026) `[MODE: B]` (72dcc13) ✓ All 185 tests pass
+- [x] Add property-based tests for account filtering `[MODE: C]` (72dcc13) ✓ 19 proptest tests
+
+## PROPERTY-BASED TESTING (2026-01-06)
+**Status: ✓ IMPLEMENTED**
+
+**Proptest Coverage for Account Filtering:**
+- `filter_accounts_pure()` extracted as testable pure function
+- 19 property-based tests using `proptest` crate v1.6
+- Properties verified:
+  - Tier filtering (PRO/ULTRA/FREE) case-insensitive
+  - Available filter excludes disabled, forbidden, low-quota accounts
+  - Low quota filter threshold (< 20%)
+  - Filter idempotency (applying twice = same result)
+  - Filtered result is always subset of input
+  - Tier filters are mutually exclusive
+  - Unknown filter behaves like "all"
+
+**Code Location:** `src-slint/src/main.rs` lines 989-1337
+
+## CHRONO → TIME MIGRATION (2026-01-06)
+**Status: ✓ COMPLETE**
+
+**Replacement Patterns:**
+| chrono | time |
+|--------|------|
+| `chrono::Utc::now()` | `time::OffsetDateTime::now_utc()` |
+| `.timestamp()` | `.unix_timestamp()` |
+| `.timestamp_millis()` | `(unix_timestamp_nanos() / 1_000_000) as i64` |
+| `chrono::Local::now()` | `time::OffsetDateTime::now_local().unwrap_or_else(\|_\| now_utc())` |
+
+**Files Migrated:** 13 files across src-slint and src-tauri
+
+## NEXT OPTIMIZATION BATCH
+- [ ] Investigate `jiff` crate as next-gen time library (by ripgrep author) `[MODE: R]`
+- [ ] Add structured logging with request correlation IDs `[MODE: B]`
+- [ ] Implement connection pooling for upstream requests `[MODE: B]`
+- [ ] Add integration tests for proxy handlers `[MODE: C]`
+- [ ] Benchmark and optimize hot paths in token rotation `[MODE: R]`
 
 ## CLI IMPORT TOOL (Complete - 2026-01-06)
 **Status: ✓ IMPLEMENTED AND TESTED**
