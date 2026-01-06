@@ -546,7 +546,8 @@ pub async fn handle_messages(
             method,
             &access_token,
             gemini_body,
-            query
+            query,
+            state.request_timeout,
         ).await {
             Ok(r) => {
                 let latency_ms = call_start.elapsed().as_millis();

@@ -977,7 +977,7 @@ mod openai_response_transformation {
 // =============================================================================
 
 mod error_handling {
-    use crate::proxy::error::ProxyError;
+    use crate::proxy::error::{ErrorCode, ProxyError};
     use axum::http::StatusCode;
 
     /// Test 429 rate limit error handling
@@ -986,7 +986,7 @@ mod error_handling {
         let error = ProxyError::RateLimited("Too many requests".to_string(), None);
 
         assert_eq!(error.status_code(), StatusCode::TOO_MANY_REQUESTS);
-        assert_eq!(error.error_code(), "RATE_LIMITED");
+        assert_eq!(error.error_code(), ErrorCode::RateLimited);
         assert!(error.is_rate_limited());
         assert!(error.is_retryable());
     }
@@ -1088,7 +1088,7 @@ mod error_handling {
         let error = ProxyError::retry_exhausted(3, "All attempts failed", Some(breakdown));
 
         assert_eq!(error.status_code(), StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(error.error_code(), "RETRY_EXHAUSTED");
+        assert_eq!(error.error_code(), ErrorCode::AccountsExhausted);
     }
 
     /// Test circuit breaker open error
@@ -1100,7 +1100,7 @@ mod error_handling {
             ProxyError::circuit_breaker_open("api.vertex.ai", "Too many failures", Some(Duration::from_secs(30)));
 
         assert_eq!(error.status_code(), StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(error.error_code(), "CIRCUIT_BREAKER_OPEN");
+        assert_eq!(error.error_code(), ErrorCode::CircuitOpen);
         assert_eq!(error.retry_after_ms(), Some(30000));
     }
 }

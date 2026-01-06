@@ -432,11 +432,12 @@ mod proxy_error {
     /// Test error code strings
     #[test]
     fn test_error_codes() {
-        assert_eq!(ProxyError::invalid_request("").error_code(), "INVALID_REQUEST");
-        assert_eq!(ProxyError::token_error("").error_code(), "TOKEN_ERROR");
-        assert_eq!(ProxyError::RateLimited(String::new(), None).error_code(), "RATE_LIMITED");
-        assert_eq!(ProxyError::Overloaded(String::new(), None).error_code(), "SERVER_OVERLOADED");
-        assert_eq!(ProxyError::upstream_error(500, "").error_code(), "UPSTREAM_ERROR");
+        use crate::proxy::error::ErrorCode;
+        assert_eq!(ProxyError::invalid_request("").error_code(), ErrorCode::ValidationError);
+        assert_eq!(ProxyError::token_error("").error_code(), ErrorCode::AccountsExhausted);
+        assert_eq!(ProxyError::RateLimited(String::new(), None).error_code(), ErrorCode::RateLimited);
+        assert_eq!(ProxyError::Overloaded(String::new(), None).error_code(), ErrorCode::RateLimited);
+        assert_eq!(ProxyError::upstream_error(500, "").error_code(), ErrorCode::UpstreamError);
     }
 
     /// Test error display messages

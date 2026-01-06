@@ -260,13 +260,18 @@ impl UpstreamClient {
         status
     }
 
-    /// Call v1internal API with circuit breaker protection
+    /// Call v1internal API with circuit breaker protection and hard deadline enforcement
+    ///
+    /// The `timeout_secs` parameter enforces a hard deadline on the upstream call.
+    /// If the upstream does not respond within the timeout, the request is cancelled
+    /// and an error is returned. This prevents indefinite hangs on slow/stuck upstreams.
     pub async fn call_v1_internal(
         &self,
         method: &str,
         access_token: &str,
         body: Value,
         query_string: Option<&str>,
+        timeout_secs: u64,
     ) -> Result<Response, String> {
         // Build headers (reused across endpoints)
         let mut headers = header::HeaderMap::new();
@@ -308,16 +313,38 @@ impl UpstreamClient {
 
             let url = Self::build_url(base_url, method, query_string);
 
-            let response = self
-                .http_client
-                .post(&url)
-                .headers(headers.clone())
-                .json(&body)
-                .send()
-                .await;
+            // Wrap HTTP call with hard deadline enforcement
+            let deadline = Duration::from_secs(timeout_secs);
+            let response = tokio::time::timeout(
+                deadline,
+                self.http_client
+                    .post(&url)
+                    .headers(headers.clone())
+                    .json(&body)
+                    .send(),
+            )
+            .await;
 
             match response {
-                Ok(resp) => {
+                // Timeout elapsed - hard deadline exceeded
+                Err(_elapsed) => {
+                    // Record timeout as a failure for circuit breaker
+                    circuit_breaker.record_failure().await;
+
+                    let msg = format!(
+                        "Upstream timeout at {} after {}s (hard deadline exceeded)",
+                        base_url, timeout_secs
+                    );
+                    tracing::warn!("{}", msg);
+                    last_err = Some(msg);
+
+                    if !has_next {
+                        break;
+                    }
+                    continue;
+                }
+                // HTTP call completed within deadline
+                Ok(Ok(resp)) => {
                     let status = resp.status();
                     let elapsed = start_time.elapsed();
 
@@ -365,7 +392,8 @@ impl UpstreamClient {
                     // Return non-retryable error or last endpoint response
                     return Ok(resp);
                 }
-                Err(e) => {
+                // HTTP request error (within deadline)
+                Ok(Err(e)) => {
                     // Record network failure in circuit breaker
                     circuit_breaker.record_failure().await;
 

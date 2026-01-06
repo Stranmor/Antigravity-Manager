@@ -196,7 +196,7 @@ pub async fn handle_chat_completions(
             let call_start = std::time::Instant::now();
 
             match upstream
-                .call_v1_internal(method, &access_token, gemini_body, query_string)
+                .call_v1_internal(method, &access_token, gemini_body, query_string, state.request_timeout)
                 .await
             {
                 Ok(r) => {
@@ -815,7 +815,7 @@ pub async fn handle_completions(
             let call_start = std::time::Instant::now();
 
             match upstream
-                .call_v1_internal(method, &access_token, gemini_body, query_string)
+                .call_v1_internal(method, &access_token, gemini_body, query_string, state.request_timeout)
                 .await
             {
                 Ok(r) => {
@@ -1135,7 +1135,7 @@ pub async fn handle_images_generations(
             });
 
             match upstream
-                .call_v1_internal("generateContent", &access_token, gemini_body, None)
+                .call_v1_internal("generateContent", &access_token, gemini_body, None, 180)
                 .await
             {
                 Ok(response) => {
@@ -1424,7 +1424,7 @@ pub async fn handle_images_edits(
 
         tasks.push(tokio::spawn(async move {
             match upstream
-                .call_v1_internal("generateContent", &access_token, body, None)
+                .call_v1_internal("generateContent", &access_token, body, None, 180)
                 .await
             {
                 Ok(response) => {

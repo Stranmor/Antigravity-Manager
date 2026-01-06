@@ -16,6 +16,11 @@
 //! The retry system uses specific error types for better observability:
 //! - `RetryExhausted`: All retry attempts failed
 //! - `CircuitBreakerOpen`: Upstream is temporarily unavailable
+//!
+//! ## Structured Error Codes
+//!
+//! All errors include machine-readable codes (AG-001 through AG-008) for
+//! programmatic client-side error handling. See [`ErrorCode`] for details.
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -23,18 +28,126 @@ use serde::Serialize;
 use std::time::Duration;
 use thiserror::Error;
 
-/// Structured error response body for JSON API responses
+/// Machine-readable error codes for API clients.
+///
+/// These codes provide a stable, compact identifier for each error category,
+/// enabling clients to implement structured error handling without parsing
+/// error messages.
+///
+/// # Code Format
+///
+/// All codes follow the format `AG-XXX` where:
+/// - `AG` = Antigravity (project prefix)
+/// - `XXX` = Three-digit numeric identifier
+///
+/// # Example Response
+///
+/// ```json
+/// {
+///   "error": true,
+///   "code": "AG-001",
+///   "error_type": "ACCOUNTS_EXHAUSTED",
+///   "message": "No accounts available: all rate-limited or disabled"
+/// }
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(into = "&'static str")]
+pub enum ErrorCode {
+    /// AG-001: No accounts available (all rate-limited or disabled)
+    AccountsExhausted,
+    /// AG-002: Circuit breaker is open for requested account
+    CircuitOpen,
+    /// AG-003: Upstream API timed out
+    UpstreamTimeout,
+    /// AG-004: Upstream API returned an error
+    UpstreamError,
+    /// AG-005: Request validation failed
+    ValidationError,
+    /// AG-006: Authentication required
+    AuthRequired,
+    /// AG-007: Rate limit exceeded
+    RateLimited,
+    /// AG-008: Internal server error
+    InternalError,
+}
+
+impl ErrorCode {
+    /// Returns the structured error code string (e.g., "AG-001").
+    #[inline]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::AccountsExhausted => "AG-001",
+            Self::CircuitOpen => "AG-002",
+            Self::UpstreamTimeout => "AG-003",
+            Self::UpstreamError => "AG-004",
+            Self::ValidationError => "AG-005",
+            Self::AuthRequired => "AG-006",
+            Self::RateLimited => "AG-007",
+            Self::InternalError => "AG-008",
+        }
+    }
+
+    /// Returns the human-readable error type name.
+    #[inline]
+    pub const fn error_type(&self) -> &'static str {
+        match self {
+            Self::AccountsExhausted => "ACCOUNTS_EXHAUSTED",
+            Self::CircuitOpen => "CIRCUIT_OPEN",
+            Self::UpstreamTimeout => "UPSTREAM_TIMEOUT",
+            Self::UpstreamError => "UPSTREAM_ERROR",
+            Self::ValidationError => "VALIDATION_ERROR",
+            Self::AuthRequired => "AUTH_REQUIRED",
+            Self::RateLimited => "RATE_LIMITED",
+            Self::InternalError => "INTERNAL_ERROR",
+        }
+    }
+}
+
+impl From<ErrorCode> for &'static str {
+    fn from(code: ErrorCode) -> Self {
+        code.as_str()
+    }
+}
+
+impl std::fmt::Display for ErrorCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// Structured error response body for JSON API responses.
+///
+/// # Example
+///
+/// ```json
+/// {
+///   "error": true,
+///   "code": "AG-007",
+///   "error_type": "RATE_LIMITED",
+///   "message": "Rate limit exceeded for account",
+///   "retry_after_ms": 5000
+/// }
+/// ```
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
+    /// Always `true` for error responses.
     pub error: bool,
-    pub code: String,
+    /// Machine-readable error code (e.g., "AG-001").
+    pub code: ErrorCode,
+    /// Human-readable error type (e.g., "ACCOUNTS_EXHAUSTED").
+    pub error_type: &'static str,
+    /// Detailed error message.
     pub message: String,
+    /// Request ID for tracing/debugging.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
+    /// Time in milliseconds before the client should retry.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_after_ms: Option<u64>,
+    /// Current attempt number (for retry-related errors).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attempt: Option<usize>,
+    /// Maximum attempts allowed (for retry-related errors).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_attempts: Option<usize>,
 }
@@ -181,6 +294,14 @@ pub enum ProxyError {
         String,
         Option<crate::proxy::middleware::request_id::RequestId>,
     ),
+
+    /// Upstream request timed out (hard deadline enforcement)
+    #[error("Upstream timeout after {timeout_secs}s: {message}")]
+    UpstreamTimeout {
+        timeout_secs: u64,
+        message: String,
+        request_id: Option<crate::proxy::middleware::request_id::RequestId>,
+    },
 }
 
 impl ProxyError {
@@ -195,6 +316,7 @@ impl ProxyError {
             ProxyError::UpstreamError { status, .. } => {
                 StatusCode::from_u16(*status).unwrap_or(StatusCode::BAD_GATEWAY)
             }
+            ProxyError::UpstreamTimeout { .. } => StatusCode::GATEWAY_TIMEOUT,
             ProxyError::RateLimited(_, _) => StatusCode::TOO_MANY_REQUESTS,
             ProxyError::TransformError(_, _)
             | ProxyError::InternalError(_, _)
@@ -206,20 +328,58 @@ impl ProxyError {
     }
 
     /// Get the machine-readable error code.
-    pub fn error_code(&self) -> String {
+    ///
+    /// Maps each `ProxyError` variant to its corresponding `ErrorCode` for
+    /// structured client-side error handling.
+    pub fn error_code(&self) -> ErrorCode {
         match self {
-            ProxyError::InvalidRequest(_, _) => "INVALID_REQUEST".to_string(),
-            ProxyError::TokenError(_, _) => "TOKEN_ERROR".to_string(),
-            ProxyError::UpstreamError { .. } => "UPSTREAM_ERROR".to_string(),
-            ProxyError::RateLimited(_, _) => "RATE_LIMITED".to_string(),
-            ProxyError::Overloaded(_, _) => "SERVER_OVERLOADED".to_string(),
-            ProxyError::TransformError(_, _) => "TRANSFORM_ERROR".to_string(),
-            ProxyError::ParseError(_, _) => "PARSE_ERROR".to_string(),
-            ProxyError::NetworkError(_, _) => "NETWORK_ERROR".to_string(),
-            ProxyError::InternalError(_, _) => "INTERNAL_ERROR".to_string(),
-            ProxyError::RetryExhausted { .. } => "RETRY_EXHAUSTED".to_string(),
-            ProxyError::CircuitBreakerOpen { .. } => "CIRCUIT_BREAKER_OPEN".to_string(),
-            ProxyError::ResponseBuildError(_, _) => "RESPONSE_BUILD_ERROR".to_string(),
+            // Validation errors
+            ProxyError::InvalidRequest(_, _) | ProxyError::TransformError(_, _) => {
+                ErrorCode::ValidationError
+            }
+
+            // Account exhaustion (token errors = no available accounts)
+            ProxyError::TokenError(_, _) | ProxyError::RetryExhausted { .. } => {
+                ErrorCode::AccountsExhausted
+            }
+
+            // Circuit breaker
+            ProxyError::CircuitBreakerOpen { .. } => ErrorCode::CircuitOpen,
+
+            // Explicit upstream timeout (hard deadline enforcement)
+            ProxyError::UpstreamTimeout { .. } => ErrorCode::UpstreamTimeout,
+
+            // Upstream errors (with timeout detection)
+            ProxyError::UpstreamError { status, .. } => {
+                if *status == 408 || *status == 504 {
+                    ErrorCode::UpstreamTimeout
+                } else {
+                    ErrorCode::UpstreamError
+                }
+            }
+
+            // Network errors (often timeouts)
+            ProxyError::NetworkError(msg, _) => {
+                if msg.to_lowercase().contains("timeout") {
+                    ErrorCode::UpstreamTimeout
+                } else {
+                    ErrorCode::UpstreamError
+                }
+            }
+
+            // Rate limiting
+            ProxyError::RateLimited(_, _) => ErrorCode::RateLimited,
+
+            // Overload is a form of rate limiting
+            ProxyError::Overloaded(_, _) => ErrorCode::RateLimited,
+
+            // Parse errors are upstream issues
+            ProxyError::ParseError(_, _) => ErrorCode::UpstreamError,
+
+            // Internal errors
+            ProxyError::InternalError(_, _) | ProxyError::ResponseBuildError(_, _) => {
+                ErrorCode::InternalError
+            }
         }
     }
 
@@ -236,6 +396,7 @@ impl ProxyError {
             | ProxyError::InternalError(_, rid)
             | ProxyError::ResponseBuildError(_, rid) => rid.as_ref().map(|r| r.0.clone()),
             ProxyError::UpstreamError { request_id, .. }
+            | ProxyError::UpstreamTimeout { request_id, .. }
             | ProxyError::RetryExhausted { request_id, .. }
             | ProxyError::CircuitBreakerOpen { request_id, .. } => {
                 request_id.as_ref().map(|r| r.0.clone())
@@ -301,6 +462,15 @@ impl ProxyError {
                 request_id: Some(rid),
             },
             ProxyError::ResponseBuildError(m, _) => ProxyError::ResponseBuildError(m, Some(rid)),
+            ProxyError::UpstreamTimeout {
+                timeout_secs,
+                message,
+                ..
+            } => ProxyError::UpstreamTimeout {
+                timeout_secs,
+                message,
+                request_id: Some(rid),
+            },
         }
     }
 
@@ -371,6 +541,15 @@ impl ProxyError {
         ProxyError::ResponseBuildError(msg.into(), None)
     }
 
+    /// Create an UpstreamTimeout error (hard deadline enforcement).
+    pub fn upstream_timeout(timeout_secs: u64, message: impl Into<String>) -> Self {
+        ProxyError::UpstreamTimeout {
+            timeout_secs,
+            message: message.into(),
+            request_id: None,
+        }
+    }
+
     /// Check if this error is retryable
     pub fn is_retryable(&self) -> bool {
         matches!(
@@ -411,6 +590,7 @@ impl IntoResponse for ProxyError {
         let status = self.status_code();
         let message = self.to_string();
         let code = self.error_code();
+        let error_type = code.error_type();
         let request_id = self.request_id();
         let retry_after_ms = self.retry_after_ms();
         let (attempt, max_attempts) = self
@@ -419,7 +599,8 @@ impl IntoResponse for ProxyError {
 
         // Log the error for monitoring with structured fields
         tracing::error!(
-            error_type = %code,
+            error_code = %code,
+            error_type = %error_type,
             status = %status,
             message = %message,
             request_id = ?request_id,
@@ -431,6 +612,7 @@ impl IntoResponse for ProxyError {
         let body = ErrorResponse {
             error: true,
             code,
+            error_type,
             message,
             request_id,
             retry_after_ms,
@@ -531,18 +713,97 @@ mod tests {
 
     #[test]
     fn test_error_codes() {
+        // ValidationError (AG-005)
         assert_eq!(
             ProxyError::invalid_request("test").error_code(),
-            "INVALID_REQUEST"
+            ErrorCode::ValidationError
         );
+        assert_eq!(ErrorCode::ValidationError.as_str(), "AG-005");
+
+        // AccountsExhausted (AG-001)
         assert_eq!(
             ProxyError::retry_exhausted(1, "err", None).error_code(),
-            "RETRY_EXHAUSTED"
+            ErrorCode::AccountsExhausted
         );
+        assert_eq!(ErrorCode::AccountsExhausted.as_str(), "AG-001");
+
+        // CircuitOpen (AG-002)
         assert_eq!(
             ProxyError::circuit_breaker_open("ep", "reason", None).error_code(),
-            "CIRCUIT_BREAKER_OPEN"
+            ErrorCode::CircuitOpen
         );
+        assert_eq!(ErrorCode::CircuitOpen.as_str(), "AG-002");
+
+        // RateLimited (AG-007)
+        assert_eq!(
+            ProxyError::RateLimited("test".into(), None).error_code(),
+            ErrorCode::RateLimited
+        );
+        assert_eq!(ErrorCode::RateLimited.as_str(), "AG-007");
+
+        // UpstreamError (AG-004)
+        assert_eq!(
+            ProxyError::upstream_error(500, "error").error_code(),
+            ErrorCode::UpstreamError
+        );
+        assert_eq!(ErrorCode::UpstreamError.as_str(), "AG-004");
+
+        // UpstreamTimeout (AG-003) - detected from status code
+        assert_eq!(
+            ProxyError::upstream_error(504, "timeout").error_code(),
+            ErrorCode::UpstreamTimeout
+        );
+        assert_eq!(ErrorCode::UpstreamTimeout.as_str(), "AG-003");
+
+        // InternalError (AG-008)
+        assert_eq!(
+            ProxyError::internal_error("something broke").error_code(),
+            ErrorCode::InternalError
+        );
+        assert_eq!(ErrorCode::InternalError.as_str(), "AG-008");
+    }
+
+    #[test]
+    fn test_error_code_display() {
+        assert_eq!(format!("{}", ErrorCode::AccountsExhausted), "AG-001");
+        assert_eq!(format!("{}", ErrorCode::CircuitOpen), "AG-002");
+        assert_eq!(format!("{}", ErrorCode::UpstreamTimeout), "AG-003");
+        assert_eq!(format!("{}", ErrorCode::UpstreamError), "AG-004");
+        assert_eq!(format!("{}", ErrorCode::ValidationError), "AG-005");
+        assert_eq!(format!("{}", ErrorCode::AuthRequired), "AG-006");
+        assert_eq!(format!("{}", ErrorCode::RateLimited), "AG-007");
+        assert_eq!(format!("{}", ErrorCode::InternalError), "AG-008");
+    }
+
+    #[test]
+    fn test_error_type_names() {
+        assert_eq!(ErrorCode::AccountsExhausted.error_type(), "ACCOUNTS_EXHAUSTED");
+        assert_eq!(ErrorCode::CircuitOpen.error_type(), "CIRCUIT_OPEN");
+        assert_eq!(ErrorCode::UpstreamTimeout.error_type(), "UPSTREAM_TIMEOUT");
+        assert_eq!(ErrorCode::UpstreamError.error_type(), "UPSTREAM_ERROR");
+        assert_eq!(ErrorCode::ValidationError.error_type(), "VALIDATION_ERROR");
+        assert_eq!(ErrorCode::AuthRequired.error_type(), "AUTH_REQUIRED");
+        assert_eq!(ErrorCode::RateLimited.error_type(), "RATE_LIMITED");
+        assert_eq!(ErrorCode::InternalError.error_type(), "INTERNAL_ERROR");
+    }
+
+    #[test]
+    fn test_timeout_detection() {
+        // Network timeout should map to UpstreamTimeout
+        let err = ProxyError::network_error("Request timeout: connection timed out");
+        assert_eq!(err.error_code(), ErrorCode::UpstreamTimeout);
+
+        // Regular network error should map to UpstreamError
+        let err = ProxyError::network_error("Connection refused");
+        assert_eq!(err.error_code(), ErrorCode::UpstreamError);
+
+        // HTTP 408 should map to UpstreamTimeout
+        let err = ProxyError::upstream_error(408, "Request Timeout");
+        assert_eq!(err.error_code(), ErrorCode::UpstreamTimeout);
+
+        // HTTP 504 should map to UpstreamTimeout
+        let err = ProxyError::upstream_error(504, "Gateway Timeout");
+        assert_eq!(err.error_code(), ErrorCode::UpstreamTimeout);
     }
 
     #[test]
