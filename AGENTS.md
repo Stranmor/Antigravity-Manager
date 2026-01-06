@@ -28,6 +28,36 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] **Refactor: Move proxy_db.rs to proxy/db.rs** `[MODE: B]` (2645ba7)
 - [x] **NEW: Slint Native UI** `[MODE: B]` (54b7f0c, 993d2de) ✓ Complete
 - [x] Create CLI tool for account import from desktop app `[MODE: B]` (5b1226c) ✓ Complete
+- [x] Optimize cargo build configuration `[MODE: B]` (a763715) ✓ Complete
+
+## BUILD OPTIMIZATION (2026-01-06)
+**Status: ✓ IMPLEMENTED**
+
+**Improvements:**
+- **16 parallel jobs** (was 8) - uses all CPU cores
+- **release-fast profile** - 3x faster builds (50s vs 2m49s cold)
+- **target-cpu=native** - better codegen for host machine
+- **lld linker** - faster linking than default ld
+
+**Profiles:**
+| Profile | LTO | Codegen Units | Use Case |
+|---------|-----|---------------|----------|
+| dev | none | 256 | Fast iteration |
+| release | thin | 1 | Production builds |
+| release-fast | none | 16 | Testing, CI |
+
+**Commands:**
+```bash
+cargo build --release              # Production (slow, optimized)
+cargo build --profile release-fast # Testing (fast, still optimized)
+```
+
+## UPCOMING BATCH
+- [ ] Complete Slint proxy server toggle (actually start/stop axum) `[MODE: B]`
+- [ ] Add clipboard support to Slint UI (arboard integration) `[MODE: B]`
+- [ ] Implement account filtering in Slint UI `[MODE: B]`
+- [ ] Add Makefile/just for common operations `[MODE: B]`
+- [ ] Sync VPS with latest binary `[MODE: B]`
 
 ## CLI IMPORT TOOL (Complete - 2026-01-06)
 **Status: ✓ IMPLEMENTED AND TESTED**
