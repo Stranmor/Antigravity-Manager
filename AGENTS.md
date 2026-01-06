@@ -3,13 +3,21 @@
 ## STRATEGIC GOAL
 Optimize the Antigravity Manager codebase for 2026 standards, starting with style consistency and clippy compliance.
 
-## CURRENT ACTIVE BATCH (Phase 5 - Hardening)
+## COMPLETED: Phase 5 - Hardening (2026-01-06)
 - [x] Add circuit breaker for upstream API calls `[MODE: B]` ✓ c03994b (full implementation)
 - [x] Implement connection pooling for reqwest client `[MODE: B]` ✓ Already configured (pool_max_idle_per_host=16)
 - [x] Add graceful shutdown handling for proxy server `[MODE: B]` ✓ c03994b (ConnectionTracker + 30s drain timeout)
 - [x] Optimize SSE memory allocation (reduce Box<dyn> overhead) `[MODE: B]` ✓ a574fb3 (SmallVec optimization)
-- [ ] Research OpenTelemetry integration (distributed tracing) `[MODE: R]` (in progress)
-- [ ] Add account usage analytics dashboard in Slint UI `[MODE: B]`
+- [x] Add OpenTelemetry distributed tracing `[MODE: B]` ✓ 199369e (feature-gated behind `otel`)
+- [x] Add account usage analytics dashboard in Slint UI `[MODE: B]` ✓ 8425c51 (full Analytics page)
+
+## CURRENT ACTIVE BATCH (Phase 6 - Production Readiness)
+- [x] Sync VPS with latest binary including OTEL support `[MODE: B]` ✓ 2c1fab1 (Containerfile updated)
+- [ ] Test OTEL integration with Grafana Tempo on VPS `[MODE: C]` (in progress - needs Tempo setup)
+- [x] Add database migration for analytics persistence `[MODE: B]` ✓ (schema v2 with daily_account_stats, circuit_breaker_events, rate_limit_events, global_stats)
+- [x] Research connection multiplexing for high-throughput scenarios `[MODE: R]` ✓ HTTP/2 research complete
+- [x] Add export functionality for usage reports `[MODE: B]` ✓ 6f12cc9 (CSV, JSON, TXT with native file dialogs)
+- [x] Fix chrono→time regression in export `[MODE: B]` ✓ 9a097a1
 
 ## COMPLETED: Phase 4 - VPS Deployment (2026-01-06)
 - [x] Create headless server binary `antigravity-server` for VPS deployment `[MODE: B]`
@@ -108,6 +116,71 @@ cargo build --profile release-fast # Testing (fast, still optimized)
 | `chrono::Local::now()` | `time::OffsetDateTime::now_local().unwrap_or_else(\|_\| now_utc())` |
 
 **Files Migrated:** 13 files across src-slint and src-tauri
+
+## ANALYTICS PERSISTENCE (2026-01-07)
+**Status: IMPLEMENTED**
+
+**Database Schema Version:** 2
+
+**New Tables:**
+
+| Table | Purpose |
+|-------|---------|
+| `schema_version` | Track migration version for safe upgrades |
+| `daily_account_stats` | Pre-aggregated daily stats per account (fast queries) |
+| `circuit_breaker_events` | Audit trail of circuit breaker state changes |
+| `rate_limit_events` | Track when accounts hit rate limits |
+| `global_stats` | Global counters for dashboard (total_requests, total_tokens, total_circuit_trips) |
+
+**Schema: `daily_account_stats`**
+```sql
+CREATE TABLE daily_account_stats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id TEXT NOT NULL,
+    date TEXT NOT NULL,  -- YYYY-MM-DD format
+    request_count INTEGER DEFAULT 0,
+    success_count INTEGER DEFAULT 0,
+    error_count INTEGER DEFAULT 0,
+    input_tokens INTEGER DEFAULT 0,
+    output_tokens INTEGER DEFAULT 0,
+    total_duration_ms INTEGER DEFAULT 0,
+    rate_limit_hits INTEGER DEFAULT 0,
+    updated_at INTEGER NOT NULL,
+    UNIQUE(account_id, date)
+);
+```
+
+**Query API (`proxy::db` module):**
+```rust
+// Get per-account daily stats
+get_account_daily_stats(account_id, days) -> Vec<DailyAccountStats>
+
+// Get today's stats for all accounts
+get_today_stats_all_accounts() -> Vec<DailyAccountStats>
+
+// Get full account summary (all-time)
+get_account_summary(account_id) -> AccountAnalyticsSummary
+
+// Get historical analytics (last N days)
+get_historical_analytics(days) -> HistoricalAnalytics
+
+// Get circuit breaker events
+get_circuit_breaker_events(account_id, limit) -> Vec<CircuitBreakerEvent>
+
+// Get rate limit events
+get_rate_limit_events(account_id, limit) -> Vec<RateLimitEvent>
+
+// Fallback for pre-migration data
+compute_account_stats_from_logs(account_id) -> AccountAnalyticsSummary
+```
+
+**Migration Notes:**
+- Added `account_id` and `provider` columns to `request_logs` table
+- Uses SQLite UPSERT (`ON CONFLICT ... DO UPDATE`) for atomic daily stats updates
+- WAL mode enabled for better concurrent read performance
+- Backward compatible: existing `proxy_logs.db` files auto-migrate on startup
+
+**Code Location:** `src-tauri/src/proxy/db.rs`
 
 ## NEXT OPTIMIZATION BATCH (Research Complete)
 - [x] Investigate `jiff` crate as next-gen time library (by ripgrep author) `[MODE: R]` ✓ Wait for 1.0
