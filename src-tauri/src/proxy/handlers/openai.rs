@@ -108,11 +108,13 @@ pub async fn handle_chat_completions(
         let session_id = SessionManager::extract_openai_session_id(&openai_req);
 
         // === SPAN: Account Selection Phase ===
+        // Note: otel.kind = "internal" marks this as an internal operation
         let account_selection_span = info_span!(
             "account_selection",
             request_type = %config.request_type,
             force_rotate = %(attempt > 0),
             attempt = %attempt,
+            otel.kind = "internal",
         );
 
         // 4. 获取 Token (使用准确的 request_type)
@@ -176,6 +178,7 @@ pub async fn handle_chat_completions(
         let query_string = if list_response { Some("alt=sse") } else { None };
 
         // === SPAN: Upstream API Call Phase ===
+        // Note: otel.kind = "client" marks this as an outgoing client call
         let upstream_span = info_span!(
             "upstream_call",
             provider = "gemini",
@@ -183,6 +186,7 @@ pub async fn handle_chat_completions(
             account_id = %account_id,
             method = %method,
             stream = %list_response,
+            otel.kind = "client",
         );
 
         // [PERF] Time upstream API call
@@ -242,11 +246,13 @@ pub async fn handle_chat_completions(
             };
 
             // === SPAN: Response Transformation Phase ===
+            // Note: otel.kind = "internal" marks this as an internal operation
             let response_transform_span = info_span!(
                 "response_transform",
                 provider = "openai",
                 model = %mapped_model,
                 account_id = %account_id,
+                otel.kind = "internal",
             );
 
             // [PERF] Time response transformation
@@ -731,10 +737,12 @@ pub async fn handle_completions(
         );
 
         // === SPAN: Account Selection Phase ===
+        // Note: otel.kind = "internal" marks this as an internal operation
         let account_selection_span = info_span!(
             "account_selection",
             request_type = %config.request_type,
             attempt = %attempt,
+            otel.kind = "internal",
         );
 
         let (access_token, project_id, email, account_id) = {
@@ -771,6 +779,7 @@ pub async fn handle_completions(
         let query_string = if list_response { Some("alt=sse") } else { None };
 
         // === SPAN: Upstream API Call Phase ===
+        // Note: otel.kind = "client" marks this as an outgoing client call
         let upstream_span = info_span!(
             "upstream_call",
             provider = "gemini",
@@ -778,6 +787,7 @@ pub async fn handle_completions(
             account_id = %account_id,
             method = %method,
             stream = %list_response,
+            otel.kind = "client",
         );
 
         let response = {
@@ -831,11 +841,13 @@ pub async fn handle_completions(
             };
 
             // === SPAN: Response Transformation Phase ===
+            // Note: otel.kind = "internal" marks this as an internal operation
             let response_transform_span = info_span!(
                 "response_transform",
                 provider = "openai-legacy",
                 model = %mapped_model,
                 account_id = %account_id,
+                otel.kind = "internal",
             );
 
             let chat_resp = {

@@ -394,11 +394,13 @@ pub async fn handle_messages(
         let force_rotate_token = attempt > 0;
 
         // === SPAN: Account Selection Phase ===
+        // Note: otel.kind = "internal" marks this as an internal operation
         let account_selection_span = info_span!(
             "account_selection",
             request_type = %config.request_type,
             force_rotate = %force_rotate_token,
             attempt = %attempt,
+            otel.kind = "internal",
         );
 
         let (access_token, project_id, email, account_id) = {
@@ -523,6 +525,7 @@ pub async fn handle_messages(
     let query = if is_stream { Some("alt=sse") } else { None };
 
     // === SPAN: Upstream API Call Phase ===
+    // Note: otel.kind = "client" marks this as an outgoing client call
     let upstream_span = info_span!(
         "upstream_call",
         provider = "gemini",
@@ -530,6 +533,7 @@ pub async fn handle_messages(
         account_id = %account_id,
         method = %method,
         stream = %is_stream,
+        otel.kind = "client",
     );
 
     // [PERF] Time upstream API call
@@ -609,11 +613,13 @@ pub async fn handle_messages(
             };
 
             // === SPAN: Response Transformation Phase ===
+            // Note: otel.kind = "internal" marks this as an internal operation
             let response_transform_span = info_span!(
                 "response_transform",
                 provider = "claude",
                 model = %resolved_model_for_log,
                 account_id = %account_id,
+                otel.kind = "internal",
             );
 
             // [PERF] Time response transformation

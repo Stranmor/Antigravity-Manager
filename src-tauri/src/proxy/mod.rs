@@ -20,6 +20,7 @@ pub mod rate_limit;
 pub mod sticky_config;
 pub mod session_manager;
 pub mod health;
+pub mod telemetry;
 
 #[cfg(test)]
 mod tests;

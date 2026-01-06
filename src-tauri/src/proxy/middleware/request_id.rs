@@ -72,11 +72,13 @@ pub async fn request_id_middleware(mut request: Request, next: Next) -> Response
     request.extensions_mut().insert(request_id);
 
     // Create tracing span with request ID
+    // Note: otel.kind = "server" marks this as an incoming server request for OTEL
     let span = info_span!(
         "request",
         request_id = %id_str,
         method = %request.method(),
         uri = %request.uri().path(),
+        otel.kind = "server",
     );
 
     // Execute the request within the span

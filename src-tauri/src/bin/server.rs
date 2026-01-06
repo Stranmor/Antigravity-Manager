@@ -11,6 +11,11 @@
 //! - ANTIGRAVITY_API_KEY: API key for authentication
 //! - ANTIGRAVITY_ENABLE_LOGGING: Enable request logging (default: true)
 //! - RUST_LOG: Tracing filter (default: info,antigravity_tools_lib=debug)
+//!
+//! OpenTelemetry (when compiled with 'otel' feature):
+//! - OTEL_EXPORTER_OTLP_ENDPOINT: OTLP collector endpoint (default: http://localhost:4317)
+//! - OTEL_SERVICE_NAME: Service name for traces (default: antigravity-proxy)
+//! - OTEL_ENABLED: Enable/disable OTEL export (default: true)
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -78,7 +83,7 @@ use clap::{Parser, Subcommand};
 use antigravity_tools_lib::models::{Account, TokenData};
 use antigravity_tools_lib::proxy::{
     config::ProxyConfig, monitor::ProxyMonitor, prometheus, server::AxumServer,
-    ProxySecurityConfig, TokenManager,
+    telemetry, ProxySecurityConfig, TokenManager,
 };
 
 // ============================================================================
@@ -878,6 +883,22 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
 
     let _ = prometheus::init_metrics();
     info!("Prometheus metrics initialized");
+
+    // Initialize OpenTelemetry tracing (when 'otel' feature is enabled)
+    // The guard must be kept alive for the duration of the server
+    let _telemetry_guard = match telemetry::init_telemetry() {
+        Ok(guard) => {
+            #[cfg(feature = "otel")]
+            info!("OpenTelemetry distributed tracing initialized");
+            #[cfg(not(feature = "otel"))]
+            info!("OpenTelemetry tracing not enabled (compile with --features otel)");
+            Some(guard)
+        }
+        Err(e) => {
+            warn!("Failed to initialize OpenTelemetry tracing: {}. Continuing without it.", e);
+            None
+        }
+    };
 
     info!(
         "Antigravity Server v{} starting...",
