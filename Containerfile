@@ -94,9 +94,9 @@ RUN chmod +x /usr/local/bin/antigravity-server \
              /usr/local/bin/wgcf \
              /usr/local/bin/wireproxy
 
-# Copy entrypoint script
+# Copy entrypoint script (ensure read+execute for shell scripts)
 COPY deploy/scripts/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN chmod 755 /entrypoint.sh
 
 # Environment defaults
 ENV ANTIGRAVITY_DATA_DIR=/var/lib/antigravity \
