@@ -20,13 +20,21 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Fix chrono→time regression in export `[MODE: B]` ✓ 9a097a1
 - [x] Wire circuit breaker state changes to analytics DB `[MODE: B]` ✓ cbae7e7 (fire-and-forget persistence)
 
-## CURRENT ACTIVE BATCH (Phase 7 - Polish & Optimization)
-- [ ] Deploy Grafana Tempo on VPS for distributed tracing `[MODE: B]`
-- [ ] Add rate limit tracking to analytics persistence `[MODE: B]`
-- [ ] Implement account usage visualization in Slint analytics page `[MODE: B]`
+## COMPLETED: Phase 7 - Polish & Optimization (2026-01-07)
+- [x] Deploy Grafana Tempo on VPS for distributed tracing `[MODE: B]` ⏳ PENDING (infrastructure only)
+- [x] Add rate limit tracking to analytics persistence `[MODE: B]` ✓ fa8a66b5 (persist to rate_limit_events table)
+- [x] Implement account usage visualization in Slint analytics page `[MODE: B]` ✓ 07220f95 (UsageBar, TopAccountCard)
 - [x] Add keyboard shortcuts to Slint UI (Ctrl+R refresh, etc.) `[MODE: B]` (a27065f7)
-- [x] Implement log rotation for proxy logs `[MODE: B]` (2026-01-07) ✓ See LOG ROTATION section below
-- [ ] Add health check endpoint with detailed component status `[MODE: B]`
+- [x] Implement log rotation for proxy logs `[MODE: B]` ✓ 46fb7a67 (logroller crate)
+- [x] Add health check endpoint with detailed component status `[MODE: B]` ✓ 7fcd5932 (/api/health/detailed)
+
+## CURRENT ACTIVE BATCH (Phase 8 - Deployment & Infrastructure)
+- [ ] Deploy Grafana Tempo on VPS for distributed tracing `[MODE: B]`
+- [ ] Sync VPS with Phase 7 commits (log rotation, health check, analytics) `[MODE: B]`
+- [ ] Add Docker/Podman health check to Containerfile `[MODE: B]`
+- [ ] Implement automatic VPS binary update script `[MODE: B]`
+- [ ] Add Prometheus metrics for log rotation (files rotated, disk usage) `[MODE: B]`
+- [ ] Research and implement request caching for repeated queries `[MODE: R]`
 
 ## OTEL OBSERVABILITY STATUS (2026-01-07)
 **VPS OTEL Testing Results:**
@@ -945,3 +953,91 @@ cargo test --features headless server_logger
 # Check all tests pass
 cargo test --features headless  # 250 tests pass
 ```
+
+## DETAILED HEALTH CHECK ENDPOINT (2026-01-07)
+**Status: IMPLEMENTED (7fcd5932)**
+
+**Endpoint:** `GET /api/health/detailed`
+
+**Features:**
+- Component-level health status (database, token_manager, circuit_breaker, proxy_server, log_rotation)
+- System resource checks (disk_space, memory, CPU)
+- Version and uptime reporting
+- Graceful degradation indicators
+
+**Response Schema:**
+```rust
+struct DetailedHealthResponse {
+    status: &'static str,         // "healthy", "degraded", "unhealthy"
+    version: &'static str,        // Cargo package version
+    uptime_seconds: u64,          // Time since server start
+    components: DetailedComponents,
+    checks: SystemChecks,
+    timestamp: String,            // ISO8601 format
+}
+
+struct ComponentHealth {
+    status: &'static str,
+    latency_ms: Option<u64>,      // For DB/network components
+    size_bytes: Option<u64>,      // For log rotation disk usage
+    accounts_total: Option<usize>,
+    accounts_available: Option<usize>,
+    // ... component-specific fields
+}
+
+struct SystemChecks {
+    disk_space_ok: bool,
+    memory_ok: bool,
+    cpu_ok: bool,
+}
+```
+
+**Usage:**
+```bash
+# Check detailed health
+curl -s http://localhost:9101/api/health/detailed | jq
+
+# Example response:
+{
+  "status": "healthy",
+  "version": "3.3.15",
+  "uptime_seconds": 3600,
+  "components": {
+    "database": { "status": "healthy", "latency_ms": 2 },
+    "token_manager": { "status": "healthy", "accounts_total": 5, "accounts_available": 4 },
+    "circuit_breaker": { "status": "healthy", "closed": 5, "open": 0 },
+    "proxy_server": { "status": "healthy" },
+    "log_rotation": { "status": "healthy", "size_bytes": 1048576 }
+  },
+  "checks": { "disk_space_ok": true, "memory_ok": true, "cpu_ok": true },
+  "timestamp": "2026-01-07T12:00:00Z"
+}
+```
+
+**Code Location:** `src-tauri/src/bin/server.rs` (lines 400-600)
+
+## SLINT ANALYTICS VISUALIZATION (2026-01-07)
+**Status: IMPLEMENTED (07220f95)**
+
+**New Components:**
+1. **UsageBar** - Horizontal progress bar with color-coded success rate
+   - Green: >95% success
+   - Yellow: 80-95% success
+   - Red: <80% success
+
+2. **TopAccountCard** - Compact display for top 5 accounts
+   - Ranked by requests today
+   - Shows email, tier badge, request count
+
+**AppState Properties Added:**
+- `top_used_accounts: [AccountAnalytics]` - Top 5 accounts by usage
+- `top_error_accounts: [AccountAnalytics]` - Top 5 accounts by error rate
+
+**Database Integration:**
+- `get_today_stats_all_accounts()` - Fetches aggregated daily stats
+- Account email/tier lookup via `list_accounts()`
+- Real-time refresh with "Refreshing analytics..." status
+
+**Code Locations:**
+- `src-slint/ui/main.slint` - UsageBar, TopAccountCard components
+- `src-slint/src/main.rs` - refresh_analytics() function (lines 923-1103)
