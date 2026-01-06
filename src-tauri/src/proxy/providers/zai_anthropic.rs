@@ -36,14 +36,14 @@ fn map_model_for_zai(original: &str, state: &crate::proxy::ZaiConfig) -> String 
     state.models.sonnet.clone()
 }
 
-fn join_base_url(base: &str, path: &str) -> Result<String, String> {
+fn join_base_url(base: &str, path: &str) -> String {
     let base = base.trim_end_matches('/');
     let path = if path.starts_with('/') {
         path.to_string()
     } else {
         format!("/{path}")
     };
-    Ok(format!("{base}{path}"))
+    format!("{base}{path}")
 }
 
 fn build_client(
@@ -71,15 +71,9 @@ fn copy_passthrough_headers(incoming: &HeaderMap) -> HeaderMap {
     for (k, v) in incoming {
         let key = k.as_str().to_ascii_lowercase();
         match key.as_str() {
-            "content-type" | "accept" | "anthropic-version" | "user-agent" => {
-                out.insert(k.clone(), v.clone());
-            }
-            // Some clients use these for streaming; safe to pass through.
-            "accept-encoding" | "cache-control" => {
-                out.insert(k.clone(), v.clone());
-            }
-            // [NEW] Pass through anthropic-beta header for features like effort parameter
-            "anthropic-beta" => {
+            // Standard headers + streaming headers + anthropic-beta for features like effort parameter
+            "content-type" | "accept" | "anthropic-version" | "user-agent"
+            | "accept-encoding" | "cache-control" | "anthropic-beta" => {
                 out.insert(k.clone(), v.clone());
             }
             _ => {}
@@ -150,10 +144,7 @@ pub async fn forward_anthropic_json(
         body["model"] = Value::String(mapped);
     }
 
-    let url = match join_base_url(&zai.base_url, path) {
-        Ok(u) => u,
-        Err(e) => return (StatusCode::BAD_REQUEST, e).into_response(),
-    };
+    let url = join_base_url(&zai.base_url, path);
 
     let timeout_secs = state.request_timeout.max(5);
     let upstream_proxy = state.upstream_proxy.read().await.clone();

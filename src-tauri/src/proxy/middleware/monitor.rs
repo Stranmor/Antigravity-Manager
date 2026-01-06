@@ -173,7 +173,7 @@ pub async fn monitor_middleware(
             }
             
             if log.status >= 400 {
-                log.error = log.response_body.clone();
+                log.error.clone_from(&log.response_body);
             }
             monitor.log_request(log).await;
             Response::from_parts(parts, Body::from(bytes))

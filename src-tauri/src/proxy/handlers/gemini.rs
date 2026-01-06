@@ -94,7 +94,7 @@ pub async fn handle_generate(
             .await {
                 Ok(r) => r,
                 Err(e) => {
-                    last_error = e.clone();
+                    last_error.clone_from(&e);
                     debug!("Gemini Request failed on attempt {}/{}: {}", attempt + 1, max_attempts, e);
                     continue;
                 }
@@ -226,7 +226,7 @@ pub async fn handle_generate(
     }
 
     Err(ProxyError::Overloaded(
-        format!("All {} attempts failed. Last error: {}", max_attempts, last_error),
+        format!("All {max_attempts} attempts failed. Last error: {last_error}"),
         Some(request_id),
     ))
 }

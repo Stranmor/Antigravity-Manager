@@ -330,7 +330,7 @@ async fn handle_vision_post(state: AppState, headers: HeaderMap, body: Body) -> 
                 }
             };
 
-            let arguments = params.get("arguments").cloned().unwrap_or(Value::Object(Default::default()));
+            let arguments = params.get("arguments").cloned().unwrap_or(Value::Object(serde_json::Map::default()));
 
             let zai = state.zai.read().await.clone();
             let upstream_proxy = state.upstream_proxy.read().await.clone();

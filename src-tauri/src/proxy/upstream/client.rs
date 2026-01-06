@@ -58,8 +58,7 @@ impl CircuitBreaker {
     pub async fn should_allow(&self) -> bool {
         let state = *self.state.read().await;
         match state {
-            CircuitState::Closed => true,
-            CircuitState::HalfOpen => true,  // Allow probe requests
+            CircuitState::Closed | CircuitState::HalfOpen => true,  // Allow probe requests
             CircuitState::Open => {
                 // Check if recovery timeout has passed
                 let last_failure = self.last_failure_time.load(Ordering::Relaxed);
@@ -302,9 +301,7 @@ impl UpstreamClient {
                     retry_in
                 );
                 last_err = Some(format!(
-                    "Circuit breaker open for {} (retry in {:?}s)",
-                    base_url,
-                    retry_in
+                    "Circuit breaker open for {base_url} (retry in {retry_in:?}s)"
                 ));
                 continue;
             }
@@ -361,7 +358,7 @@ impl UpstreamClient {
                             base_url,
                             method
                         );
-                        last_err = Some(format!("Upstream {} returned {}", base_url, status));
+                        last_err = Some(format!("Upstream {base_url} returned {status}"));
                         continue;
                     }
 
@@ -372,14 +369,13 @@ impl UpstreamClient {
                     // Record network failure in circuit breaker
                     circuit_breaker.record_failure().await;
 
-                    let msg = format!("HTTP request failed at {}: {}", base_url, e);
-                    tracing::debug!("{}", msg);
+                    let msg = format!("HTTP request failed at {base_url}: {e}");
+                    tracing::debug!("{msg}");
                     last_err = Some(msg);
 
                     if !has_next {
                         break;
                     }
-                    continue;
                 }
             }
         }
@@ -411,7 +407,7 @@ impl UpstreamClient {
             let circuit_breaker = &self.circuit_breakers[idx];
 
             if !circuit_breaker.should_allow().await {
-                last_err = Some(format!("Circuit breaker open for {}", base_url));
+                last_err = Some(format!("Circuit breaker open for {base_url}"));
                 continue;
             }
 
@@ -459,23 +455,22 @@ impl UpstreamClient {
                             status,
                             base_url
                         );
-                        last_err = Some(format!("Upstream error: {}", status));
+                        last_err = Some(format!("Upstream error: {status}"));
                         continue;
                     }
 
-                    return Err(format!("Upstream error: {}", status));
+                    return Err(format!("Upstream error: {status}"));
                 }
                 Err(e) => {
                     circuit_breaker.record_failure().await;
 
-                    let msg = format!("Request failed at {}: {}", base_url, e);
-                    tracing::debug!("{}", msg);
+                    let msg = format!("Request failed at {base_url}: {e}");
+                    tracing::debug!("{msg}");
                     last_err = Some(msg);
 
                     if idx + 1 >= V1_INTERNAL_BASE_URL_FALLBACKS.len() {
                         break;
                     }
-                    continue;
                 }
             }
         }

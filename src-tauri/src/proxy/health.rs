@@ -210,7 +210,7 @@ impl HealthMonitor {
                 };
 
                 tokio::select! {
-                    _ = tokio::time::sleep(interval) => {
+                    () = tokio::time::sleep(interval) => {
                         monitor.check_and_recover().await;
                     }
                     _ = shutdown_rx.changed() => {
@@ -228,7 +228,7 @@ impl HealthMonitor {
         let cooldown = Duration::from_secs(config.cooldown_seconds);
         drop(config);
 
-        for entry in self.accounts.iter() {
+        for entry in &self.accounts {
             let health = entry.value();
 
             if health.is_disabled() {
@@ -290,9 +290,8 @@ impl HealthMonitor {
         let config = self.config.read().await;
 
         // Determine error type
-        let error_type = match ErrorType::from_status_code(status_code) {
-            Some(et) => et,
-            None => return false, // Not a trackable error
+        let Some(error_type) = ErrorType::from_status_code(status_code) else {
+            return false; // Not a trackable error
         };
 
         // Skip rate limits if configured
@@ -423,13 +422,13 @@ impl HealthMonitor {
             }
         };
 
-        let last_error_type = health.last_error_type.read().await.clone();
+        let last_error_type = *health.last_error_type.read().await;
         let last_error_message = health.last_error_message.read().await.clone();
 
         // Calculate success rate
         let total = total_successes + total_errors;
         let success_rate = if total > 0 {
-            (total_successes as f64 / total as f64) * 100.0
+            (f64::from(total_successes) / f64::from(total)) * 100.0
         } else {
             100.0
         };
@@ -454,7 +453,7 @@ impl HealthMonitor {
     pub async fn get_all_health(&self) -> Vec<AccountHealthResponse> {
         let mut results = Vec::new();
 
-        for entry in self.accounts.iter() {
+        for entry in &self.accounts {
             if let Some(health) = self.get_health(entry.key()).await {
                 results.push(health);
             }
@@ -467,8 +466,7 @@ impl HealthMonitor {
     pub fn is_available(&self, account_id: &str) -> bool {
         self.accounts
             .get(account_id)
-            .map(|h| !h.is_disabled())
-            .unwrap_or(true) // Unknown accounts are considered available
+            .is_none_or(|h| !h.is_disabled()) // Unknown accounts are considered available
     }
 
     /// Get current configuration

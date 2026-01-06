@@ -49,7 +49,7 @@ pub fn run() {
             
             if let Some(window) = app.get_webview_window("main") {
                 let version = env!("CARGO_PKG_VERSION");
-                let title = format!("Antigravity Tools v{}", version);
+                let title = format!("Antigravity Tools v{version}");
                 let _ = window.set_title(&title);
                 
                 // Fallback: show window after 3 seconds if frontend doesn't show it

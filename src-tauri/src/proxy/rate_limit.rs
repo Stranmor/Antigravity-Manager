@@ -122,7 +122,7 @@ impl RateLimitTracker {
     /// * `retry_after_header` - Retry-After header 值
     /// * `body` - 错误响应 body
     /// * `quota_group` - 可选的配额组 (e.g., "claude", "agent", "gemini")
-    ///                   用于 per-model rate limiting
+    ///   用于 per-model rate limiting
     #[allow(dead_code)]
     pub fn parse_from_error(
         &self,
@@ -151,7 +151,7 @@ impl RateLimitTracker {
 
         // 1. 解析限流原因类型
         let reason = if status == 429 {
-            self.parse_rate_limit_reason(body)
+            Self::parse_rate_limit_reason(body)
         } else {
             RateLimitReason::ServerError
         };
@@ -231,7 +231,7 @@ impl RateLimitTracker {
     }
 
     /// 解析限流原因类型
-    fn parse_rate_limit_reason(&self, body: &str) -> RateLimitReason {
+    fn parse_rate_limit_reason(body: &str) -> RateLimitReason {
         // 尝试从 JSON 中提取 reason 字段
         let trimmed = body.trim();
         if trimmed.starts_with('{') || trimmed.starts_with('[') {
@@ -265,13 +265,11 @@ impl RateLimitTracker {
 
     /// 通用时间解析函数：支持 "2h1m1s" 等所有格式组合
     /// [OPTIMIZATION] Uses pre-compiled static regex instead of compiling on each call
-    fn parse_duration_string(&self, s: &str) -> Option<u64> {
+    fn parse_duration_string(s: &str) -> Option<u64> {
         tracing::debug!("[时间解析] 尝试解析: '{}'", s);
 
         // Use pre-compiled regex for better performance
-        let caps = if let Some(c) = DURATION_REGEX.captures(s) {
-            c
-        } else {
+        let Some(caps) = DURATION_REGEX.captures(s) else {
             tracing::warn!("[时间解析] 正则未匹配: '{}'", s);
             return None;
         };
@@ -324,7 +322,7 @@ impl RateLimitTracker {
 
     /// 从错误消息 body 中解析重置时间
     /// [OPTIMIZATION] Uses pre-compiled static regex patterns instead of compiling on each call
-    fn parse_retry_time_from_body(&self, body: &str) -> Option<u64> {
+    fn parse_retry_time_from_body(body: &str) -> Option<u64> {
         // A. 优先尝试 JSON 精准解析 (借鉴 PR #28)
         let trimmed = body.trim();
         if trimmed.starts_with('{') || trimmed.starts_with('[') {
@@ -343,7 +341,7 @@ impl RateLimitTracker {
                     tracing::debug!("[JSON解析] 找到 quotaResetDelay: '{}'", delay_str);
 
                     // 使用通用时间解析函数
-                    if let Some(seconds) = self.parse_duration_string(delay_str) {
+                    if let Some(seconds) = Self::parse_duration_string(delay_str) {
                         return Some(seconds);
                     }
                 }
