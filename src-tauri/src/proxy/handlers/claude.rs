@@ -5,6 +5,7 @@ use axum::{
     extract::{Json, State},
     http::{header, StatusCode},
     response::{IntoResponse, Response},
+    Extension,
 };
 use bytes::Bytes;
 use futures::StreamExt;
@@ -18,6 +19,7 @@ use crate::proxy::mappers::claude::{
 use crate::proxy::server::AppState;
 use crate::proxy::handlers::common::WithResolvedModel;
 use crate::proxy::error::ProxyError;
+use crate::proxy::middleware::request_id::RequestId;
 use axum::http::HeaderMap;
 use std::sync::atomic::Ordering;
 
@@ -325,11 +327,12 @@ fn should_rotate_account(status_code: u16) -> bool {
 /// 处理 Chat 消息请求流程
 pub async fn handle_messages(
     State(state): State<AppState>,
+    Extension(request_id): Extension<RequestId>,
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Response {
     tracing::error!(">>> [RED ALERT] handle_messages called! Body JSON len: {}", body.to_string().len());
-    
+
     // 生成随机 Trace ID 用户追踪
     let trace_id: String = rand::Rng::sample_iter(rand::thread_rng(), &rand::distributions::Alphanumeric)
         .take(6)
@@ -362,7 +365,9 @@ pub async fn handle_messages(
     let mut request: crate::proxy::mappers::claude::models::ClaudeRequest = match serde_json::from_value(body) {
         Ok(r) => r,
         Err(e) => {
-            return ProxyError::invalid_request(format!("Invalid request body: {}", e)).into_response();
+            return ProxyError::invalid_request(format!("Invalid request body: {}", e))
+                .with_request_id(request_id)
+                .into_response();
         }
     };
 
@@ -375,7 +380,9 @@ pub async fn handle_messages(
             Ok(v) => v,
             Err(e) => {
                 tracing::error!("Failed to serialize fixed request for z.ai: {}", e);
-                return ProxyError::internal_error(format!("Failed to serialize request: {}", e)).into_response();
+                return ProxyError::internal_error(format!("Failed to serialize request: {}", e))
+                    .with_request_id(request_id)
+                    .into_response();
             }
         };
 
@@ -560,7 +567,9 @@ pub async fn handle_messages(
                 } else {
                     e
                 };
-                return ProxyError::token_error(format!("No available accounts: {}", safe_message)).into_response();
+                return ProxyError::token_error(format!("No available accounts: {}", safe_message))
+                    .with_request_id(request_id.clone())
+                    .into_response();
             }
         };
 
@@ -637,7 +646,8 @@ pub async fn handle_messages(
                 b
             },
             Err(e) => {
-                return ProxyError::TransformError(format!("Transform error: {}", e)).into_response();
+                return ProxyError::TransformError(format!("Transform error: {}", e), Some(request_id.clone()))
+                    .into_response();
             }
         };
         
@@ -661,9 +671,12 @@ pub async fn handle_messages(
         };
         
         let status = response.status();
-        
+
         // 成功
         if status.is_success() {
+            // Record success in health monitor
+            state.health_monitor.record_success(&account_id);
+
             // 处理流式响应
             if request.stream {
                 let stream = response.bytes_stream();
@@ -690,7 +703,7 @@ pub async fn handle_messages(
                 // 处理非流式响应
                 let bytes = match response.bytes().await {
                     Ok(b) => b,
-                    Err(e) => return ProxyError::NetworkError(format!("Failed to read body: {e}")).into_response(),
+                    Err(e) => return ProxyError::NetworkError(format!("Failed to read body: {e}"), Some(request_id.clone())).into_response(),
                 };
                 
                 // Debug print
@@ -700,7 +713,7 @@ pub async fn handle_messages(
 
                 let gemini_resp: Value = match serde_json::from_slice(&bytes) {
                     Ok(v) => v,
-                    Err(e) => return ProxyError::parse_error(format!("Parse error: {e}")).into_response(),
+                    Err(e) => return ProxyError::parse_error(format!("Parse error: {e}")).with_request_id(request_id.clone()).into_response(),
                 };
 
                 // 解包 response 字段（v1internal 格式）
@@ -709,13 +722,13 @@ pub async fn handle_messages(
                 // 转换为 Gemini Response 结构
                 let gemini_response: crate::proxy::mappers::claude::models::GeminiResponse = match serde_json::from_value(raw.clone()) {
                     Ok(r) => r,
-                    Err(e) => return ProxyError::parse_error(format!("Convert error: {e}")).into_response(),
+                    Err(e) => return ProxyError::parse_error(format!("Convert error: {e}")).with_request_id(request_id.clone()).into_response(),
                 };
                 
                 // 转换
                 let claude_response = match transform_response(&gemini_response) {
                     Ok(r) => r,
-                    Err(e) => return ProxyError::TransformError(format!("Transform error: {e}")).into_response(),
+                    Err(e) => return ProxyError::TransformError(format!("Transform error: {e}"), Some(request_id.clone())).into_response(),
                 };
 
                 // [Optimization] 记录闭环日志：消耗情况
@@ -857,6 +870,11 @@ pub async fn handle_messages(
 
         // 执行退避
         if apply_retry_strategy(strategy, attempt, status_code, &trace_id).await {
+            // Record error in health monitor for 403/401 (may auto-disable account)
+            if status_code == 403 || status_code == 401 {
+                state.health_monitor.record_error(&account_id, status_code, &error_text).await;
+            }
+
             // 判断是否需要轮换账号
             if !should_rotate_account(status_code) {
                 debug!("[{}] Keeping same account for status {} (server-side issue)", trace_id, status_code);
@@ -867,7 +885,9 @@ pub async fn handle_messages(
         }
         // 不可重试的错误，直接返回
         error!("[{}] Non-retryable error {}: {}", trace_id, status_code, error_text);
-        return ProxyError::upstream_error(status_code, error_text).into_response();
+        return ProxyError::upstream_error(status_code, error_text)
+            .with_request_id(request_id)
+            .into_response();
     }
 
     // Include 529 retry info in final error message if applicable
@@ -877,10 +897,14 @@ pub async fn handle_messages(
         String::new()
     };
 
-    ProxyError::Overloaded(format!(
-        "All {} attempts failed{}. Last error: {}",
-        max_attempts, retry_info, last_error
-    )).into_response()
+    ProxyError::Overloaded(
+        format!(
+            "All {} attempts failed{}. Last error: {}",
+            max_attempts, retry_info, last_error
+        ),
+        Some(request_id),
+    )
+    .into_response()
 }
 
 /// 列出可用模型

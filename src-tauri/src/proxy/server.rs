@@ -38,6 +38,8 @@ pub struct AppState {
     pub provider_rr: Arc<AtomicUsize>,
     pub zai_vision_mcp: Arc<crate::proxy::zai_vision_mcp::ZaiVisionMcpState>,
     pub monitor: Arc<crate::proxy::monitor::ProxyMonitor>,
+    /// Health monitor for account health tracking with auto-disable/recovery
+    pub health_monitor: Arc<crate::proxy::health::HealthMonitor>,
 }
 
 /// Axum 服务器实例
@@ -115,6 +117,12 @@ impl AxumServer {
 	        let zai_vision_mcp_state =
 	            Arc::new(crate::proxy::zai_vision_mcp::ZaiVisionMcpState::new());
 
+        // Initialize health monitor with default config
+        let health_config = crate::proxy::health::HealthConfig::default();
+        let health_monitor = crate::proxy::health::HealthMonitor::new(health_config);
+        // Start the recovery background task
+        let _recovery_handle = health_monitor.start_recovery_task();
+
 	        let state = AppState {
 	            token_manager: token_manager.clone(),
 	            anthropic_mapping: mapping_state.clone(),
@@ -132,6 +140,7 @@ impl AxumServer {
             provider_rr: provider_rr.clone(),
             zai_vision_mcp: zai_vision_mcp_state,
             monitor: monitor.clone(),
+            health_monitor,
         };
 
 

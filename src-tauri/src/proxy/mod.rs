@@ -22,6 +22,7 @@ pub mod prometheus;        // Prometheus metrics for observability
 pub mod rate_limit;        // 限流跟踪
 pub mod sticky_config;     // 粘性调度配置
 pub mod session_manager;   // 会话指纹管理
+pub mod health;            // 账号健康监控 (auto-disable/recovery)
 
 
 pub use config::ProxyConfig;

@@ -1,5 +1,5 @@
 // Gemini Handler
-use axum::{extract::State, extract::{Json, Path}, response::IntoResponse};
+use axum::{extract::State, extract::{Json, Path}, response::IntoResponse, Extension};
 use serde_json::{json, Value};
 use tracing::{debug, error, info};
 
@@ -8,6 +8,7 @@ use crate::proxy::server::AppState;
 use crate::proxy::session_manager::SessionManager;
 use crate::proxy::handlers::common::WithResolvedModel;
 use crate::proxy::error::ProxyError;
+use crate::proxy::middleware::request_id::RequestId;
  
 const MAX_RETRY_ATTEMPTS: usize = 3;
  
@@ -15,6 +16,7 @@ const MAX_RETRY_ATTEMPTS: usize = 3;
 /// 路径参数: model_name, method (e.g. "gemini-pro", "generateContent")
 pub async fn handle_generate(
     State(state): State<AppState>,
+    Extension(request_id): Extension<RequestId>,
     Path(model_action): Path<String>,
     Json(body): Json<Value>
 ) -> Result<impl IntoResponse, ProxyError> {
@@ -29,7 +31,8 @@ pub async fn handle_generate(
 
     // 1. 验证方法
     if method != "generateContent" && method != "streamGenerateContent" {
-        return Err(ProxyError::invalid_request(format!("Unsupported method: {method}")));
+        return Err(ProxyError::invalid_request(format!("Unsupported method: {method}"))
+            .with_request_id(request_id));
     }
     let is_stream = method == "streamGenerateContent";
 
@@ -73,7 +76,8 @@ pub async fn handle_generate(
         let (access_token, project_id, email, account_id) = match token_manager.get_token(&config.request_type, attempt > 0, Some(&session_id)).await {
             Ok(t) => t,
             Err(e) => {
-                return Err(ProxyError::token_error(format!("Token error: {e}")));
+                return Err(ProxyError::token_error(format!("Token error: {e}"))
+                    .with_request_id(request_id));
             }
         };
 
@@ -99,6 +103,9 @@ pub async fn handle_generate(
 
         let status = response.status();
         if status.is_success() {
+            // Record success in health monitor
+            state.health_monitor.record_success(&account_id);
+
             // 6. 响应处理
             if is_stream {
                 use axum::body::Body;
@@ -178,7 +185,7 @@ pub async fn handle_generate(
             let gemini_resp: Value = response
                 .json()
                 .await
-                .map_err(|e| ProxyError::parse_error(format!("Parse error: {e}")))?;
+                .map_err(|e| ProxyError::parse_error(format!("Parse error: {e}")).with_request_id(request_id.clone()))?;
 
             let unwrapped = unwrap_response(&gemini_resp);
             return Ok(Json(unwrapped).with_resolved_model(&mapped_model));
@@ -192,13 +199,18 @@ pub async fn handle_generate(
  
         // 只有 429 (限流), 529 (过载), 503, 403 (权限) 和 401 (认证失效) 触发账号轮换
         if status_code == 429 || status_code == 529 || status_code == 503 || status_code == 500 || status_code == 403 || status_code == 401 {
+            // Record error in health monitor for 403/401 (may auto-disable account)
+            if status_code == 403 || status_code == 401 {
+                state.health_monitor.record_error(&account_id, status_code, &error_text).await;
+            }
+
             // 记录限流信息并自动解绑会话 (使用 account_id 而非 email)
             token_manager.mark_rate_limited_and_unbind(&account_id, status_code, retry_after.as_deref(), &error_text, Some(&config.request_type));
 
             // 只有明确包含 "QUOTA_EXHAUSTED" 才停止，避免误判上游的频率限制提示 (如 "check quota")
             if status_code == 429 && error_text.contains("QUOTA_EXHAUSTED") {
                 error!("Gemini Quota exhausted (429) on account {} attempt {}/{}, stopping to protect pool.", email, attempt + 1, max_attempts);
-                return Err(ProxyError::RateLimited(error_text));
+                return Err(ProxyError::RateLimited(error_text, Some(request_id)));
             }
 
             tracing::warn!("Gemini Upstream {} on account {} attempt {}/{}, rotating account", status_code, email, attempt + 1, max_attempts);
@@ -207,10 +219,13 @@ pub async fn handle_generate(
  
         // 404 等由于模型配置或路径错误的 HTTP 异常，直接报错，不进行无效轮换
         error!("Gemini Upstream non-retryable error {}: {}", status_code, error_text);
-        return Err(ProxyError::upstream_error(status_code, error_text));
+        return Err(ProxyError::upstream_error(status_code, error_text).with_request_id(request_id));
     }
 
-    Err(ProxyError::Overloaded(format!("All {} attempts failed. Last error: {}", max_attempts, last_error)))
+    Err(ProxyError::Overloaded(
+        format!("All {} attempts failed. Last error: {}", max_attempts, last_error),
+        Some(request_id),
+    ))
 }
 
 pub async fn handle_list_models(State(state): State<AppState>) -> Result<impl IntoResponse, ProxyError> {
@@ -249,10 +264,18 @@ pub async fn handle_get_model(Path(model_name): Path<String>) -> impl IntoRespon
     }))
 }
 
-pub async fn handle_count_tokens(State(state): State<AppState>, Path(_model_name): Path<String>, Json(_body): Json<Value>) -> Result<impl IntoResponse, ProxyError> {
+pub async fn handle_count_tokens(
+    State(state): State<AppState>,
+    Extension(request_id): Extension<RequestId>,
+    Path(_model_name): Path<String>,
+    Json(_body): Json<Value>,
+) -> Result<impl IntoResponse, ProxyError> {
     let model_group = "gemini";
-    let (_access_token, _project_id, _, _account_id) = state.token_manager.get_token(model_group, false, None).await
-        .map_err(|e| ProxyError::token_error(format!("Token error: {e}")))?;
+    let (_access_token, _project_id, _, _account_id) = state
+        .token_manager
+        .get_token(model_group, false, None)
+        .await
+        .map_err(|e| ProxyError::token_error(format!("Token error: {e}")).with_request_id(request_id))?;
 
     Ok(Json(json!({"totalTokens": 0})))
 }

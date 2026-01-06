@@ -1,5 +1,5 @@
 // OpenAI Handler
-use axum::{extract::Json, extract::State, response::{IntoResponse, Response}};
+use axum::{extract::Json, extract::State, response::{IntoResponse, Response}, Extension};
 use base64::Engine as _;
 use serde_json::{json, Value};
 use tokio::time::{sleep, Duration};
@@ -12,6 +12,7 @@ use crate::proxy::mappers::openai::{
 use crate::proxy::server::AppState;
 use crate::proxy::handlers::common::WithResolvedModel;
 use crate::proxy::error::ProxyError;
+use crate::proxy::middleware::request_id::RequestId;
 
 const MAX_RETRY_ATTEMPTS: usize = 3;
 
@@ -39,11 +40,14 @@ use crate::proxy::session_manager::SessionManager;
 
 pub async fn handle_chat_completions(
     State(state): State<AppState>,
+    Extension(request_id): Extension<RequestId>,
     Json(body): Json<Value>,
 ) -> Response {
     let mut openai_req: OpenAIRequest = match serde_json::from_value(body) {
         Ok(req) => req,
-        Err(e) => return ProxyError::invalid_request(format!("Invalid request: {e}")).into_response(),
+        Err(e) => return ProxyError::invalid_request(format!("Invalid request: {e}"))
+            .with_request_id(request_id)
+            .into_response(),
     };
 
     // Safety: Ensure messages is not empty
@@ -119,7 +123,9 @@ pub async fn handle_chat_completions(
         {
             Ok(t) => t,
             Err(e) => {
-                return ProxyError::token_error(format!("Token error: {e}")).into_response();
+                return ProxyError::token_error(format!("Token error: {e}"))
+                    .with_request_id(request_id)
+                    .into_response();
             }
         };
 
@@ -164,6 +170,9 @@ pub async fn handle_chat_completions(
 
         let status = response.status();
         if status.is_success() {
+            // Record success in health monitor
+            state.health_monitor.record_success(&account_id);
+
             // 5. 处理流式 vs 非流式
             if list_response {
                 use crate::proxy::mappers::openai::streaming::create_openai_sse_stream;
@@ -185,7 +194,9 @@ pub async fn handle_chat_completions(
 
             let gemini_resp: Value = match response.json().await {
                 Ok(v) => v,
-                Err(e) => return ProxyError::parse_error(format!("Parse error: {e}")).into_response(),
+                Err(e) => return ProxyError::parse_error(format!("Parse error: {e}"))
+                    .with_request_id(request_id)
+                    .into_response(),
             };
 
             let openai_response = transform_openai_response(&gemini_resp);
@@ -273,7 +284,7 @@ pub async fn handle_chat_completions(
                     attempt + 1,
                     max_attempts
                 );
-                return ProxyError::RateLimited(error_text).into_response();
+                return ProxyError::RateLimited(error_text, Some(request_id)).into_response();
             }
 
             // 3. 其他限流或服务器过载情况，轮换账号
@@ -291,6 +302,9 @@ pub async fn handle_chat_completions(
 
         // 只有 403 (权限/地区限制) 和 401 (认证失效) 触发账号轮换
         if status_code == 403 || status_code == 401 {
+            // Record error in health monitor (may auto-disable account)
+            state.health_monitor.record_error(&account_id, status_code, &error_text).await;
+
             tracing::warn!(
                 "[{}] OpenAI Upstream {} on account {} attempt {}/{}, rotating account",
                 trace_id,
@@ -308,7 +322,9 @@ pub async fn handle_chat_completions(
             "[{}] OpenAI Upstream non-retryable error {} on account {}: {}",
             trace_id, status_code, email, error_text
         );
-        return ProxyError::upstream_error(status_code, error_text).into_response();
+        return ProxyError::upstream_error(status_code, error_text)
+            .with_request_id(request_id)
+            .into_response();
     }
 
     // Include 529 retry info in final error message if applicable
@@ -319,15 +335,20 @@ pub async fn handle_chat_completions(
     };
 
     // 所有尝试均失败
-    ProxyError::Overloaded(format!(
-        "All {max_attempts} attempts failed{retry_info}. Last error: {last_error}"
-    )).into_response()
+    ProxyError::Overloaded(
+        format!(
+            "All {max_attempts} attempts failed{retry_info}. Last error: {last_error}"
+        ),
+        Some(request_id),
+    )
+    .into_response()
 }
 
 /// 处理 Legacy Completions API (/v1/completions)
 /// 将 Prompt 转换为 Chat Message 格式，复用 handle_chat_completions
 pub async fn handle_completions(
     State(state): State<AppState>,
+    Extension(request_id): Extension<RequestId>,
     Json(mut body): Json<Value>,
 ) -> Response {
     info!(
@@ -586,7 +607,9 @@ pub async fn handle_completions(
 
     let mut openai_req: OpenAIRequest = match serde_json::from_value(body.clone()) {
         Ok(req) => req,
-        Err(e) => return ProxyError::invalid_request(format!("Invalid request: {e}")).into_response(),
+        Err(e) => return ProxyError::invalid_request(format!("Invalid request: {e}"))
+            .with_request_id(request_id)
+            .into_response(),
     };
 
     // Safety: Inject empty message if needed
@@ -648,7 +671,9 @@ pub async fn handle_completions(
             match token_manager.get_token(&config.request_type, false, None).await {
                 Ok(t) => t,
                 Err(e) => {
-                    return ProxyError::token_error(format!("Token error: {e}")).into_response();
+                    return ProxyError::token_error(format!("Token error: {e}"))
+                        .with_request_id(request_id)
+                        .into_response();
                 }
             };
 
@@ -709,7 +734,9 @@ pub async fn handle_completions(
 
             let gemini_resp: Value = match response.json().await {
                 Ok(v) => v,
-                Err(e) => return ProxyError::parse_error(format!("Parse error: {e}")).into_response(),
+                Err(e) => return ProxyError::parse_error(format!("Parse error: {e}"))
+                    .with_request_id(request_id)
+                    .into_response(),
             };
 
             let chat_resp = transform_openai_response(&gemini_resp);
@@ -781,7 +808,9 @@ pub async fn handle_completions(
             attempt += 1;
             continue;
         }
-        return ProxyError::upstream_error(status_code, error_text).into_response();
+        return ProxyError::upstream_error(status_code, error_text)
+            .with_request_id(request_id)
+            .into_response();
     }
 
     // Include 529 retry info in final error message
@@ -791,9 +820,11 @@ pub async fn handle_completions(
         String::new()
     };
 
-    ProxyError::Overloaded(format!(
-        "All {max_attempts} attempts failed{retry_info}. Last error: {last_error}"
-    )).into_response()
+    ProxyError::Overloaded(
+        format!("All {max_attempts} attempts failed{retry_info}. Last error: {last_error}"),
+        Some(request_id),
+    )
+    .into_response()
 }
 
 pub async fn handle_list_models(State(state): State<AppState>) -> impl IntoResponse {
@@ -824,12 +855,15 @@ pub async fn handle_list_models(State(state): State<AppState>) -> impl IntoRespo
 /// 处理图像生成请求，转换为 Gemini API 格式
 pub async fn handle_images_generations(
     State(state): State<AppState>,
+    Extension(request_id): Extension<RequestId>,
     Json(body): Json<Value>,
 ) -> Response {
     // 1. 解析请求参数
     let prompt = match body.get("prompt").and_then(|v| v.as_str()) {
         Some(p) => p,
-        None => return ProxyError::invalid_request("Missing 'prompt' field").into_response(),
+        None => return ProxyError::invalid_request("Missing 'prompt' field")
+            .with_request_id(request_id)
+            .into_response(),
     };
 
     let model = body
@@ -897,7 +931,9 @@ pub async fn handle_images_generations(
     {
         Ok(t) => t,
         Err(e) => {
-            return ProxyError::token_error(format!("Token error: {e}")).into_response();
+            return ProxyError::token_error(format!("Token error: {e}"))
+                .with_request_id(request_id)
+                .into_response();
         }
     };
 
@@ -1021,7 +1057,12 @@ pub async fn handle_images_generations(
             errors.join("; ")
         };
         tracing::error!("[Images] All {} requests failed. Errors: {}", n, error_msg);
-        return ProxyError::UpstreamError { status: 502, message: error_msg }.into_response();
+        return ProxyError::UpstreamError {
+            status: 502,
+            message: error_msg,
+            request_id: Some(request_id),
+        }
+        .into_response();
     }
 
     // 部分成功时记录警告
@@ -1051,6 +1092,7 @@ pub async fn handle_images_generations(
 
 pub async fn handle_images_edits(
     State(state): State<AppState>,
+    Extension(request_id): Extension<RequestId>,
     mut multipart: axum::extract::Multipart,
 ) -> Response {
     tracing::info!("[Images] Received edit request");
@@ -1067,26 +1109,34 @@ pub async fn handle_images_edits(
         let field = match multipart.next_field().await {
             Ok(Some(f)) => f,
             Ok(None) => break,
-            Err(e) => return ProxyError::invalid_request(format!("Multipart error: {e}")).into_response(),
+            Err(e) => return ProxyError::invalid_request(format!("Multipart error: {e}"))
+                .with_request_id(request_id)
+                .into_response(),
         };
         let name = field.name().unwrap_or("").to_string();
 
         if name == "image" {
             let data = match field.bytes().await {
                 Ok(d) => d,
-                Err(e) => return ProxyError::invalid_request(format!("Image read error: {e}")).into_response(),
+                Err(e) => return ProxyError::invalid_request(format!("Image read error: {e}"))
+                    .with_request_id(request_id)
+                    .into_response(),
             };
             image_data = Some(base64::engine::general_purpose::STANDARD.encode(data));
         } else if name == "mask" {
             let data = match field.bytes().await {
                 Ok(d) => d,
-                Err(e) => return ProxyError::invalid_request(format!("Mask read error: {e}")).into_response(),
+                Err(e) => return ProxyError::invalid_request(format!("Mask read error: {e}"))
+                    .with_request_id(request_id)
+                    .into_response(),
             };
             mask_data = Some(base64::engine::general_purpose::STANDARD.encode(data));
         } else if name == "prompt" {
             prompt = match field.text().await {
                 Ok(t) => t,
-                Err(e) => return ProxyError::invalid_request(format!("Prompt read error: {e}")).into_response(),
+                Err(e) => return ProxyError::invalid_request(format!("Prompt read error: {e}"))
+                    .with_request_id(request_id)
+                    .into_response(),
             };
         } else if name == "n" {
             if let Ok(val) = field.text().await {
@@ -1110,10 +1160,14 @@ pub async fn handle_images_edits(
     }
 
     if image_data.is_none() {
-        return ProxyError::invalid_request("Missing image").into_response();
+        return ProxyError::invalid_request("Missing image")
+            .with_request_id(request_id)
+            .into_response();
     }
     if prompt.is_empty() {
-        return ProxyError::invalid_request("Missing prompt").into_response();
+        return ProxyError::invalid_request("Missing prompt")
+            .with_request_id(request_id)
+            .into_response();
     }
 
     tracing::info!(
@@ -1145,7 +1199,9 @@ pub async fn handle_images_edits(
     {
         Ok(t) => t,
         Err(e) => {
-            return ProxyError::token_error(format!("Token error: {e}")).into_response();
+            return ProxyError::token_error(format!("Token error: {e}"))
+                .with_request_id(request_id)
+                .into_response();
         }
     };
 
@@ -1293,7 +1349,12 @@ pub async fn handle_images_edits(
             n,
             error_msg
         );
-        return ProxyError::UpstreamError { status: 502, message: error_msg }.into_response();
+        return ProxyError::UpstreamError {
+            status: 502,
+            message: error_msg,
+            request_id: Some(request_id),
+        }
+        .into_response();
     }
 
     if !errors.is_empty() {

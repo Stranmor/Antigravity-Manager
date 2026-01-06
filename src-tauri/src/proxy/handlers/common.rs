@@ -1,8 +1,9 @@
-use axum::{extract::State, extract::Json, response::IntoResponse, response::Response};
+use axum::{extract::State, extract::Json, response::IntoResponse, response::Response, Extension};
 use serde_json::{json, Value};
 use crate::proxy::server::AppState;
 use crate::proxy::middleware::monitor::X_RESOLVED_MODEL_HEADER;
 use crate::proxy::error::ProxyError;
+use crate::proxy::middleware::request_id::RequestId;
 
 /// Helper trait to attach resolved model info to responses for monitoring
 pub trait WithResolvedModel {
@@ -23,12 +24,13 @@ impl<T: IntoResponse> WithResolvedModel for T {
 /// POST /v1/models/detect
 pub async fn handle_detect_model(
     State(state): State<AppState>,
+    Extension(request_id): Extension<RequestId>,
     Json(body): Json<Value>,
 ) -> Result<impl IntoResponse, ProxyError> {
     let model_name = body.get("model").and_then(|v| v.as_str()).unwrap_or("");
 
     if model_name.is_empty() {
-        return Err(ProxyError::invalid_request("Missing 'model' field"));
+        return Err(ProxyError::invalid_request("Missing 'model' field").with_request_id(request_id));
     }
 
     // 1. Resolve mapping

@@ -146,6 +146,8 @@ struct AdminState {
     proxy_server: RwLock<Option<ProxyServerHandle>>,
     /// API key for admin authentication (None = auth disabled)
     api_key: Option<String>,
+    /// Health monitor for account health tracking
+    health_monitor: Arc<antigravity_tools_lib::proxy::health::HealthMonitor>,
 }
 
 struct ProxyServerHandle {
@@ -640,6 +642,108 @@ async fn metrics_handler(State(state): State<Arc<AdminState>>) -> impl IntoRespo
     )
 }
 
+/// GET /api/accounts/{id}/health - Get health status for a specific account
+///
+/// Returns detailed health information including:
+/// - Current status (healthy, degraded, disabled, recovering)
+/// - Consecutive error count
+/// - Time remaining in cooldown (if disabled)
+/// - Last error details
+/// - Success/error statistics
+async fn get_account_health_handler(
+    State(state): State<Arc<AdminState>>,
+    Path(account_id): Path<String>,
+) -> impl IntoResponse {
+    match state.health_monitor.get_health(&account_id).await {
+        Some(health) => Json(health).into_response(),
+        None => {
+            // Check if account exists
+            match list_accounts_from_disk(&state.data_dir) {
+                Ok(accounts) => {
+                    if accounts.iter().any(|a| a.id == account_id) {
+                        // Account exists but not tracked - return default healthy status
+                        Json(serde_json::json!({
+                            "account_id": account_id,
+                            "status": "healthy",
+                            "consecutive_errors": 0,
+                            "is_disabled": false,
+                            "message": "No health data yet - account has not been used since server start"
+                        }))
+                        .into_response()
+                    } else {
+                        (
+                            StatusCode::NOT_FOUND,
+                            Json(ErrorResponse::new(format!("Account {} not found", account_id))),
+                        )
+                            .into_response()
+                    }
+                }
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse::new(format!("Failed to check accounts: {}", e))),
+                )
+                    .into_response(),
+            }
+        }
+    }
+}
+
+/// GET /api/accounts/health - Get health status for all accounts
+///
+/// Returns an array of health status for all tracked accounts
+async fn get_all_accounts_health_handler(
+    State(state): State<Arc<AdminState>>,
+) -> impl IntoResponse {
+    let health_data = state.health_monitor.get_all_health().await;
+    Json(health_data)
+}
+
+/// POST /api/accounts/{id}/enable - Force re-enable a disabled account
+///
+/// Manually re-enables an account that was auto-disabled due to errors.
+/// This resets the consecutive error count and removes the disabled status.
+async fn force_enable_account_handler(
+    State(state): State<Arc<AdminState>>,
+    Path(account_id): Path<String>,
+) -> impl IntoResponse {
+    if state.health_monitor.force_enable(&account_id).await {
+        Json(serde_json::json!({
+            "success": true,
+            "message": format!("Account {} has been re-enabled", account_id)
+        }))
+        .into_response()
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse::new(format!(
+                "Account {} not found or not disabled",
+                account_id
+            ))),
+        )
+            .into_response()
+    }
+}
+
+/// GET /api/health/summary - Get health summary for all accounts
+///
+/// Returns a summary of account health across the system
+async fn get_health_summary_handler(
+    State(state): State<Arc<AdminState>>,
+) -> impl IntoResponse {
+    let total = state.token_manager.len();
+    let healthy = state.health_monitor.healthy_count();
+    let disabled = state.health_monitor.disabled_count();
+    let rate_limited = total.saturating_sub(state.token_manager.available_count());
+
+    Json(serde_json::json!({
+        "total_accounts": total,
+        "healthy_accounts": healthy,
+        "disabled_accounts": disabled,
+        "rate_limited_accounts": rate_limited,
+        "health_percentage": if total > 0 { (healthy as f64 / total as f64) * 100.0 } else { 100.0 }
+    }))
+}
+
 // ============================================================================
 // Main Entry Point
 // ============================================================================
@@ -755,6 +859,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .await
     .map_err(|e| format!("Failed to start proxy server: {}", e))?;
 
+    // Initialize health monitor with default configuration
+    let health_config = antigravity_tools_lib::proxy::health::HealthConfig::default();
+    let health_monitor = antigravity_tools_lib::proxy::health::HealthMonitor::new(health_config);
+    // Start the recovery background task
+    let _health_recovery_handle = health_monitor.start_recovery_task();
+
     // Create admin state
     let admin_state = Arc::new(AdminState {
         data_dir: server_config.data_dir.clone(),
@@ -763,6 +873,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         monitor: monitor.clone(),
         proxy_server: RwLock::new(Some(ProxyServerHandle { server, handle })),
         api_key: server_config.api_key.clone(),
+        health_monitor,
     });
 
     // Admin API Rate Limiting: 60 requests per minute per IP
@@ -784,6 +895,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .route("/api/accounts/{id}", delete(delete_account_handler))
         .route("/api/accounts/reload", post(reload_accounts_handler))
+        .route("/api/accounts/health", get(get_all_accounts_health_handler))
+        .route("/api/accounts/{id}/health", get(get_account_health_handler))
+        .route("/api/accounts/{id}/enable", post(force_enable_account_handler))
         .route(
             "/api/config",
             get(get_config_handler).put(update_config_handler),
@@ -797,6 +911,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Build public routes (no auth required - for monitoring)
     let public_routes = Router::new()
         .route("/api/health", get(health_handler))
+        .route("/api/health/summary", get(get_health_summary_handler))
         .route("/metrics", get(metrics_handler));
 
     // Combine routers with rate limiting
@@ -834,15 +949,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     info!("");
     info!("Admin API endpoints:");
-    info!("  GET    /api/health          - Health check with stats (public)");
-    info!("  GET    /metrics             - Prometheus metrics (public)");
-    info!("  GET    /api/accounts        - List all accounts (auth required)");
-    info!("  POST   /api/accounts        - Add account (auth required)");
-    info!("  DELETE /api/accounts/{{id}}   - Delete account (auth required)");
-    info!("  POST   /api/accounts/reload - Reload accounts from disk (auth required)");
-    info!("  GET    /api/config          - Get current config (auth required)");
-    info!("  PUT    /api/config          - Update config (auth required)");
-    info!("  GET    /api/stats           - Get proxy stats (auth required)");
+    info!("  GET    /api/health              - Health check with stats (public)");
+    info!("  GET    /api/health/summary      - Account health summary (public)");
+    info!("  GET    /metrics                 - Prometheus metrics (public)");
+    info!("  GET    /api/accounts            - List all accounts (auth required)");
+    info!("  POST   /api/accounts            - Add account (auth required)");
+    info!("  DELETE /api/accounts/{{id}}       - Delete account (auth required)");
+    info!("  POST   /api/accounts/reload     - Reload accounts from disk (auth required)");
+    info!("  GET    /api/accounts/health     - Get all accounts health (auth required)");
+    info!("  GET    /api/accounts/{{id}}/health - Get account health (auth required)");
+    info!("  POST   /api/accounts/{{id}}/enable - Force re-enable disabled account (auth required)");
+    info!("  GET    /api/config              - Get current config (auth required)");
+    info!("  PUT    /api/config              - Update config (auth required)");
+    info!("  GET    /api/stats               - Get proxy stats (auth required)");
     info!("");
     info!("Authentication: Use 'Authorization: Bearer <API_KEY>' or 'X-API-Key: <API_KEY>' header");
 
