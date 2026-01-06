@@ -36,7 +36,6 @@ axum = "0.8"
 arboard = "3"
 csv = "1.3"
 rfd = "0.15"
-chrono = { version = "0.4", features = ["serde"] }
 
 antigravity_tools_lib = { path = "../src-tauri", package = "antigravity_tools", default-features = false }
 

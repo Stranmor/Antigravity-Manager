@@ -1053,7 +1053,10 @@ impl AppController {
 
             // Convert to export format
             let export_data = AnalyticsExportData {
-                export_timestamp: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                export_timestamp: time::OffsetDateTime::now_local()
+                    .unwrap_or_else(|_| time::OffsetDateTime::now_utc())
+                    .format(&time::format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]").unwrap())
+                    .unwrap_or_else(|_| "unknown".to_string()),
                 export_format: format_str.clone(),
                 summary: ExportSummary {
                     total_requests_today: summary.total_requests_today,
@@ -1093,9 +1096,14 @@ impl AppController {
                     _ => ("txt", "Text Files"),
                 };
 
+                let now = time::OffsetDateTime::now_local()
+                    .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
+                let timestamp = now
+                    .format(&time::format_description::parse("[year][month][day]_[hour][minute][second]").unwrap())
+                    .unwrap_or_else(|_| "unknown".to_string());
                 let default_filename = format!(
                     "antigravity_analytics_{}.{}",
-                    chrono::Local::now().format("%Y%m%d_%H%M%S"),
+                    timestamp,
                     extension
                 );
 
