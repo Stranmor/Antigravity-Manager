@@ -1,45 +1,273 @@
-import { Button, VerticalBox, HorizontalBox, ListView, StandardTableView, LineEdit, CheckBox, ComboBox, Slider, ProgressIndicator, Switch, TabWidget, GroupBox, ScrollView, Palette } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, ListView, StandardTableView, LineEdit, CheckBox, ComboBox, Slider, ProgressIndicator, Switch, TabWidget, GroupBox, ScrollView, Palette, SpinBox, TextEdit } from "std-widgets.slint";
+
+// ========================================
+// DATA STRUCTURES
+// ========================================
+
+export struct ModelQuota {
+    model_name: string,
+    percentage: int,
+    remaining: int,
+    total: int,
+    reset_time: string,
+}
 
 export struct Account {
+    id: string,
     email: string,
+    display_name: string,
     tier: string,
-    quota_used: int,
-    quota_total: int,
+    quota_percentage: int,
+    is_current: bool,
     enabled: bool,
+    disabled: bool,
+    proxy_disabled: bool,
+    is_forbidden: bool,
     last_refresh: string,
+    model_quotas: [ModelQuota],
 }
 
 export struct ProxyStats {
     total_requests: int,
+    success_count: int,
+    error_count: int,
     success_rate: float,
     active_accounts: int,
     uptime_seconds: int,
+    avg_latency_ms: int,
 }
 
+export struct ProxyConfig {
+    listen_port: int,
+    admin_port: int,
+    auto_start: bool,
+    allow_lan: bool,
+    require_auth: bool,
+    api_key: string,
+    scheduling_mode: string, // "cache_first" | "balanced" | "performance"
+    upstream_proxy: string,
+}
+
+export struct AppConfig {
+    theme: string, // "dark" | "light" | "system"
+    language: string, // "en" | "ru" | "zh"
+    auto_launch: bool,
+    page_size: int,
+    data_dir: string,
+}
+
+export struct RequestLog {
+    id: string,
+    timestamp: string,
+    method: string,
+    path: string,
+    status: int,
+    latency_ms: int,
+    tokens_in: int,
+    tokens_out: int,
+    model: string,
+    account_email: string,
+    error_message: string,
+}
+
+// ========================================
+// GLOBAL STATE
+// ========================================
+
 export global AppState {
+    // Accounts
     in-out property <[Account]> accounts: [];
-    in-out property <ProxyStats> stats: { total_requests: 0, success_rate: 0.0, active_accounts: 0, uptime_seconds: 0 };
+    in-out property <Account> current_account;
+    in-out property <[Account]> best_accounts: [];
+    
+    // Proxy
+    in-out property <ProxyStats> stats: { 
+        total_requests: 0, 
+        success_count: 0,
+        error_count: 0,
+        success_rate: 0.0, 
+        active_accounts: 0, 
+        uptime_seconds: 0,
+        avg_latency_ms: 0,
+    };
+    in-out property <ProxyConfig> proxy_config: {
+        listen_port: 8045,
+        admin_port: 9101,
+        auto_start: false,
+        allow_lan: false,
+        require_auth: false,
+        api_key: "",
+        scheduling_mode: "cache_first",
+        upstream_proxy: "",
+    };
     in-out property <bool> proxy_running: false;
+    
+    // Flat proxy config properties for two-way binding
+    in-out property <int> listen_port: 8045;
+    in-out property <int> admin_port: 9101;
+    in-out property <bool> allow_lan: false;
+    in-out property <bool> require_auth: false;
+    in-out property <string> api_key: "";
+    in-out property <string> scheduling_mode: "cache_first";
+    in-out property <bool> auto_start: false;
+    
+    // App Config
+    in-out property <AppConfig> app_config: {
+        theme: "dark",
+        language: "en",
+        auto_launch: false,
+        page_size: 20,
+        data_dir: "",
+    };
+    
+    // Flat app config properties for two-way binding
+    in-out property <bool> auto_launch: false;
+    in-out property <string> theme: "dark";
+    in-out property <string> language: "en";
+    in-out property <int> page_size: 20;
+    in-out property <string> data_dir: "";
+    
+    // Monitor
+    in-out property <[RequestLog]> request_logs: [];
+    in-out property <bool> monitor_recording: true;
+    
+    // UI State
     in-out property <int> current_page: 0;
     in-out property <bool> dark_mode: true;
+    in-out property <string> search_query: "";
+    in-out property <string> account_filter: "all"; // all, available, low_quota, pro, ultra, free
+    in-out property <bool> show_add_account_dialog: false;
+    in-out property <bool> show_account_details: false;
+    in-out property <Account> selected_account;
+    in-out property <string> oauth_url: "";
+    in-out property <bool> oauth_in_progress: false;
+    in-out property <string> status_message: "";
+    in-out property <string> status_type: "info"; // info, success, error, warning
     
+    // Callbacks
     callback refresh_accounts();
+    callback refresh_quota(string); // account_id
+    callback refresh_all_quotas();
     callback toggle_proxy();
-    callback toggle_account(int);
-    callback delete_account(int);
-    callback open_settings();
+    callback start_proxy();
+    callback stop_proxy();
+    callback toggle_account(string); // account_id
+    callback delete_account(string); // account_id
+    callback switch_account(string); // account_id
+    callback toggle_proxy_status(string, bool); // account_id, enable
+    callback save_proxy_config();
+    callback save_app_config();
+    callback start_oauth();
+    callback complete_oauth();
+    callback cancel_oauth();
+    callback add_account_manual(string); // refresh_token
+    callback import_from_db();
+    callback generate_api_key();
     callback toggle_dark_mode();
+    callback clear_logs();
+    callback toggle_monitor_recording();
+    callback open_data_folder();
+    callback copy_to_clipboard(string);
+}
+
+// ========================================
+// COLORS & THEMING
+// ========================================
+
+global Theme {
+    out property <color> accent: #8b5cf6;
+    out property <color> accent-hover: #7c3aed;
+    out property <color> success: #22c55e;
+    out property <color> warning: #f59e0b;
+    out property <color> error: #ef4444;
+    out property <color> info: #3b82f6;
+    
+    out property <color> tier-pro: #3b82f6;
+    out property <color> tier-ultra: #8b5cf6;
+    out property <color> tier-free: #6b7280;
+}
+
+// ========================================
+// REUSABLE COMPONENTS
+// ========================================
+
+component Badge inherits Rectangle {
+    in property <string> text;
+    in property <color> bg_color: Theme.accent;
+    in property <color> text_color: white;
+    
+    height: 22px;
+    border-radius: 11px;
+    background: bg_color;
+    
+    HorizontalBox {
+        padding-left: 8px;
+        padding-right: 8px;
+        
+        Text {
+            text: root.text;
+            font-size: 11px;
+            font-weight: 600;
+            color: text_color;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component TierBadge inherits Badge {
+    in property <string> tier;
+    
+    text: tier;
+    bg_color: tier == "ULTRA" ? Theme.tier-ultra : 
+              tier == "PRO" ? Theme.tier-pro : Theme.tier-free;
+}
+
+component StatusBadge inherits Badge {
+    in property <bool> is_running;
+    
+    text: is_running ? "Running" : "Stopped";
+    bg_color: is_running ? Theme.success : Theme.error;
+}
+
+component IconButton inherits Rectangle {
+    in property <string> icon;
+    in property <string> tooltip_text: "";
+    in property <bool> primary: false;
+    in property <bool> danger: false;
+    callback clicked();
+    
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: touch.has-hover ? 
+        (danger ? Theme.error.with-alpha(0.2) : 
+         primary ? Theme.accent.with-alpha(0.2) : 
+         Palette.alternate-background) : 
+        transparent;
+    
+    Text {
+        text: icon;
+        font-size: 18px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
 }
 
 component NavButton inherits Rectangle {
     in property <string> label;
     in property <string> icon;
     in property <bool> selected: false;
+    in property <int> badge_count: 0;
     callback clicked();
     
     height: 44px;
     border-radius: 8px;
-    background: selected ? Palette.accent-background : transparent;
+    background: selected ? Theme.accent.with-alpha(0.15) : 
+                touch.has-hover ? Palette.alternate-background : transparent;
     
     HorizontalBox {
         padding-left: 12px;
@@ -53,25 +281,32 @@ component NavButton inherits Rectangle {
         }
         Text {
             text: label;
-            color: selected ? Palette.accent-foreground : Palette.foreground;
+            color: selected ? Theme.accent : Palette.foreground;
             font-size: 15px;
             font-weight: selected ? 600 : 400;
             vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        if badge_count > 0: Badge {
+            text: "\{badge_count}";
+            bg_color: Theme.accent;
         }
     }
     
-    TouchArea {
+    touch := TouchArea {
         clicked => { root.clicked(); }
     }
 }
 
 component StatCard inherits Rectangle {
     in property <string> title;
-    in property <int> value;
-    in property <string> suffix;
+    in property <string> value;
+    in property <string> suffix: "";
+    in property <string> icon: "";
+    in property <color> accent_color: Theme.accent;
     
     horizontal-stretch: 1;
-    height: 100px;
+    height: 110px;
     border-radius: 12px;
     background: Palette.alternate-background;
     
@@ -79,87 +314,527 @@ component StatCard inherits Rectangle {
         padding: 16px;
         spacing: 8px;
         
-        Text {
-            text: title;
-            font-size: 14px;
-            color: Palette.foreground;
-            opacity: 0.7;
+        HorizontalBox {
+            Text {
+                text: title;
+                font-size: 13px;
+                color: Palette.foreground;
+                opacity: 0.7;
+                horizontal-stretch: 1;
+            }
+            if icon != "": Text {
+                text: icon;
+                font-size: 20px;
+                color: accent_color;
+            }
         }
-        Text {
-            text: "\{value}\{suffix}";
-            font-size: 32px;
-            font-weight: 700;
-            color: Palette.foreground;
+        
+        HorizontalBox {
+            alignment: start;
+            spacing: 4px;
+            
+            Text {
+                text: value;
+                font-size: 32px;
+                font-weight: 700;
+                color: accent_color;
+            }
+            Text {
+                text: suffix;
+                font-size: 16px;
+                font-weight: 500;
+                color: Palette.foreground;
+                opacity: 0.6;
+                vertical-alignment: bottom;
+            }
         }
+    }
+}
+
+component QuotaBar inherits Rectangle {
+    in property <int> percentage;
+    in property <string> label: "";
+    
+    height: 24px;
+    border-radius: 4px;
+    background: Palette.alternate-background;
+    
+    Rectangle {
+        width: parent.width * clamp(percentage, 0, 100) / 100;
+        height: parent.height;
+        border-radius: 4px;
+        background: percentage > 50 ? Theme.success : 
+                    percentage > 20 ? Theme.warning : Theme.error;
+    }
+    
+    Text {
+        text: label != "" ? label : "\{percentage}%";
+        font-size: 11px;
+        font-weight: 600;
+        color: white;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component CopyButton inherits Rectangle {
+    in property <string> value;
+    
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: touch.has-hover ? Palette.alternate-background : transparent;
+    
+    Text {
+        text: "📋";
+        font-size: 14px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    
+    touch := TouchArea {
+        clicked => { AppState.copy_to_clipboard(value); }
+    }
+}
+
+component EndpointRow inherits Rectangle {
+    in property <string> label;
+    in property <string> endpoint;
+    
+    height: 48px;
+    background: Palette.alternate-background.darker(0.02);
+    border-radius: 8px;
+    
+    HorizontalBox {
+        padding: 12px;
+        spacing: 12px;
+        
+        Text {
+            text: label;
+            font-size: 13px;
+            font-weight: 600;
+            color: Palette.foreground;
+            width: 100px;
+            vertical-alignment: center;
+        }
+        
+        Rectangle {
+            horizontal-stretch: 1;
+            background: Palette.alternate-background;
+            border-radius: 4px;
+            
+            Text {
+                text: endpoint;
+                font-size: 12px;
+                font-family: "monospace";
+                color: Theme.accent;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        
+        CopyButton { value: endpoint; }
     }
 }
 
 component AccountRow inherits Rectangle {
     in property <Account> account;
-    in property <int> index;
     
-    height: 64px;
-    background: Math.mod(index, 2) == 0 ? transparent : Palette.alternate-background.darker(0.05);
+    height: 72px;
+    background: touch.has-hover ? Palette.alternate-background.darker(0.05) : transparent;
+    border-radius: 8px;
+    
+    HorizontalBox {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 12px;
+        
+        // Toggle
+        Switch {
+            checked: account.enabled && !account.disabled;
+            enabled: !account.is_forbidden;
+            toggled => { AppState.toggle_account(account.id); }
+        }
+        
+        // Account info
+        VerticalBox {
+            horizontal-stretch: 1;
+            spacing: 4px;
+            
+            HorizontalBox {
+                spacing: 8px;
+                Text {
+                    text: account.email;
+                    font-size: 14px;
+                    font-weight: 500;
+                    color: Palette.foreground;
+                }
+                if account.is_current: Badge {
+                    text: "Current";
+                    bg_color: Theme.success;
+                }
+                if account.is_forbidden: Badge {
+                    text: "403";
+                    bg_color: Theme.error;
+                }
+                if account.proxy_disabled && !account.is_forbidden: Badge {
+                    text: "Proxy Off";
+                    bg_color: Theme.warning;
+                }
+            }
+            
+            HorizontalBox {
+                spacing: 8px;
+                TierBadge { tier: account.tier; }
+                Text {
+                    text: account.last_refresh;
+                    font-size: 11px;
+                    color: Palette.foreground;
+                    opacity: 0.5;
+                }
+            }
+        }
+        
+        // Quota
+        VerticalBox {
+            width: 140px;
+            spacing: 4px;
+            
+            Text {
+                text: "\{account.quota_percentage}% remaining";
+                font-size: 12px;
+                color: Palette.foreground;
+                horizontal-alignment: right;
+            }
+            QuotaBar { 
+                percentage: account.quota_percentage;
+            }
+        }
+        
+        // Actions
+        HorizontalBox {
+            spacing: 4px;
+            
+            IconButton {
+                icon: "🔄";
+                tooltip_text: "Refresh Quota";
+                clicked => { AppState.refresh_quota(account.id); }
+            }
+            IconButton {
+                icon: "⭐";
+                tooltip_text: "Set as Current";
+                primary: true;
+                clicked => { AppState.switch_account(account.id); }
+            }
+            IconButton {
+                icon: "🗑";
+                tooltip_text: "Delete";
+                danger: true;
+                clicked => { AppState.delete_account(account.id); }
+            }
+        }
+    }
+    
+    touch := TouchArea {
+        mouse-cursor: pointer;
+    }
+}
+
+component FilterTab inherits Rectangle {
+    in property <string> label;
+    in property <int> count: 0;
+    in property <bool> selected: false;
+    callback clicked();
+    
+    height: 36px;
+    border-radius: 8px;
+    background: selected ? Theme.accent : 
+                touch.has-hover ? Palette.alternate-background : transparent;
+    
+    HorizontalBox {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 6px;
+        
+        Text {
+            text: label;
+            font-size: 13px;
+            font-weight: selected ? 600 : 400;
+            color: selected ? white : Palette.foreground;
+            vertical-alignment: center;
+        }
+        if count > 0: Rectangle {
+            width: 24px;
+            height: 18px;
+            border-radius: 9px;
+            background: selected ? white.with-alpha(0.3) : Theme.accent.with-alpha(0.2);
+            
+            Text {
+                text: "\{count}";
+                font-size: 11px;
+                font-weight: 600;
+                color: selected ? white : Theme.accent;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+    
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+component RequestLogRow inherits Rectangle {
+    in property <RequestLog> log;
+    
+    height: 44px;
+    background: touch.has-hover ? Palette.alternate-background.darker(0.05) : transparent;
     
     HorizontalBox {
         padding-left: 16px;
         padding-right: 16px;
         spacing: 16px;
         
-        Switch {
-            checked: account.enabled;
-            toggled => { AppState.toggle_account(index); }
+        Text {
+            text: log.timestamp;
+            font-size: 11px;
+            color: Palette.foreground;
+            opacity: 0.6;
+            width: 80px;
         }
         
-        VerticalBox {
-            horizontal-stretch: 1;
-            spacing: 4px;
+        Rectangle {
+            width: 60px;
+            height: 24px;
+            border-radius: 4px;
+            background: log.status >= 200 && log.status < 300 ? Theme.success.with-alpha(0.2) :
+                        log.status >= 400 ? Theme.error.with-alpha(0.2) : Theme.warning.with-alpha(0.2);
             
             Text {
-                text: account.email;
-                font-size: 14px;
-                font-weight: 500;
-                color: Palette.foreground;
-            }
-            Text {
-                text: account.tier;
+                text: "\{log.status}";
                 font-size: 12px;
-                color: Palette.foreground;
-                opacity: 0.6;
-            }
-        }
-        
-        VerticalBox {
-            width: 120px;
-            spacing: 4px;
-            
-            HorizontalBox {
-                Text {
-                    text: "\{account.quota_used}/\{account.quota_total}";
-                    font-size: 12px;
-                    color: Palette.foreground;
-                }
-            }
-            ProgressIndicator {
-                progress: account.quota_total > 0 ? account.quota_used / account.quota_total : 0;
-                height: 6px;
+                font-weight: 600;
+                color: log.status >= 200 && log.status < 300 ? Theme.success :
+                       log.status >= 400 ? Theme.error : Theme.warning;
+                horizontal-alignment: center;
+                vertical-alignment: center;
             }
         }
         
         Text {
-            text: account.last_refresh;
+            text: log.method;
             font-size: 12px;
-            color: Palette.foreground;
-            opacity: 0.5;
-            width: 100px;
+            font-weight: 600;
+            color: Theme.info;
+            width: 50px;
         }
         
-        Button {
-            text: "🗑";
-            clicked => { AppState.delete_account(index); }
+        Text {
+            text: log.path;
+            font-size: 12px;
+            font-family: "monospace";
+            color: Palette.foreground;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+        
+        Text {
+            text: log.model;
+            font-size: 11px;
+            color: Theme.accent;
+            width: 120px;
+            overflow: elide;
+        }
+        
+        Text {
+            text: "\{log.latency_ms}ms";
+            font-size: 11px;
+            color: Palette.foreground;
+            opacity: 0.6;
+            width: 60px;
+            horizontal-alignment: right;
+        }
+    }
+    
+    touch := TouchArea {
+        mouse-cursor: pointer;
+    }
+}
+
+// ========================================
+// DIALOGS
+// ========================================
+
+component AddAccountDialog inherits Rectangle {
+    in-out property <int> tab_index: 0;
+    in-out property <string> refresh_token: "";
+    
+    width: 500px;
+    height: 420px;
+    background: Palette.background;
+    border-radius: 16px;
+    
+    VerticalBox {
+        padding: 24px;
+        spacing: 16px;
+        
+        // Header
+        HorizontalBox {
+            Text {
+                text: "Add Account";
+                font-size: 20px;
+                font-weight: 700;
+                color: Palette.foreground;
+                horizontal-stretch: 1;
+            }
+            IconButton {
+                icon: "✕";
+                clicked => { AppState.show_add_account_dialog = false; }
+            }
+        }
+        
+        // Tabs
+        HorizontalBox {
+            spacing: 8px;
+            
+            FilterTab {
+                label: "OAuth";
+                selected: tab_index == 0;
+                clicked => { tab_index = 0; }
+            }
+            FilterTab {
+                label: "Refresh Token";
+                selected: tab_index == 1;
+                clicked => { tab_index = 1; }
+            }
+            FilterTab {
+                label: "Import from IDE";
+                selected: tab_index == 2;
+                clicked => { tab_index = 2; }
+            }
+        }
+        
+        // Content
+        Rectangle {
+            vertical-stretch: 1;
+            
+            if tab_index == 0: VerticalBox {
+                spacing: 16px;
+                
+                Text {
+                    text: "Authorize with your Google account to add it automatically.";
+                    font-size: 13px;
+                    color: Palette.foreground;
+                    opacity: 0.7;
+                    wrap: word-wrap;
+                }
+                
+                if AppState.oauth_url != "": VerticalBox {
+                    spacing: 8px;
+                    
+                    Text {
+                        text: "Copy this URL and open in browser:";
+                        font-size: 12px;
+                        color: Palette.foreground;
+                    }
+                    
+                    HorizontalBox {
+                        spacing: 8px;
+                        
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            height: 40px;
+                            background: Palette.alternate-background;
+                            border-radius: 8px;
+                            
+                            Text {
+                                text: AppState.oauth_url;
+                                font-size: 11px;
+                                font-family: "monospace";
+                                color: Theme.accent;
+                                overflow: elide;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                        
+                        CopyButton { value: AppState.oauth_url; }
+                    }
+                }
+                
+                HorizontalBox {
+                    spacing: 12px;
+                    
+                    Button {
+                        text: AppState.oauth_in_progress ? "Cancel" : "Start OAuth";
+                        primary: !AppState.oauth_in_progress;
+                        clicked => {
+                            if AppState.oauth_in_progress {
+                                AppState.cancel_oauth();
+                            } else {
+                                AppState.start_oauth();
+                            }
+                        }
+                    }
+                    
+                    if AppState.oauth_in_progress: Button {
+                        text: "I already authorized";
+                        clicked => { AppState.complete_oauth(); }
+                    }
+                }
+            }
+            
+            if tab_index == 1: VerticalBox {
+                spacing: 16px;
+                
+                Text {
+                    text: "Paste your Google refresh token to add the account.";
+                    font-size: 13px;
+                    color: Palette.foreground;
+                    opacity: 0.7;
+                }
+                
+                LineEdit {
+                    text <=> refresh_token;
+                    placeholder-text: "1//0xxx... (your refresh token)";
+                }
+                
+                Button {
+                    text: "Add Account";
+                    primary: true;
+                    enabled: refresh_token != "";
+                    clicked => { 
+                        AppState.add_account_manual(refresh_token); 
+                        refresh_token = "";
+                    }
+                }
+            }
+            
+            if tab_index == 2: VerticalBox {
+                spacing: 16px;
+                
+                Text {
+                    text: "Import the currently logged-in account from your IDE (VSCode, Cursor, etc.).";
+                    font-size: 13px;
+                    color: Palette.foreground;
+                    opacity: 0.7;
+                    wrap: word-wrap;
+                }
+                
+                Button {
+                    text: "Import from IDE";
+                    primary: true;
+                    clicked => { AppState.import_from_db(); }
+                }
+            }
         }
     }
 }
+
+// ========================================
+// SIDEBAR
+// ========================================
 
 component Sidebar inherits Rectangle {
     width: 220px;
@@ -169,15 +844,43 @@ component Sidebar inherits Rectangle {
         padding: 16px;
         spacing: 8px;
         
-        Text {
-            text: "Antigravity";
-            font-size: 24px;
-            font-weight: 700;
-            color: Palette.foreground;
+        // Logo
+        HorizontalBox {
+            spacing: 12px;
+            
+            Rectangle {
+                width: 40px;
+                height: 40px;
+                border-radius: 10px;
+                background: Theme.accent;
+                
+                Text {
+                    text: "🚀";
+                    font-size: 22px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            
+            VerticalBox {
+                Text {
+                    text: "Antigravity";
+                    font-size: 18px;
+                    font-weight: 700;
+                    color: Palette.foreground;
+                }
+                Text {
+                    text: "v4.0.0";
+                    font-size: 11px;
+                    color: Palette.foreground;
+                    opacity: 0.5;
+                }
+            }
         }
         
-        Rectangle { height: 24px; }
+        Rectangle { height: 16px; }
         
+        // Navigation
         NavButton { 
             label: "Dashboard"; 
             icon: "📊";
@@ -188,80 +891,264 @@ component Sidebar inherits Rectangle {
             label: "Accounts"; 
             icon: "👥";
             selected: AppState.current_page == 1;
+            badge_count: AppState.accounts.length;
             clicked => { AppState.current_page = 1; }
+        }
+        NavButton { 
+            label: "API Proxy"; 
+            icon: "🔌";
+            selected: AppState.current_page == 2;
+            clicked => { AppState.current_page = 2; }
+        }
+        NavButton { 
+            label: "Monitor"; 
+            icon: "📈";
+            selected: AppState.current_page == 3;
+            badge_count: AppState.request_logs.length;
+            clicked => { AppState.current_page = 3; }
         }
         NavButton { 
             label: "Settings"; 
             icon: "⚙️";
-            selected: AppState.current_page == 2;
-            clicked => { AppState.current_page = 2; }
+            selected: AppState.current_page == 4;
+            clicked => { AppState.current_page = 4; }
         }
         
         Rectangle { vertical-stretch: 1; }
         
-        HorizontalBox {
-            spacing: 8px;
-            Text { 
-                text: AppState.proxy_running ? "● Running" : "○ Stopped";
-                color: AppState.proxy_running ? #22c55e : #ef4444;
-                font-size: 14px;
+        // Proxy Status
+        Rectangle {
+            height: 64px;
+            border-radius: 12px;
+            background: AppState.proxy_running ? Theme.success.with-alpha(0.1) : Theme.error.with-alpha(0.1);
+            
+            HorizontalBox {
+                padding: 12px;
+                spacing: 12px;
+                
+                Rectangle {
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 6px;
+                    background: AppState.proxy_running ? Theme.success : Theme.error;
+                }
+                
+                VerticalBox {
+                    spacing: 2px;
+                    
+                    Text {
+                        text: AppState.proxy_running ? "Proxy Running" : "Proxy Stopped";
+                        font-size: 13px;
+                        font-weight: 600;
+                        color: Palette.foreground;
+                    }
+                    if AppState.proxy_running: Text {
+                        text: "Port \{AppState.proxy_config.listen_port}";
+                        font-size: 11px;
+                        color: Palette.foreground;
+                        opacity: 0.6;
+                    }
+                }
+            }
+            
+            TouchArea {
+                clicked => { AppState.toggle_proxy(); }
             }
         }
     }
 }
 
+// ========================================
+// PAGES
+// ========================================
+
 component DashboardPage inherits VerticalBox {
     padding: 24px;
     spacing: 24px;
     
-    Text {
-        text: "Dashboard";
-        font-size: 28px;
-        font-weight: 700;
-        color: Palette.foreground;
+    // Header
+    HorizontalBox {
+        Text {
+            text: "Dashboard";
+            font-size: 28px;
+            font-weight: 700;
+            color: Palette.foreground;
+            horizontal-stretch: 1;
+        }
+        
+        Button {
+            text: "🔄 Refresh All";
+            clicked => { AppState.refresh_all_quotas(); }
+        }
     }
     
+    // Stats Grid
     HorizontalBox {
         spacing: 16px;
         
         StatCard {
             title: "Total Requests";
-            value: AppState.stats.total_requests;
-            suffix: "";
+            value: "\{AppState.stats.total_requests}";
+            icon: "📊";
+            accent_color: Theme.info;
         }
         StatCard {
             title: "Success Rate";
-            value: Math.round(AppState.stats.success_rate * 100);
+            value: "\{Math.round(AppState.stats.success_rate * 100)}";
             suffix: "%";
+            icon: "✅";
+            accent_color: Theme.success;
         }
         StatCard {
             title: "Active Accounts";
-            value: AppState.stats.active_accounts;
-            suffix: "";
+            value: "\{AppState.stats.active_accounts}";
+            icon: "👥";
+            accent_color: Theme.accent;
         }
         StatCard {
             title: "Uptime";
-            value: Math.floor(AppState.stats.uptime_seconds / 3600);
+            value: "\{Math.floor(AppState.stats.uptime_seconds / 3600)}";
             suffix: "h";
+            icon: "⏱️";
+            accent_color: Theme.warning;
         }
     }
     
+    // Proxy Control
     GroupBox {
         title: "Proxy Control";
         
         HorizontalBox {
-            spacing: 16px;
             padding: 16px;
+            spacing: 16px;
             
             Button {
-                text: AppState.proxy_running ? "Stop Proxy" : "Start Proxy";
+                text: AppState.proxy_running ? "⏹ Stop Proxy" : "▶ Start Proxy";
                 primary: !AppState.proxy_running;
                 clicked => { AppState.toggle_proxy(); }
             }
             
+            Rectangle { horizontal-stretch: 1; }
+            
+            VerticalBox {
+                spacing: 4px;
+                
+                Text {
+                    text: "Listen Port";
+                    font-size: 11px;
+                    color: Palette.foreground;
+                    opacity: 0.6;
+                }
+                Text {
+                    text: ":\{AppState.proxy_config.listen_port}";
+                    font-size: 18px;
+                    font-weight: 600;
+                    color: Theme.accent;
+                }
+            }
+            
+            VerticalBox {
+                spacing: 4px;
+                
+                Text {
+                    text: "Avg Latency";
+                    font-size: 11px;
+                    color: Palette.foreground;
+                    opacity: 0.6;
+                }
+                Text {
+                    text: "\{AppState.stats.avg_latency_ms}ms";
+                    font-size: 18px;
+                    font-weight: 600;
+                    color: Theme.success;
+                }
+            }
+        }
+    }
+    
+    // Current Account
+    if AppState.current_account.email != "": GroupBox {
+        title: "Current Account";
+        
+        HorizontalBox {
+            padding: 16px;
+            spacing: 16px;
+            
+            VerticalBox {
+                horizontal-stretch: 1;
+                spacing: 8px;
+                
+                HorizontalBox {
+                    spacing: 12px;
+                    Text {
+                        text: AppState.current_account.email;
+                        font-size: 16px;
+                        font-weight: 600;
+                        color: Palette.foreground;
+                    }
+                    TierBadge { tier: AppState.current_account.tier; }
+                }
+                
+                HorizontalBox {
+                    spacing: 8px;
+                    Text {
+                        text: "Overall Quota:";
+                        font-size: 13px;
+                        color: Palette.foreground;
+                        opacity: 0.7;
+                    }
+                    QuotaBar {
+                        percentage: AppState.current_account.quota_percentage;
+                        horizontal-stretch: 1;
+                    }
+                }
+            }
+            
             Button {
-                text: "Refresh Accounts";
-                clicked => { AppState.refresh_accounts(); }
+                text: "🔄 Refresh";
+                clicked => { AppState.refresh_quota(AppState.current_account.id); }
+            }
+        }
+    }
+    
+    // Best Accounts Recommendation
+    if AppState.best_accounts.length > 0: GroupBox {
+        title: "Recommended Accounts";
+        
+        VerticalBox {
+            padding: 8px;
+            
+            for account in AppState.best_accounts: Rectangle {
+                height: 48px;
+                border-radius: 8px;
+                background: touch.has-hover ? Palette.alternate-background : transparent;
+                
+                HorizontalBox {
+                    padding: 12px;
+                    spacing: 12px;
+                    
+                    Text {
+                        text: account.email;
+                        font-size: 14px;
+                        color: Palette.foreground;
+                        horizontal-stretch: 1;
+                    }
+                    
+                    TierBadge { tier: account.tier; }
+                    
+                    QuotaBar {
+                        percentage: account.quota_percentage;
+                        width: 100px;
+                    }
+                    
+                    Button {
+                        text: "Switch";
+                        primary: true;
+                        clicked => { AppState.switch_account(account.id); }
+                    }
+                }
+                
+                touch := TouchArea {}
             }
         }
     }
@@ -273,36 +1160,361 @@ component AccountsPage inherits VerticalBox {
     padding: 24px;
     spacing: 16px;
     
+    // Header
     HorizontalBox {
+        spacing: 16px;
+        
         Text {
             text: "Accounts";
+            font-size: 28px;
+            font-weight: 700;
+            color: Palette.foreground;
+        }
+        
+        Rectangle { horizontal-stretch: 1; }
+        
+        // Search
+        Rectangle {
+            width: 250px;
+            height: 40px;
+            border-radius: 8px;
+            background: Palette.alternate-background;
+            
+            HorizontalBox {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 8px;
+                
+                Text {
+                    text: "🔍";
+                    font-size: 16px;
+                    vertical-alignment: center;
+                }
+                LineEdit {
+                    text <=> AppState.search_query;
+                    placeholder-text: "Search accounts...";
+                    horizontal-stretch: 1;
+                }
+            }
+        }
+        
+        Button {
+            text: "+ Add Account";
+            primary: true;
+            clicked => { AppState.show_add_account_dialog = true; }
+        }
+        
+        Button {
+            text: "🔄 Refresh All";
+            clicked => { AppState.refresh_all_quotas(); }
+        }
+    }
+    
+    // Filter Tabs
+    HorizontalBox {
+        spacing: 8px;
+        
+        FilterTab {
+            label: "All";
+            count: AppState.accounts.length;
+            selected: AppState.account_filter == "all";
+            clicked => { AppState.account_filter = "all"; }
+        }
+        FilterTab {
+            label: "Available";
+            selected: AppState.account_filter == "available";
+            clicked => { AppState.account_filter = "available"; }
+        }
+        FilterTab {
+            label: "Low Quota";
+            selected: AppState.account_filter == "low_quota";
+            clicked => { AppState.account_filter = "low_quota"; }
+        }
+        FilterTab {
+            label: "PRO";
+            selected: AppState.account_filter == "pro";
+            clicked => { AppState.account_filter = "pro"; }
+        }
+        FilterTab {
+            label: "ULTRA";
+            selected: AppState.account_filter == "ultra";
+            clicked => { AppState.account_filter = "ultra"; }
+        }
+        FilterTab {
+            label: "FREE";
+            selected: AppState.account_filter == "free";
+            clicked => { AppState.account_filter = "free"; }
+        }
+        
+        Rectangle { horizontal-stretch: 1; }
+    }
+    
+    // Account List
+    Rectangle {
+        vertical-stretch: 1;
+        border-radius: 12px;
+        background: Palette.alternate-background;
+        clip: true;
+        
+        ScrollView {
+            VerticalBox {
+                padding: 8px;
+                spacing: 4px;
+                
+                for account in AppState.accounts: AccountRow {
+                    account: account;
+                }
+            }
+        }
+    }
+}
+
+component ApiProxyPage inherits VerticalBox {
+    padding: 24px;
+    spacing: 24px;
+    
+    // Header
+    HorizontalBox {
+        Text {
+            text: "API Proxy";
             font-size: 28px;
             font-weight: 700;
             color: Palette.foreground;
             horizontal-stretch: 1;
         }
         
-        Button {
-            text: "Add Account";
-            primary: true;
-        }
+        StatusBadge { is_running: AppState.proxy_running; }
+    }
+    
+    // Control & Status
+    GroupBox {
+        title: "Service Control";
         
-        Button {
-            text: "Refresh All";
-            clicked => { AppState.refresh_accounts(); }
+        HorizontalBox {
+            padding: 16px;
+            spacing: 24px;
+            
+            Button {
+                text: AppState.proxy_running ? "⏹ Stop" : "▶ Start";
+                primary: !AppState.proxy_running;
+                clicked => { AppState.toggle_proxy(); }
+            }
+            
+            VerticalBox {
+                spacing: 4px;
+                
+                HorizontalBox {
+                    spacing: 8px;
+                    Text { text: "Listen Port:"; font-size: 13px; color: Palette.foreground; opacity: 0.7; }
+                    SpinBox {
+                        value <=> AppState.listen_port;
+                        minimum: 1024;
+                        maximum: 65535;
+                    }
+                }
+            }
+            
+            VerticalBox {
+                spacing: 4px;
+                
+                HorizontalBox {
+                    spacing: 8px;
+                    Text { text: "Admin Port:"; font-size: 13px; color: Palette.foreground; opacity: 0.7; }
+                    SpinBox {
+                        value <=> AppState.admin_port;
+                        minimum: 1024;
+                        maximum: 65535;
+                    }
+                }
+            }
+            
+            Rectangle { horizontal-stretch: 1; }
+            
+            Button {
+                text: "Save";
+                clicked => { AppState.save_proxy_config(); }
+            }
         }
     }
     
+    // Endpoints
+    GroupBox {
+        title: "API Endpoints";
+        
+        VerticalBox {
+            padding: 16px;
+            spacing: 8px;
+            
+            property <string> base_url: "http://127.0.0.1:\{AppState.listen_port}";
+            
+            EndpointRow { label: "OpenAI"; endpoint: "\{base_url}/v1/chat/completions"; }
+            EndpointRow { label: "Anthropic"; endpoint: "\{base_url}/v1/messages"; }
+            EndpointRow { label: "Gemini"; endpoint: "\{base_url}/v1beta/models"; }
+            EndpointRow { label: "Images"; endpoint: "\{base_url}/v1/images/generations"; }
+        }
+    }
+    
+    // Security
+    GroupBox {
+        title: "Security";
+        
+        VerticalBox {
+            padding: 16px;
+            spacing: 16px;
+            
+            HorizontalBox {
+                spacing: 16px;
+                
+                HorizontalBox {
+                    spacing: 8px;
+                    Text { text: "Allow LAN Access"; font-size: 14px; vertical-alignment: center; }
+                    Switch { checked <=> AppState.allow_lan; }
+                }
+                
+                HorizontalBox {
+                    spacing: 8px;
+                    Text { text: "Require API Key"; font-size: 14px; vertical-alignment: center; }
+                    Switch { checked <=> AppState.require_auth; }
+                }
+            }
+            
+            if AppState.require_auth: HorizontalBox {
+                spacing: 8px;
+                
+                Text { text: "API Key:"; font-size: 14px; vertical-alignment: center; }
+                LineEdit {
+                    text <=> AppState.api_key;
+                    horizontal-stretch: 1;
+                    input-type: password;
+                }
+                CopyButton { value: AppState.api_key; }
+                Button {
+                    text: "Generate";
+                    clicked => { AppState.generate_api_key(); }
+                }
+            }
+        }
+    }
+    
+    // Scheduling Mode
+    GroupBox {
+        title: "Scheduling Mode";
+        
+        HorizontalBox {
+            padding: 16px;
+            spacing: 12px;
+            
+            FilterTab {
+                label: "Cache First";
+                selected: AppState.scheduling_mode == "cache_first";
+                clicked => { AppState.scheduling_mode = "cache_first"; }
+            }
+            FilterTab {
+                label: "Balanced";
+                selected: AppState.scheduling_mode == "balanced";
+                clicked => { AppState.scheduling_mode = "balanced"; }
+            }
+            FilterTab {
+                label: "Performance";
+                selected: AppState.scheduling_mode == "performance";
+                clicked => { AppState.scheduling_mode = "performance"; }
+            }
+            
+            Rectangle { horizontal-stretch: 1; }
+        }
+    }
+    
+    Rectangle { vertical-stretch: 1; }
+}
+
+component MonitorPage inherits VerticalBox {
+    padding: 24px;
+    spacing: 16px;
+    
+    // Header
+    HorizontalBox {
+        spacing: 16px;
+        
+        Text {
+            text: "Request Monitor";
+            font-size: 28px;
+            font-weight: 700;
+            color: Palette.foreground;
+        }
+        
+        Rectangle { horizontal-stretch: 1; }
+        
+        HorizontalBox {
+            spacing: 8px;
+            Text { text: "Recording"; font-size: 14px; vertical-alignment: center; }
+            Switch { 
+                checked: AppState.monitor_recording;
+                toggled => { AppState.toggle_monitor_recording(); }
+            }
+        }
+        
+        Button {
+            text: "🗑 Clear";
+            clicked => { AppState.clear_logs(); }
+        }
+    }
+    
+    // Stats Bar
+    HorizontalBox {
+        spacing: 16px;
+        height: 60px;
+        
+        StatCard {
+            title: "Total";
+            value: "\{AppState.request_logs.length}";
+            accent_color: Theme.info;
+        }
+        StatCard {
+            title: "Success";
+            value: "\{AppState.stats.success_count}";
+            accent_color: Theme.success;
+        }
+        StatCard {
+            title: "Errors";
+            value: "\{AppState.stats.error_count}";
+            accent_color: Theme.error;
+        }
+    }
+    
+    // Request Log Table
     Rectangle {
         vertical-stretch: 1;
-        border-radius: 8px;
+        border-radius: 12px;
         background: Palette.alternate-background;
         clip: true;
         
-        ListView {
-            for account[idx] in AppState.accounts: AccountRow {
-                account: account;
-                index: idx;
+        VerticalBox {
+            // Header
+            Rectangle {
+                height: 44px;
+                background: Palette.alternate-background.darker(0.1);
+                
+                HorizontalBox {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 16px;
+                    
+                    Text { text: "Time"; font-size: 12px; font-weight: 600; color: Palette.foreground; opacity: 0.7; width: 80px; }
+                    Text { text: "Status"; font-size: 12px; font-weight: 600; color: Palette.foreground; opacity: 0.7; width: 60px; }
+                    Text { text: "Method"; font-size: 12px; font-weight: 600; color: Palette.foreground; opacity: 0.7; width: 50px; }
+                    Text { text: "Path"; font-size: 12px; font-weight: 600; color: Palette.foreground; opacity: 0.7; horizontal-stretch: 1; }
+                    Text { text: "Model"; font-size: 12px; font-weight: 600; color: Palette.foreground; opacity: 0.7; width: 120px; }
+                    Text { text: "Latency"; font-size: 12px; font-weight: 600; color: Palette.foreground; opacity: 0.7; width: 60px; horizontal-alignment: right; }
+                }
+            }
+            
+            // Rows
+            ScrollView {
+                VerticalBox {
+                    for log in AppState.request_logs: RequestLogRow {
+                        log: log;
+                    }
+                }
             }
         }
     }
@@ -319,56 +1531,214 @@ component SettingsPage inherits VerticalBox {
         color: Palette.foreground;
     }
     
+    // Appearance
     GroupBox {
         title: "Appearance";
         
-        HorizontalBox {
+        VerticalBox {
             padding: 16px;
             spacing: 16px;
             
-            Text {
-                text: "Dark Mode";
-                vertical-alignment: center;
-                horizontal-stretch: 1;
+            HorizontalBox {
+                spacing: 16px;
+                
+                Text { text: "Theme"; font-size: 14px; vertical-alignment: center; width: 120px; }
+                FilterTab {
+                    label: "Dark";
+                    selected: AppState.theme == "dark";
+                    clicked => { 
+                        AppState.theme = "dark";
+                        AppState.dark_mode = true;
+                        AppState.toggle_dark_mode();
+                    }
+                }
+                FilterTab {
+                    label: "Light";
+                    selected: AppState.theme == "light";
+                    clicked => { 
+                        AppState.theme = "light";
+                        AppState.dark_mode = false;
+                        AppState.toggle_dark_mode();
+                    }
+                }
+                FilterTab {
+                    label: "System";
+                    selected: AppState.theme == "system";
+                    clicked => { AppState.theme = "system"; }
+                }
             }
-            Switch {
-                checked: AppState.dark_mode;
-                toggled => { 
-                    AppState.dark_mode = self.checked;
-                    AppState.toggle_dark_mode();
+            
+            HorizontalBox {
+                spacing: 16px;
+                
+                Text { text: "Language"; font-size: 14px; vertical-alignment: center; width: 120px; }
+                ComboBox {
+                    model: ["English", "Русский", "中文"];
+                    current-index: AppState.language == "en" ? 0 : 
+                                   AppState.language == "ru" ? 1 : 2;
+                    selected => {
+                        if self.current-index == 0 { AppState.language = "en"; }
+                        else if self.current-index == 1 { AppState.language = "ru"; }
+                        else { AppState.language = "zh"; }
+                    }
                 }
             }
         }
     }
     
+    // Startup
     GroupBox {
-        title: "Proxy Configuration";
+        title: "Startup";
+        
+        VerticalBox {
+            padding: 16px;
+            spacing: 16px;
+            
+            HorizontalBox {
+                spacing: 16px;
+                
+                Text { text: "Launch at Login"; font-size: 14px; vertical-alignment: center; horizontal-stretch: 1; }
+                Switch { checked <=> AppState.auto_launch; }
+            }
+            
+            HorizontalBox {
+                spacing: 16px;
+                
+                Text { text: "Auto-start Proxy"; font-size: 14px; vertical-alignment: center; horizontal-stretch: 1; }
+                Switch { checked <=> AppState.auto_start; }
+            }
+        }
+    }
+    
+    // Data
+    GroupBox {
+        title: "Data";
+        
+        VerticalBox {
+            padding: 16px;
+            spacing: 16px;
+            
+            HorizontalBox {
+                spacing: 16px;
+                
+                Text { text: "Data Directory"; font-size: 14px; vertical-alignment: center; }
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 36px;
+                    border-radius: 8px;
+                    background: Palette.alternate-background;
+                    
+                    Text {
+                        text: AppState.data_dir;
+                        font-size: 12px;
+                        font-family: "monospace";
+                        color: Palette.foreground;
+                        opacity: 0.8;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+                Button {
+                    text: "Open";
+                    clicked => { AppState.open_data_folder(); }
+                }
+            }
+            
+            HorizontalBox {
+                spacing: 16px;
+                
+                Text { text: "Page Size"; font-size: 14px; vertical-alignment: center; width: 120px; }
+                ComboBox {
+                    model: ["10", "20", "50", "100"];
+                    current-index: AppState.page_size == 10 ? 0 :
+                                   AppState.page_size == 20 ? 1 :
+                                   AppState.page_size == 50 ? 2 : 3;
+                    selected => {
+                        if self.current-index == 0 { AppState.page_size = 10; }
+                        else if self.current-index == 1 { AppState.page_size = 20; }
+                        else if self.current-index == 2 { AppState.page_size = 50; }
+                        else { AppState.page_size = 100; }
+                    }
+                }
+            }
+        }
+    }
+    
+    // About
+    GroupBox {
+        title: "About";
         
         VerticalBox {
             padding: 16px;
             spacing: 12px;
             
             HorizontalBox {
-                spacing: 8px;
-                Text { text: "Listen Port:"; width: 120px; vertical-alignment: center; }
-                LineEdit { text: "8045"; horizontal-stretch: 1; }
+                spacing: 16px;
+                
+                Rectangle {
+                    width: 64px;
+                    height: 64px;
+                    border-radius: 16px;
+                    background: Theme.accent;
+                    
+                    Text {
+                        text: "🚀";
+                        font-size: 32px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                
+                VerticalBox {
+                    spacing: 4px;
+                    
+                    Text {
+                        text: "Antigravity Tools";
+                        font-size: 18px;
+                        font-weight: 700;
+                        color: Palette.foreground;
+                    }
+                    Text {
+                        text: "Version 4.0.0 (Slint Native)";
+                        font-size: 13px;
+                        color: Palette.foreground;
+                        opacity: 0.7;
+                    }
+                    Text {
+                        text: "CC-BY-NC-SA-4.0";
+                        font-size: 11px;
+                        color: Palette.foreground;
+                        opacity: 0.5;
+                    }
+                }
             }
-            
-            HorizontalBox {
-                spacing: 8px;
-                Text { text: "Admin Port:"; width: 120px; vertical-alignment: center; }
-                LineEdit { text: "9101"; horizontal-stretch: 1; }
-            }
+        }
+    }
+    
+    // Save Button
+    HorizontalBox {
+        Rectangle { horizontal-stretch: 1; }
+        Button {
+            text: "Save Settings";
+            primary: true;
+            clicked => { AppState.save_app_config(); }
         }
     }
     
     Rectangle { vertical-stretch: 1; }
 }
 
+// ========================================
+// MAIN WINDOW
+// ========================================
+
 export component MainWindow inherits Window {
     title: "Antigravity Tools";
-    width: 1024px;
-    height: 700px;
+    preferred-width: 1200px;
+    preferred-height: 800px;
+    min-width: 900px;
+    min-height: 600px;
     background: Palette.background;
     
     init => {
@@ -383,7 +1753,44 @@ export component MainWindow inherits Window {
             
             if AppState.current_page == 0: DashboardPage {}
             if AppState.current_page == 1: AccountsPage {}
-            if AppState.current_page == 2: SettingsPage {}
+            if AppState.current_page == 2: ApiProxyPage {}
+            if AppState.current_page == 3: MonitorPage {}
+            if AppState.current_page == 4: SettingsPage {}
+        }
+    }
+    
+    // Add Account Dialog Overlay
+    if AppState.show_add_account_dialog: Rectangle {
+        background: black.with-alpha(0.5);
+        
+        TouchArea {
+            clicked => { AppState.show_add_account_dialog = false; }
+        }
+        
+        AddAccountDialog {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+        }
+    }
+    
+    // Status Toast
+    if AppState.status_message != "": Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - 100px;
+        width: 400px;
+        height: 48px;
+        border-radius: 24px;
+        background: AppState.status_type == "success" ? Theme.success :
+                    AppState.status_type == "error" ? Theme.error :
+                    AppState.status_type == "warning" ? Theme.warning : Theme.info;
+        
+        Text {
+            text: AppState.status_message;
+            font-size: 14px;
+            font-weight: 500;
+            color: white;
+            horizontal-alignment: center;
+            vertical-alignment: center;
         }
     }
 }

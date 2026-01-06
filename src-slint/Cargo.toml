@@ -28,6 +28,10 @@ dirs = "5"
 anyhow = "1"
 thiserror = "2"
 
+rand = "0.8"
+axum = "0.8"
+arboard = "3"
+
 antigravity_tools_lib = { path = "../src-tauri", package = "antigravity_tools", default-features = false }
 
 [build-dependencies]
