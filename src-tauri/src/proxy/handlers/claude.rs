@@ -20,7 +20,7 @@ use crate::proxy::server::AppState;
 use crate::proxy::handlers::common::WithResolvedModel;
 use crate::proxy::error::ProxyError;
 use crate::proxy::middleware::request_id::RequestId;
-use crate::proxy::common::perf::{time_request_transform, time_response_transform, time_upstream_call, time_token_acquire};
+use crate::proxy::common::perf::{time_request_transform, time_response_transform, time_upstream_call};
 use axum::http::HeaderMap;
 use std::sync::atomic::Ordering;
 
@@ -659,6 +659,8 @@ pub async fn handle_messages(
         // 生成 Trace ID (简单用时间戳后缀)
         // let _trace_id = format!("req_{}", chrono::Utc::now().timestamp_subsec_millis());
 
+        // [PERF] Time request transformation
+        let _transform_timer = time_request_transform("claude", &resolved_model_for_log);
         let gemini_body = match transform_claude_request_in(&request_with_mapped, &project_id) {
             Ok(b) => {
                 debug!("[{}] Transformed Gemini Body: {}", trace_id, serde_json::to_string_pretty(&b).unwrap_or_default());
@@ -669,12 +671,15 @@ pub async fn handle_messages(
                     .into_response();
             }
         };
-        
+        // transform_timer is dropped here, recording the duration
+
     // 4. 上游调用
     let is_stream = request.stream;
     let method = if is_stream { "streamGenerateContent" } else { "generateContent" };
     let query = if is_stream { Some("alt=sse") } else { None };
 
+    // [PERF] Time upstream API call
+    let _upstream_timer = time_upstream_call("claude", &resolved_model_for_log);
     let response = match upstream.call_v1_internal(
         method,
         &access_token,
@@ -688,7 +693,7 @@ pub async fn handle_messages(
                 continue;
             }
         };
-        
+
         let status = response.status();
 
         // 成功
@@ -710,14 +715,7 @@ pub async fn handle_messages(
                     }
                 });
 
-                return Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::CONTENT_TYPE, "text/event-stream")
-                    .header(header::CACHE_CONTROL, "no-cache")
-                    .header(header::CONNECTION, "keep-alive")
-                    .header(crate::proxy::middleware::monitor::X_RESOLVED_MODEL_HEADER, resolved_model_for_log.as_str())
-                    .body(Body::from_stream(sse_stream))
-                    .expect("Failed to build SSE response - this indicates a bug in header construction");
+                return build_sse_response(Body::from_stream(sse_stream), resolved_model_for_log.as_str());
             }
             // 处理非流式响应
             let bytes = match response.bytes().await {
@@ -744,11 +742,13 @@ pub async fn handle_messages(
                 Err(e) => return ProxyError::parse_error(format!("Convert error: {e}")).with_request_id(request_id.clone()).into_response(),
             };
 
-            // 转换
+            // [PERF] Time response transformation
+            let _response_timer = time_response_transform("claude", &resolved_model_for_log);
             let claude_response = match transform_response(&gemini_response) {
                 Ok(r) => r,
                 Err(e) => return ProxyError::TransformError(format!("Transform error: {e}"), Some(request_id.clone())).into_response(),
             };
+            // response_timer is dropped here, recording the duration
 
             // [Optimization] 记录闭环日志：消耗情况
             let cache_info = if let Some(cached) = claude_response.usage.cache_read_input_tokens {

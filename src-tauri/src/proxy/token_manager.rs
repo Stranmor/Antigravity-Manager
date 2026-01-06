@@ -203,8 +203,8 @@ impl TokenManager {
         });
 
         // 0. 读取当前调度配置
-        let scheduling = self.sticky_config.read().await.clone();
         use crate::proxy::sticky_config::SchedulingMode;
+        let scheduling = self.sticky_config.read().await.clone();
 
         let mut attempted: HashSet<String> = HashSet::new();
         let mut last_error: Option<String> = None;
@@ -315,13 +315,13 @@ impl TokenManager {
                 }
             }
             
-            let mut token = if let Some(t) = target_token { t } else {
+            let Some(mut token) = target_token else {
                 // 如果所有账号都被尝试过或都处于限流中，计算最短等待时间
                 let min_wait = tokens_snapshot.iter()
                     .filter_map(|t| self.rate_limit_tracker.get_reset_seconds(&t.account_id))
                     .min()
                     .unwrap_or(60);
-                
+
                 return Err(format!("All accounts are currently limited or unhealthy. Please wait {min_wait}s."));
             };
 
@@ -337,13 +337,13 @@ impl TokenManager {
                         tracing::debug!("Token 刷新成功！");
 
                         // 更新本地内存对象供后续使用
-                        token.access_token = token_response.access_token.clone();
+                        token.access_token.clone_from(&token_response.access_token);
                         token.expires_in = token_response.expires_in;
                         token.timestamp = now + token_response.expires_in;
 
                         // 同步更新跨线程共享的 DashMap
                         if let Some(mut entry) = self.tokens.get_mut(&token.account_id) {
-                            entry.access_token = token.access_token.clone();
+                            entry.access_token.clone_from(&token.access_token);
                             entry.expires_in = token.expires_in;
                             entry.timestamp = token.timestamp;
                         }
@@ -494,6 +494,10 @@ impl TokenManager {
     
     pub fn len(&self) -> usize {
         self.tokens.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tokens.is_empty()
     }
 
     /// 获取可用账号数量 (不含限流中的账号)

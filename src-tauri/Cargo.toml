@@ -82,6 +82,7 @@ sha2 = "0.10"
 lru = "0.12"
 parking_lot = "0.12"
 tower_governor = "0.8.0"
+clap = { version = "4", features = ["derive"] }
 
 # Prometheus metrics (SOTA 2025/2026)
 metrics = "0.24"
@@ -116,6 +117,12 @@ unreadable_literal = "allow"
 name = "antigravity-server"
 path = "src/bin/server.rs"
 required-features = []
+
+# CLI tool for account import/export (TODO: implement src/bin/import.rs)
+# [[bin]]
+# name = "antigravity-import"
+# path = "src/bin/import.rs"
+# required-features = []
 
 # Release profile: optimize for size while maintaining performance
 [profile.release]

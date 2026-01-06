@@ -57,15 +57,15 @@ impl AxumServer {
     pub async fn update_mapping(&self, config: &crate::proxy::config::ProxyConfig) {
         {
             let mut m = self.anthropic_mapping.write().await;
-            *m = config.anthropic_mapping.clone();
+            (*m).clone_from(&config.anthropic_mapping);
         }
         {
             let mut m = self.openai_mapping.write().await;
-            *m = config.openai_mapping.clone();
+            (*m).clone_from(&config.openai_mapping);
         }
         {
             let mut m = self.custom_mapping.write().await;
-            *m = config.custom_mapping.clone();
+            (*m).clone_from(&config.custom_mapping);
         }
         tracing::debug!("模型映射 (Anthropic/OpenAI/Custom) 已全量热更新");
     }

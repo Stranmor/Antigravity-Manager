@@ -13,6 +13,7 @@ use crate::proxy::server::AppState;
 use crate::proxy::handlers::common::WithResolvedModel;
 use crate::proxy::error::ProxyError;
 use crate::proxy::middleware::request_id::RequestId;
+use crate::proxy::common::perf::{time_request_transform, time_response_transform, time_upstream_call};
 
 const MAX_RETRY_ATTEMPTS: usize = 3;
 
@@ -151,8 +152,10 @@ pub async fn handle_chat_completions(
 
         info!("✓ Using account: {} (type: {})", email, config.request_type);
 
-        // 4. 转换请求
+        // [PERF] Time request transformation
+        let _transform_timer = time_request_transform("openai", &mapped_model);
         let gemini_body = transform_openai_request(&openai_req, &project_id, &mapped_model);
+        // transform_timer is dropped here, recording the duration
 
         // [New] 打印转换后的报文 (Gemini Body) 供调试
         if let Ok(body_json) = serde_json::to_string_pretty(&gemini_body) {
@@ -168,6 +171,8 @@ pub async fn handle_chat_completions(
         };
         let query_string = if list_response { Some("alt=sse") } else { None };
 
+        // [PERF] Time upstream API call
+        let _upstream_timer = time_upstream_call("openai", &mapped_model);
         let response = match upstream
             .call_v1_internal(method, &access_token, gemini_body, query_string)
             .await
@@ -210,7 +215,10 @@ pub async fn handle_chat_completions(
                     .into_response(),
             };
 
+            // [PERF] Time response transformation
+            let _response_timer = time_response_transform("openai", &mapped_model);
             let openai_response = transform_openai_response(&gemini_resp);
+            // response_timer is dropped here, recording the duration
             return Json(openai_response).with_resolved_model(&mapped_model);
         }
 

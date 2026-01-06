@@ -1,150 +1,175 @@
-use sha2::{Sha256, Digest};
 use crate::proxy::mappers::claude::models::{ClaudeRequest, MessageContent};
-use crate::proxy::mappers::openai::models::{OpenAIRequest, OpenAIContent};
+use crate::proxy::mappers::openai::models::{OpenAIContent, OpenAIRequest};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
-/// 会话管理器工具
 pub struct SessionManager;
 
 impl SessionManager {
-    /// 根据 Claude 请求生成稳定的会话指纹 (Session Fingerprint)
+    /// Extract session ID with priority:
+    /// 1. metadata.user_id (if valid format from SDK/CLI)
+    /// 2. X-Session-Id header (if provided by client)  
+    /// 3. Content-based fingerprint (fallback)
     pub fn extract_session_id(request: &ClaudeRequest) -> String {
-        // 1. 优先使用 metadata 中的 user_id
-        if let Some(metadata) = &request.metadata {
-            if let Some(user_id) = &metadata.user_id {
-                if !user_id.is_empty() && !user_id.contains("session-") {
-                    return user_id.clone();
-                }
-            }
+        if let Some(id) = Self::extract_from_metadata(&request.metadata) {
+            return id;
         }
 
-        // 2. 备选方案：智能内容指纹 (SHA256)
-        // 策略：提取第一条核心用户消息，移除空白和系统干扰项
+        Self::generate_content_fingerprint(request)
+    }
+
+    fn extract_from_metadata(
+        metadata: &Option<crate::proxy::mappers::claude::models::Metadata>,
+    ) -> Option<String> {
+        let metadata = metadata.as_ref()?;
+        let user_id = metadata.user_id.as_ref()?;
+
+        if user_id.is_empty() {
+            return None;
+        }
+
+        // SDK format: "user_{hash}_account_{uuid}_session_{uuid}"
+        // This is unique per client session - use it directly
+        if user_id.contains("_session_") || user_id.contains("_account_") {
+            return Some(user_id.clone());
+        }
+
+        // Legacy format "session-{uuid}" - skip, use content fingerprint instead
+        if user_id.starts_with("session-") {
+            return None;
+        }
+
+        // Any other non-empty user_id - trust it
+        Some(user_id.clone())
+    }
+
+    fn generate_content_fingerprint(request: &ClaudeRequest) -> String {
         let mut hasher = Sha256::new();
-        
-        // 混入模型名称增加区分度
+
         hasher.update(request.model.as_bytes());
 
-        let mut content_found = false;
-        for msg in &request.messages {
-            if msg.role != "user" { continue; }
-            
-            let text = match &msg.content {
-                MessageContent::String(s) => s.clone(),
-                MessageContent::Array(blocks) => {
-                    blocks.iter()
-                        .filter_map(|block| match block {
-                            crate::proxy::mappers::claude::models::ContentBlock::Text { text } => Some(text.as_str()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                }
-            };
-
-            let clean_text = text.trim();
-            // 跳过过短的消息 (可能是 CLI 的探测消息) 或含有系统标签的消息
-            if clean_text.len() > 10 && !clean_text.contains("<system-reminder>") {
-                hasher.update(clean_text.as_bytes());
-                content_found = true;
-                break; // 只取第一条关键消息作为锚点
-            }
-        }
-
-        if !content_found {
-            // 如果没找到有意义的内容，退化为对最后一条消息进行哈希
-            if let Some(last_msg) = request.messages.last() {
-                hasher.update(format!("{:?}", last_msg.content).as_bytes());
-            }
+        let anchor_text = Self::find_anchor_message(&request.messages);
+        if let Some(text) = anchor_text {
+            hasher.update(text.as_bytes());
+        } else if let Some(last_msg) = request.messages.last() {
+            hasher.update(format!("{:?}", last_msg.content).as_bytes());
         }
 
         let hash = format!("{:x}", hasher.finalize());
-        let sid = format!("sid-{}", &hash[..16]);
-        
-        tracing::debug!("[SessionManager] Generated fingerprint: {} for model {}", sid, request.model);
-        sid
+        format!("fp-{}", &hash[..16])
     }
 
-    /// 根据 OpenAI 请求生成稳定的会话指纹
+    fn find_anchor_message(
+        messages: &[crate::proxy::mappers::claude::models::Message],
+    ) -> Option<String> {
+        for msg in messages {
+            if msg.role != "user" {
+                continue;
+            }
+
+            let text = match &msg.content {
+                MessageContent::String(s) => s.clone(),
+                MessageContent::Array(blocks) => blocks
+                    .iter()
+                    .filter_map(|block| match block {
+                        crate::proxy::mappers::claude::models::ContentBlock::Text { text } => {
+                            Some(text.as_str())
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            };
+
+            let clean = text.trim();
+            if clean.len() > 10 && !clean.contains("<system-reminder>") {
+                return Some(clean.to_string());
+            }
+        }
+        None
+    }
+
     pub fn extract_openai_session_id(request: &OpenAIRequest) -> String {
         let mut hasher = Sha256::new();
         hasher.update(request.model.as_bytes());
 
-        let mut content_found = false;
-        for msg in &request.messages {
-            if msg.role != "user" { continue; }
-            if let Some(content) = &msg.content {
-                let text = match content {
-                    OpenAIContent::String(s) => s.clone(),
-                    OpenAIContent::Array(blocks) => {
-                        blocks.iter()
-                            .filter_map(|block| match block {
-                                crate::proxy::mappers::openai::models::OpenAIContentBlock::Text { text } => Some(text.as_str()),
-                                _ => None,
-                            })
-                            .collect::<Vec<_>>()
-                            .join(" ")
-                    }
-                };
-
-                let clean_text = text.trim();
-                if clean_text.len() > 10 && !clean_text.contains("<system-reminder>") {
-                    hasher.update(clean_text.as_bytes());
-                    content_found = true;
-                    break;
-                }
-            }
-        }
-
-        if !content_found {
-            if let Some(last_msg) = request.messages.last() {
-                hasher.update(format!("{:?}", last_msg.content).as_bytes());
-            }
+        let anchor = Self::find_openai_anchor(&request.messages);
+        if let Some(text) = anchor {
+            hasher.update(text.as_bytes());
+        } else if let Some(last_msg) = request.messages.last() {
+            hasher.update(format!("{:?}", last_msg.content).as_bytes());
         }
 
         let hash = format!("{:x}", hasher.finalize());
-        let sid = format!("sid-{}", &hash[..16]);
-        tracing::debug!("[SessionManager-OpenAI] Generated fingerprint: {}", sid);
-        sid
+        format!("fp-{}", &hash[..16])
     }
 
-    /// 根据 Gemini 原生请求 (JSON) 生成稳定的会话指纹
+    fn find_openai_anchor(
+        messages: &[crate::proxy::mappers::openai::models::OpenAIMessage],
+    ) -> Option<String> {
+        for msg in messages {
+            if msg.role != "user" {
+                continue;
+            }
+            if let Some(content) = &msg.content {
+                let text = match content {
+                    OpenAIContent::String(s) => s.clone(),
+                    OpenAIContent::Array(blocks) => blocks
+                        .iter()
+                        .filter_map(|block| match block {
+                            crate::proxy::mappers::openai::models::OpenAIContentBlock::Text {
+                                text,
+                            } => Some(text.as_str()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                };
+
+                let clean = text.trim();
+                if clean.len() > 10 && !clean.contains("<system-reminder>") {
+                    return Some(clean.to_string());
+                }
+            }
+        }
+        None
+    }
+
     pub fn extract_gemini_session_id(request: &Value, model_name: &str) -> String {
         let mut hasher = Sha256::new();
         hasher.update(model_name.as_bytes());
 
-        let mut content_found = false;
-        if let Some(contents) = request.get("contents").and_then(|v| v.as_array()) {
-            for content in contents {
-                if content.get("role").and_then(|v| v.as_str()) != Some("user") { continue; }
-                
-                if let Some(parts) = content.get("parts").and_then(|v| v.as_array()) {
-                    let mut text_parts = Vec::new();
-                    for part in parts {
-                        if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
-                            text_parts.push(text);
-                        }
-                    }
-                    
-                    let combined_text = text_parts.join(" ");
-                    let clean_text = combined_text.trim();
-                    if clean_text.len() > 10 && !clean_text.contains("<system-reminder>") {
-                        hasher.update(clean_text.as_bytes());
-                        content_found = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if !content_found {
-             // 兜底：对整个 Body 的首个 user part 进行摘要
-             hasher.update(request.to_string().as_bytes());
+        let anchor = Self::find_gemini_anchor(request);
+        if let Some(text) = anchor {
+            hasher.update(text.as_bytes());
+        } else {
+            hasher.update(request.to_string().as_bytes());
         }
 
         let hash = format!("{:x}", hasher.finalize());
-        let sid = format!("sid-{}", &hash[..16]);
-        tracing::debug!("[SessionManager-Gemini] Generated fingerprint: {}", sid);
-        sid
+        format!("fp-{}", &hash[..16])
+    }
+
+    fn find_gemini_anchor(request: &Value) -> Option<String> {
+        let contents = request.get("contents")?.as_array()?;
+
+        for content in contents {
+            if content.get("role").and_then(|v| v.as_str()) != Some("user") {
+                continue;
+            }
+
+            let parts = content.get("parts")?.as_array()?;
+            let text: String = parts
+                .iter()
+                .filter_map(|p| p.get("text").and_then(|v| v.as_str()))
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            let clean = text.trim();
+            if clean.len() > 10 && !clean.contains("<system-reminder>") {
+                return Some(clean.to_string());
+            }
+        }
+        None
     }
 }
