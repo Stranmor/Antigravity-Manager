@@ -1033,7 +1033,8 @@ fn check_database_health(data_dir: &std::path::Path) -> ComponentHealth {
     match rusqlite::Connection::open(&db_path) {
         Ok(conn) => {
             // Simple query to test database responsiveness
-            let query_result = conn.execute("SELECT 1", []);
+            // Use query_row instead of execute for SELECT statements
+            let query_result: Result<i32, _> = conn.query_row("SELECT 1", [], |row| row.get(0));
             let latency_ms = start.elapsed().as_millis() as u64;
 
             // Get database file size
