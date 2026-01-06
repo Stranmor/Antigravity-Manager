@@ -83,6 +83,10 @@ lru = "0.12"
 parking_lot = "0.12"
 tower_governor = "0.8.0"
 
+# Prometheus metrics (SOTA 2025/2026)
+metrics = "0.24"
+metrics-exporter-prometheus = "0.18"
+
 # Lints configuration (Rust 1.74+)
 [lints.rust]
 unsafe_code = "warn"

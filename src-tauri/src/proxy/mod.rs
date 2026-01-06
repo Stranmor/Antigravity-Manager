@@ -18,6 +18,7 @@ pub mod providers;         // Extra upstream providers (z.ai, etc.)
 pub mod zai_vision_mcp;    // Built-in Vision MCP server state
 pub mod zai_vision_tools;  // Built-in Vision MCP tools (z.ai vision API)
 pub mod monitor;           // 监控
+pub mod prometheus;        // Prometheus metrics for observability
 pub mod rate_limit;        // 限流跟踪
 pub mod sticky_config;     // 粘性调度配置
 pub mod session_manager;   // 会话指纹管理

@@ -34,8 +34,8 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 // Re-use the existing proxy module from the library
 use antigravity_tools_lib::models::{Account, TokenData};
 use antigravity_tools_lib::proxy::{
-    config::ProxyConfig, monitor::ProxyMonitor, server::AxumServer, ProxySecurityConfig,
-    TokenManager,
+    config::ProxyConfig, monitor::ProxyMonitor, prometheus, server::AxumServer,
+    ProxySecurityConfig, TokenManager,
 };
 
 /// Server start time for uptime calculation
@@ -573,6 +573,31 @@ async fn get_stats_handler(State(state): State<Arc<AdminState>>) -> impl IntoRes
     Json(stats)
 }
 
+/// GET /metrics - Prometheus metrics endpoint (public, no auth required)
+///
+/// Returns Prometheus-compatible metrics in text format for observability.
+/// Metrics include:
+/// - antigravity_requests_total{provider,model,status} - Counter of requests
+/// - antigravity_request_duration_seconds - Histogram of latencies
+/// - antigravity_accounts_total - Gauge of total accounts
+/// - antigravity_accounts_available - Gauge of available accounts
+/// - antigravity_uptime_seconds - Gauge of server uptime
+async fn metrics_handler(State(state): State<Arc<AdminState>>) -> impl IntoResponse {
+    // Update account gauges before rendering
+    let total = state.token_manager.len();
+    let available = state.token_manager.available_count();
+    prometheus::update_account_gauges(total, available);
+
+    // Render metrics in Prometheus text format
+    let metrics_text = prometheus::render_metrics();
+
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+        metrics_text,
+    )
+}
+
 // ============================================================================
 // Main Entry Point
 // ============================================================================
@@ -583,6 +608,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = SERVER_START_TIME.get_or_init(Instant::now);
 
     init_logging();
+
+    // Initialize Prometheus metrics recorder (must be called before any metrics are recorded)
+    let _ = prometheus::init_metrics();
+    info!("Prometheus metrics initialized");
 
     info!(
         "Antigravity Server v{} starting...",
@@ -722,7 +751,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
 
     // Build public routes (no auth required - for monitoring)
-    let public_routes = Router::new().route("/api/health", get(health_handler));
+    let public_routes = Router::new()
+        .route("/api/health", get(health_handler))
+        .route("/metrics", get(metrics_handler));
 
     // Combine routers with rate limiting
     let admin_app = Router::new()
@@ -760,6 +791,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("");
     info!("Admin API endpoints:");
     info!("  GET    /api/health          - Health check with stats (public)");
+    info!("  GET    /metrics             - Prometheus metrics (public)");
     info!("  GET    /api/accounts        - List all accounts (auth required)");
     info!("  POST   /api/accounts        - Add account (auth required)");
     info!("  DELETE /api/accounts/{{id}}   - Delete account (auth required)");

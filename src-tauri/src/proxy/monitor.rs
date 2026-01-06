@@ -5,6 +5,8 @@ use tokio::sync::RwLock;
 use tauri::Emitter;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use super::prometheus;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProxyRequestLog {
     pub id: String,
@@ -80,6 +82,9 @@ impl ProxyMonitor {
     }
 
     pub async fn log_request(&self, log: ProxyRequestLog) {
+        // Always record Prometheus metrics (regardless of logging enabled)
+        self.record_prometheus_metrics(&log);
+
         if !self.is_enabled() {
             return;
         }
@@ -119,6 +124,17 @@ impl ProxyMonitor {
         }
     }
 
+    /// Record Prometheus metrics for a request
+    fn record_prometheus_metrics(&self, log: &ProxyRequestLog) {
+        let provider = prometheus::detect_provider_from_url(&log.url);
+        let model = log.resolved_model.as_deref()
+            .or(log.model.as_deref())
+            .unwrap_or("unknown");
+        let status = prometheus::status_category(log.status);
+
+        prometheus::record_request(provider, model, status, log.duration);
+    }
+
     pub async fn get_logs(&self, limit: usize) -> Vec<ProxyRequestLog> {
         // Try to get from DB first for true history
         match crate::modules::proxy_db::get_logs(limit) {
@@ -141,7 +157,7 @@ impl ProxyMonitor {
             }
         }
     }
-    
+
     pub async fn clear(&self) {
         let mut logs = self.logs.write().await;
         logs.clear();
