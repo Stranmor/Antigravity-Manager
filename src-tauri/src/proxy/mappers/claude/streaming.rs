@@ -728,6 +728,10 @@ impl<'a> PartProcessor<'a> {
 mod tests {
     use super::*;
 
+    // ============================================================
+    // SignatureManager Tests
+    // ============================================================
+
     #[test]
     fn test_signature_manager() {
         let mut mgr = SignatureManager::new();
@@ -742,6 +746,33 @@ mod tests {
     }
 
     #[test]
+    fn test_signature_manager_none_store() {
+        let mut mgr = SignatureManager::new();
+        mgr.store(None);
+        assert!(!mgr.has_pending());
+    }
+
+    #[test]
+    fn test_signature_manager_overwrite() {
+        let mut mgr = SignatureManager::new();
+        mgr.store(Some("first".to_string()));
+        mgr.store(Some("second".to_string()));
+        assert_eq!(mgr.consume(), Some("second".to_string()));
+    }
+
+    #[test]
+    fn test_signature_manager_consume_twice() {
+        let mut mgr = SignatureManager::new();
+        mgr.store(Some("sig".to_string()));
+        assert_eq!(mgr.consume(), Some("sig".to_string()));
+        assert_eq!(mgr.consume(), None);
+    }
+
+    // ============================================================
+    // StreamingState Basic Tests
+    // ============================================================
+
+    #[test]
     fn test_streaming_state_emit() {
         let state = StreamingState::new();
         let chunk = state.emit("test_event", json!({"foo": "bar"}));
@@ -750,6 +781,241 @@ mod tests {
         assert!(s.contains("event: test_event"));
         assert!(s.contains("\"foo\":\"bar\""));
     }
+
+    #[test]
+    fn test_streaming_state_initial_values() {
+        let state = StreamingState::new();
+        assert_eq!(state.current_block_type(), BlockType::None);
+        assert_eq!(state.current_block_index(), 0);
+        assert!(!state.message_start_sent);
+        assert!(!state.message_stop_sent);
+        assert!(!state.has_trailing_signature());
+    }
+
+    #[test]
+    fn test_streaming_state_emit_format() {
+        let state = StreamingState::new();
+        let chunk = state.emit("custom_event", json!({"key": "value", "num": 42}));
+        let s = String::from_utf8(chunk.to_vec()).unwrap();
+
+        // SSE format: event: <name>\ndata: <json>\n\n
+        assert!(s.starts_with("event: custom_event\n"));
+        assert!(s.contains("data: "));
+        assert!(s.ends_with("\n\n"));
+    }
+
+    #[test]
+    fn test_streaming_state_emit_empty_json() {
+        let state = StreamingState::new();
+        let chunk = state.emit("empty", json!({}));
+        let s = String::from_utf8(chunk.to_vec()).unwrap();
+        assert!(s.contains("data: {}"));
+    }
+
+    // ============================================================
+    // Block Lifecycle Tests
+    // ============================================================
+
+    #[test]
+    fn test_start_block_text() {
+        let mut state = StreamingState::new();
+        let chunks = state.start_block(BlockType::Text, json!({"type": "text", "text": ""}));
+
+        assert_eq!(state.current_block_type(), BlockType::Text);
+        assert!(!chunks.is_empty());
+
+        let output = chunks_to_string(&chunks);
+        assert!(output.contains("content_block_start"));
+        assert!(output.contains("\"index\":0"));
+    }
+
+    #[test]
+    fn test_start_block_thinking() {
+        let mut state = StreamingState::new();
+        let chunks = state.start_block(BlockType::Thinking, json!({"type": "thinking", "thinking": ""}));
+
+        assert_eq!(state.current_block_type(), BlockType::Thinking);
+
+        let output = chunks_to_string(&chunks);
+        assert!(output.contains("content_block_start"));
+    }
+
+    #[test]
+    fn test_end_block_increments_index() {
+        let mut state = StreamingState::new();
+        state.start_block(BlockType::Text, json!({"type": "text"}));
+        assert_eq!(state.current_block_index(), 0);
+
+        state.end_block();
+        assert_eq!(state.current_block_index(), 1);
+        assert_eq!(state.current_block_type(), BlockType::None);
+    }
+
+    #[test]
+    fn test_end_block_on_none_is_noop() {
+        let mut state = StreamingState::new();
+        let chunks = state.end_block();
+        assert!(chunks.is_empty());
+        assert_eq!(state.current_block_index(), 0);
+    }
+
+    #[test]
+    fn test_start_block_auto_closes_previous() {
+        let mut state = StreamingState::new();
+        state.start_block(BlockType::Text, json!({"type": "text"}));
+
+        // Starting a new block should close the previous one
+        let chunks = state.start_block(BlockType::Thinking, json!({"type": "thinking"}));
+
+        let output = chunks_to_string(&chunks);
+        // Should contain both block_stop (for text) and block_start (for thinking)
+        assert!(output.contains("content_block_stop"));
+        assert!(output.contains("content_block_start"));
+        assert_eq!(state.current_block_index(), 1);
+    }
+
+    // ============================================================
+    // Delta Emission Tests
+    // ============================================================
+
+    #[test]
+    fn test_emit_delta_text() {
+        let mut state = StreamingState::new();
+        state.start_block(BlockType::Text, json!({"type": "text"}));
+
+        let chunk = state.emit_delta("text_delta", json!({"text": "Hello, world!"}));
+        let s = String::from_utf8(chunk.to_vec()).unwrap();
+
+        assert!(s.contains("content_block_delta"));
+        assert!(s.contains("text_delta"));
+        assert!(s.contains("Hello, world!"));
+    }
+
+    #[test]
+    fn test_emit_delta_thinking() {
+        let mut state = StreamingState::new();
+        state.start_block(BlockType::Thinking, json!({"type": "thinking"}));
+
+        let chunk = state.emit_delta("thinking_delta", json!({"thinking": "Let me think..."}));
+        let s = String::from_utf8(chunk.to_vec()).unwrap();
+
+        assert!(s.contains("thinking_delta"));
+        assert!(s.contains("Let me think..."));
+    }
+
+    #[test]
+    fn test_emit_delta_signature() {
+        let state = StreamingState::new();
+        let chunk = state.emit_delta("signature_delta", json!({"signature": "abc123"}));
+        let s = String::from_utf8(chunk.to_vec()).unwrap();
+
+        assert!(s.contains("signature_delta"));
+        assert!(s.contains("abc123"));
+    }
+
+    // ============================================================
+    // Message Start/Stop Tests
+    // ============================================================
+
+    #[test]
+    fn test_emit_message_start() {
+        let mut state = StreamingState::new();
+        let raw = json!({
+            "responseId": "msg_12345",
+            "modelVersion": "gemini-2.5-pro",
+            "usageMetadata": {
+                "promptTokenCount": 100,
+                "candidatesTokenCount": 50
+            }
+        });
+
+        let chunk = state.emit_message_start(&raw);
+        let s = String::from_utf8(chunk.to_vec()).unwrap();
+
+        assert!(s.contains("message_start"));
+        assert!(s.contains("msg_12345"));
+        assert!(state.message_start_sent);
+    }
+
+    #[test]
+    fn test_emit_message_start_only_once() {
+        let mut state = StreamingState::new();
+        let raw = json!({"responseId": "msg_1"});
+
+        let chunk1 = state.emit_message_start(&raw);
+        assert!(!chunk1.is_empty());
+
+        let chunk2 = state.emit_message_start(&raw);
+        assert!(chunk2.is_empty());
+    }
+
+    #[test]
+    fn test_emit_finish_basic() {
+        let mut state = StreamingState::new();
+        state.message_start_sent = true;
+
+        let chunks = state.emit_finish(Some("STOP"), None);
+        let output = chunks_to_string(&chunks);
+
+        assert!(output.contains("message_delta"));
+        assert!(output.contains("end_turn"));
+        assert!(output.contains("message_stop"));
+        assert!(state.message_stop_sent);
+    }
+
+    #[test]
+    fn test_emit_finish_with_tool_use() {
+        let mut state = StreamingState::new();
+        state.message_start_sent = true;
+        state.mark_tool_used();
+
+        let chunks = state.emit_finish(Some("STOP"), None);
+        let output = chunks_to_string(&chunks);
+
+        assert!(output.contains("tool_use"));
+    }
+
+    #[test]
+    fn test_emit_finish_max_tokens() {
+        let mut state = StreamingState::new();
+        state.message_start_sent = true;
+
+        let chunks = state.emit_finish(Some("MAX_TOKENS"), None);
+        let output = chunks_to_string(&chunks);
+
+        assert!(output.contains("max_tokens"));
+    }
+
+    // ============================================================
+    // Trailing Signature Tests
+    // ============================================================
+
+    #[test]
+    fn test_trailing_signature_storage() {
+        let mut state = StreamingState::new();
+        assert!(!state.has_trailing_signature());
+
+        state.set_trailing_signature(Some("trailing_sig".to_string()));
+        assert!(state.has_trailing_signature());
+    }
+
+    #[test]
+    fn test_trailing_signature_emitted_on_finish() {
+        let mut state = StreamingState::new();
+        state.message_start_sent = true;
+        state.set_trailing_signature(Some("final_signature".to_string()));
+
+        let chunks = state.emit_finish(None, None);
+        let output = chunks_to_string(&chunks);
+
+        // Trailing signature should create an empty thinking block with the signature
+        assert!(output.contains("final_signature"));
+        assert!(output.contains("signature_delta"));
+    }
+
+    // ============================================================
+    // Function Call Processing Tests
+    // ============================================================
 
     #[test]
     fn test_process_function_call_deltas() {
@@ -793,5 +1059,429 @@ mod tests {
 
         // 3. content_block_stop
         assert!(output.contains(r#""type":"content_block_stop""#));
+    }
+
+    #[test]
+    fn test_process_function_call_no_args() {
+        let mut state = StreamingState::new();
+        let mut processor = PartProcessor::new(&mut state);
+
+        let fc = FunctionCall {
+            name: "simple_tool".to_string(),
+            args: None,
+            id: Some("call_456".to_string()),
+        };
+
+        let part = GeminiPart {
+            text: None,
+            function_call: Some(fc),
+            inline_data: None,
+            thought: None,
+            thought_signature: None,
+            function_response: None,
+        };
+
+        let chunks = processor.process(&part);
+        let output = chunks_to_string(&chunks);
+
+        assert!(output.contains("simple_tool"));
+        assert!(output.contains("content_block_start"));
+        assert!(output.contains("content_block_stop"));
+    }
+
+    #[test]
+    fn test_process_function_call_with_signature() {
+        let mut state = StreamingState::new();
+        let mut processor = PartProcessor::new(&mut state);
+
+        let fc = FunctionCall {
+            name: "signed_tool".to_string(),
+            args: Some(json!({})),
+            id: Some("call_789".to_string()),
+        };
+
+        let part = GeminiPart {
+            text: None,
+            function_call: Some(fc),
+            inline_data: None,
+            thought: None,
+            thought_signature: Some("tool_signature_abc".to_string()),
+            function_response: None,
+        };
+
+        let chunks = processor.process(&part);
+        let output = chunks_to_string(&chunks);
+
+        assert!(output.contains("tool_signature_abc"));
+    }
+
+    // ============================================================
+    // Text Processing Tests
+    // ============================================================
+
+    #[test]
+    fn test_process_text_part() {
+        let mut state = StreamingState::new();
+        let mut processor = PartProcessor::new(&mut state);
+
+        let part = GeminiPart {
+            text: Some("Hello, world!".to_string()),
+            function_call: None,
+            inline_data: None,
+            thought: None,
+            thought_signature: None,
+            function_response: None,
+        };
+
+        let chunks = processor.process(&part);
+        let output = chunks_to_string(&chunks);
+
+        assert!(output.contains("content_block_start"));
+        assert!(output.contains("text_delta"));
+        assert!(output.contains("Hello, world!"));
+    }
+
+    #[test]
+    fn test_process_empty_text() {
+        let mut state = StreamingState::new();
+        let mut processor = PartProcessor::new(&mut state);
+
+        let part = GeminiPart {
+            text: Some(String::new()),
+            function_call: None,
+            inline_data: None,
+            thought: None,
+            thought_signature: None,
+            function_response: None,
+        };
+
+        let chunks = processor.process(&part);
+        // Empty text without signature should not produce output
+        assert!(chunks.is_empty());
+    }
+
+    #[test]
+    fn test_process_empty_text_with_signature() {
+        let mut state = StreamingState::new();
+        let mut processor = PartProcessor::new(&mut state);
+
+        let part = GeminiPart {
+            text: Some(String::new()),
+            function_call: None,
+            inline_data: None,
+            thought: None,
+            thought_signature: Some("empty_text_sig".to_string()),
+            function_response: None,
+        };
+
+        let chunks = processor.process(&part);
+        // Empty text with signature should store trailing signature
+        assert!(chunks.is_empty());
+        assert!(state.has_trailing_signature());
+    }
+
+    // ============================================================
+    // Thinking Processing Tests
+    // ============================================================
+
+    #[test]
+    fn test_process_thinking_part() {
+        let mut state = StreamingState::new();
+        let mut processor = PartProcessor::new(&mut state);
+
+        let part = GeminiPart {
+            text: Some("I need to analyze this...".to_string()),
+            function_call: None,
+            inline_data: None,
+            thought: Some(true),
+            thought_signature: None,
+            function_response: None,
+        };
+
+        let chunks = processor.process(&part);
+        let output = chunks_to_string(&chunks);
+
+        assert!(output.contains("thinking_delta"));
+        assert!(output.contains("I need to analyze this..."));
+    }
+
+    #[test]
+    fn test_process_thinking_with_signature() {
+        let mut state = StreamingState::new();
+        let mut processor = PartProcessor::new(&mut state);
+
+        let part = GeminiPart {
+            text: Some("Deep thought...".to_string()),
+            function_call: None,
+            inline_data: None,
+            thought: Some(true),
+            thought_signature: Some("thought_sig_123".to_string()),
+            function_response: None,
+        };
+
+        let chunks = processor.process(&part);
+        let output = chunks_to_string(&chunks);
+
+        assert!(output.contains("thinking_delta"));
+        // Signature is stored but emitted on block end
+    }
+
+    // ============================================================
+    // Inline Data (Image) Tests
+    // ============================================================
+
+    #[test]
+    fn test_process_inline_image() {
+        let mut state = StreamingState::new();
+        let mut processor = PartProcessor::new(&mut state);
+
+        let part = GeminiPart {
+            text: None,
+            function_call: None,
+            inline_data: Some(InlineData {
+                mime_type: "image/png".to_string(),
+                data: "iVBORw0KGgoAAAANSUhEUg".to_string(), // Truncated base64
+            }),
+            thought: None,
+            thought_signature: None,
+            function_response: None,
+        };
+
+        let chunks = processor.process(&part);
+        let output = chunks_to_string(&chunks);
+
+        assert!(output.contains("![image](data:image/png;base64,iVBORw0KGgoAAAANSUhEUg)"));
+    }
+
+    #[test]
+    fn test_process_inline_image_empty_data() {
+        let mut state = StreamingState::new();
+        let mut processor = PartProcessor::new(&mut state);
+
+        let part = GeminiPart {
+            text: None,
+            function_call: None,
+            inline_data: Some(InlineData {
+                mime_type: "image/jpeg".to_string(),
+                data: String::new(),
+            }),
+            thought: None,
+            thought_signature: None,
+            function_response: None,
+        };
+
+        let chunks = processor.process(&part);
+        // Empty image data should not produce output
+        assert!(chunks.is_empty());
+    }
+
+    // ============================================================
+    // Parameter Remapping Tests
+    // ============================================================
+
+    #[test]
+    fn test_remap_grep_query_to_pattern() {
+        let mut args = json!({"query": "search_term"});
+        remap_function_call_args("Grep", &mut args);
+
+        assert!(args.get("pattern").is_some());
+        assert_eq!(args["pattern"], "search_term");
+        assert!(args.get("query").is_none());
+    }
+
+    #[test]
+    fn test_remap_glob_query_to_pattern() {
+        let mut args = json!({"query": "*.rs"});
+        remap_function_call_args("Glob", &mut args);
+
+        assert!(args.get("pattern").is_some());
+        assert_eq!(args["pattern"], "*.rs");
+    }
+
+    #[test]
+    fn test_remap_read_path_to_file_path() {
+        let mut args = json!({"path": "/tmp/file.txt"});
+        remap_function_call_args("Read", &mut args);
+
+        assert!(args.get("file_path").is_some());
+        assert_eq!(args["file_path"], "/tmp/file.txt");
+    }
+
+    #[test]
+    fn test_remap_preserves_existing() {
+        let mut args = json!({"pattern": "existing", "query": "ignored"});
+        remap_function_call_args("Grep", &mut args);
+
+        // Should not overwrite existing pattern
+        assert_eq!(args["pattern"], "existing");
+    }
+
+    #[test]
+    fn test_remap_unknown_tool() {
+        let mut args = json!({"query": "value"});
+        remap_function_call_args("UnknownTool", &mut args);
+
+        // Should remain unchanged
+        assert!(args.get("query").is_some());
+    }
+
+    // ============================================================
+    // Error Recovery Tests
+    // ============================================================
+
+    #[test]
+    fn test_handle_parse_error() {
+        let mut state = StreamingState::new();
+        state.start_block(BlockType::Text, json!({"type": "text"}));
+
+        let chunks = state.handle_parse_error("malformed data here");
+
+        // Should close current block safely
+        assert!(state.get_error_count() == 1);
+    }
+
+    #[test]
+    fn test_reset_error_state() {
+        let mut state = StreamingState::new();
+        state.handle_parse_error("error1");
+        state.handle_parse_error("error2");
+
+        assert_eq!(state.get_error_count(), 2);
+
+        state.reset_error_state();
+        assert_eq!(state.get_error_count(), 0);
+    }
+
+    // ============================================================
+    // SSE Format Validation Tests
+    // ============================================================
+
+    #[test]
+    fn test_sse_format_compliance() {
+        let state = StreamingState::new();
+        let chunk = state.emit("test", json!({"data": "value"}));
+        let s = String::from_utf8(chunk.to_vec()).unwrap();
+
+        // SSE spec: event line, data line, blank line
+        let lines: Vec<&str> = s.split('\n').collect();
+        assert!(lines[0].starts_with("event: "));
+        assert!(lines[1].starts_with("data: "));
+        assert!(lines[2].is_empty());
+        assert!(lines[3].is_empty());
+    }
+
+    #[test]
+    fn test_sse_json_validity() {
+        let state = StreamingState::new();
+        let chunk = state.emit("test", json!({
+            "nested": {"key": "value"},
+            "array": [1, 2, 3],
+            "unicode": "日本語"
+        }));
+        let s = String::from_utf8(chunk.to_vec()).unwrap();
+
+        // Extract the data part and verify it's valid JSON
+        let data_line = s.lines().find(|l| l.starts_with("data: ")).unwrap();
+        let json_str = data_line.strip_prefix("data: ").unwrap();
+
+        let parsed: Result<serde_json::Value, _> = serde_json::from_str(json_str);
+        assert!(parsed.is_ok());
+    }
+
+    // ============================================================
+    // Block Type Transition Tests
+    // ============================================================
+
+    #[test]
+    fn test_block_type_enum() {
+        assert_eq!(BlockType::None, BlockType::None);
+        assert_ne!(BlockType::Text, BlockType::Thinking);
+        assert_ne!(BlockType::Text, BlockType::Function);
+    }
+
+    #[test]
+    fn test_multiple_block_transitions() {
+        let mut state = StreamingState::new();
+
+        // Text -> Thinking -> Function -> Text
+        state.start_block(BlockType::Text, json!({}));
+        assert_eq!(state.current_block_type(), BlockType::Text);
+
+        state.start_block(BlockType::Thinking, json!({}));
+        assert_eq!(state.current_block_type(), BlockType::Thinking);
+        assert_eq!(state.current_block_index(), 1);
+
+        state.start_block(BlockType::Function, json!({}));
+        assert_eq!(state.current_block_type(), BlockType::Function);
+        assert_eq!(state.current_block_index(), 2);
+
+        state.end_block();
+        assert_eq!(state.current_block_type(), BlockType::None);
+        assert_eq!(state.current_block_index(), 3);
+    }
+
+    // ============================================================
+    // Usage Metadata Tests
+    // ============================================================
+
+    #[test]
+    fn test_emit_finish_with_usage() {
+        let mut state = StreamingState::new();
+        state.message_start_sent = true;
+
+        let usage = UsageMetadata {
+            prompt_token_count: Some(100),
+            candidates_token_count: Some(50),
+            total_token_count: Some(150),
+            cached_content_token_count: Some(20),
+        };
+
+        let chunks = state.emit_finish(Some("STOP"), Some(&usage));
+        let output = chunks_to_string(&chunks);
+
+        assert!(output.contains("message_delta"));
+    }
+
+    // ============================================================
+    // Web Search / Grounding Tests
+    // ============================================================
+
+    #[test]
+    fn test_grounding_state_storage() {
+        let mut state = StreamingState::new();
+
+        state.web_search_query = Some("test query".to_string());
+        state.grounding_chunks = Some(vec![json!({"web": {"uri": "https://example.com"}})]);
+
+        assert!(state.web_search_query.is_some());
+        assert!(state.grounding_chunks.is_some());
+    }
+
+    #[test]
+    fn test_grounding_emitted_on_finish() {
+        let mut state = StreamingState::new();
+        state.message_start_sent = true;
+        state.web_search_query = Some("rust programming".to_string());
+        state.grounding_chunks = Some(vec![
+            json!({"web": {"title": "Rust Lang", "uri": "https://rust-lang.org"}})
+        ]);
+
+        let chunks = state.emit_finish(None, None);
+        let output = chunks_to_string(&chunks);
+
+        // Should contain grounding info in the output
+        assert!(output.contains("rust programming") || output.contains("Rust Lang"));
+    }
+
+    // ============================================================
+    // Helper Functions
+    // ============================================================
+
+    fn chunks_to_string(chunks: &[Bytes]) -> String {
+        chunks
+            .iter()
+            .map(|b| String::from_utf8(b.to_vec()).unwrap_or_default())
+            .collect::<Vec<_>>()
+            .join("")
     }
 }

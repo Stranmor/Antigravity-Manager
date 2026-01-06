@@ -4,27 +4,77 @@
 Optimize the Antigravity Manager codebase for 2026 standards, starting with style consistency and clippy compliance.
 
 ## CURRENT ACTIVE BATCH
-- [x] Fix clippy warnings regarding inline format arguments (variables directly in format string). `[MODE: B]`
-- [x] Fix documentation comment style (remove empty lines after `///`). `[MODE: B]`
-- [x] Fix ESLint issues in frontend (Restrict template expressions, Floating promises, Unsafe types). `[MODE: B]`
-- [x] Resolve `vitest.config.ts` TS parsing error. `[MODE: B]`
-- [x] Perform SOTA Scan for Tauri/Vite/Rust dependencies. `[MODE: R]`
-- [x] Migrate to axum 0.8 (path syntax: `:param` → `{param}`). `[MODE: B]`
-- [x] Add build optimization config (lld linker, parallel jobs). `[MODE: B]`
-- [x] Audit for dead code and unused imports. `[MODE: S]`
-- [x] Remove dead ProxyError variants (AuthError, ServiceUnavailable, ConfigError, ProxyResult). `[MODE: B]`
-- [x] Fix React useEffect anti-pattern in ProxyMonitor.tsx. `[MODE: B]`
-- [x] Refactor Zustand stores for SOTA 2026 patterns (atomic selectors, useShallow, action separation). `[MODE: B]`
+- [x] Create headless server binary `antigravity-server` for VPS deployment `[MODE: B]`
+- [x] Add REST API for account management (CRUD) `[MODE: B]`
+- [x] Create Containerfile for production deployment `[MODE: B]`
+- [x] Setup systemd quadlet for VPS `[MODE: B]`
+- [x] Research per-account IP isolation strategy `[MODE: R]`
+- [ ] Deploy to VPS production `[MODE: B]`
+- [ ] Test Admin API endpoints `[MODE: C]`
 
 ## SUB-AGENT ORCHESTRATION
-- Sub-agent 1: [COMPLETED] - ESLint fixes committed.
-- Sub-agent 2: [COMPLETED] - SOTA Scan completed, axum 0.8 migrated.
-- Sub-agent 3: [COMPLETED] - Fixed ProxyError dead code warnings (a95edac)
-- Sub-agent 4: [COMPLETED] - Dead code audit (a9b2ecd)
-- Sub-agent 5: [COMPLETED] - ESLint React anti-patterns fixed (a9b8c47)
-- Sub-agent 6: [COMPLETED] - Dead code cleanup committed (af42ab5) - commit c88f0fe
-- Sub-agent 7: [RUNNING] - Improve test coverage (a6e6f1f)
-- Sub-agent 8: [COMPLETED] - Zustand stores optimized with SOTA 2026 patterns
+- Sub-agent 1-8: [COMPLETED] - Previous optimization batch
+- Sub-agent 9: [COMPLETED] - SSE streaming tests (a686858)
+- Sub-agent 10: [COMPLETED] - Creating headless server binary (a7cab2d)
+- Sub-agent 11: [COMPLETED] - Creating Containerfile and deployment configs (a254cd1)
+
+## VPS DEPLOYMENT CHARACTERISTICS (2026-01-06)
+**Server Binary:**
+- Binary size: **6.9 MB** (stripped, release optimized)
+- Binary type: ELF 64-bit x86_64, dynamically linked
+- Dependencies: glibc (Alpine musl version available via Containerfile)
+
+**Resource Consumption:**
+- Idle memory: **30-50 MB** (estimated, vs 1.8 GB desktop app)
+- Active memory: **80-150 MB** (under load)
+- Container limits: 512 MB RAM max, 2 CPUs
+
+**VPS Resources Available:**
+- Total RAM: 3.8 GB (2.2 GB available)
+- Disk: 37 GB free
+- Architecture: x86_64
+
+**Container Image (estimated):**
+- Final image: ~50-80 MB (Alpine 3.21 base)
+- Includes: antigravity-server, wgcf, wireproxy
+
+## VPS DEPLOYMENT STRATEGY (NEW)
+**Goal:** Deploy Antigravity proxy on VPS with remote API management
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────────────────┐
+│  VPS (vps-production)                                   │
+│  ┌─────────────────────────────────────────────────┐    │
+│  │  antigravity-server (Podman container)          │    │
+│  │  ├── :8045 - Proxy API (OpenAI/Claude/Gemini)   │    │
+│  │  └── :9101 - Admin API (account management)     │    │
+│  └─────────────────────────────────────────────────┘    │
+│                          │                              │
+│  ┌─────────────────────────────────────────────────┐    │
+│  │  WARP (optional per-request routing)            │    │
+│  │  └── wireproxy instances on dynamic ports       │    │
+│  └─────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Admin API Endpoints:**
+- `GET /api/accounts` - list accounts
+- `POST /api/accounts` - add account (refresh_token)
+- `DELETE /api/accounts/{id}` - delete account
+- `POST /api/accounts/reload` - hot-reload from disk
+- `GET /api/health` - service health + stats
+- `GET/PUT /api/config` - configuration management
+
+**IP Isolation Research:**
+- WARP uses Anycast — **NO guaranteed unique IP per account**
+- Alternative: residential proxy pool or multi-region VPS
+- Current strategy: single VPS with WARP for geo-bypass only
+
+## PREVIOUS COMPLETED BATCH (archived)
+- [x] Fix clippy warnings, ESLint, vitest, axum 0.8 migration
+- [x] Build optimization (lld, parallel jobs)
+- [x] Dead code audit, Zustand SOTA patterns
 
 ## TAURI 2.0 PERFORMANCE INSIGHTS (2026 SOTA)
 - **Separate rust-analyzer target dir**: Prevents file lock conflicts
