@@ -33,7 +33,7 @@ pub async fn import_from_v1() -> Result<Vec<Account>, String> {
         }
         
         found_index = true;
-        crate::modules::logger::log_info(&format!("发现 V1 数据: {v1_accounts_path:?}"));
+        crate::modules::logger::log_info(&format!("发现 V1 数据: {}", v1_accounts_path.display()));
         
         let content = match fs::read_to_string(&v1_accounts_path) {
             Ok(c) => c,
@@ -101,7 +101,7 @@ pub async fn import_from_v1() -> Result<Vec<Account>, String> {
             }
             
             if !backup_path.exists() {
-                crate::modules::logger::log_warn(&format!("账号 {id} ({email_placeholder}) 备份文件不存在: {backup_path:?}"));
+                crate::modules::logger::log_warn(&format!("账号 {id} ({email_placeholder}) 备份文件不存在: {}", backup_path.display()));
                 continue;
             }
             
@@ -193,7 +193,7 @@ pub async fn import_from_custom_db_path(path_str: String) -> Result<Account, Str
 
     let path = PathBuf::from(path_str);
     if !path.exists() {
-        return Err(format!("文件不存在: {path:?}"));
+        return Err(format!("文件不存在: {}", path.display()));
     }
 
     let refresh_token = extract_refresh_token_from_file(&path)?;
@@ -229,7 +229,7 @@ pub async fn import_from_db() -> Result<Account, String> {
 /// 从数据库获取当前 Refresh Token (通用逻辑)
 pub fn extract_refresh_token_from_file(db_path: &PathBuf) -> Result<String, String> {
     if !db_path.exists() {
-        return Err(format!("找不到数据库文件: {db_path:?}"));
+        return Err(format!("找不到数据库文件: {}", db_path.display()));
     }
     
     // 连接数据库

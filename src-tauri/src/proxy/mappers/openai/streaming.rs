@@ -28,13 +28,11 @@ use rand::Rng;
 use serde_json::{json, Value};
 use std::pin::Pin;
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
 use tracing::{debug, warn};
 use uuid::Uuid;
 
 use super::super::stream_resilience::{
-    HeartbeatGenerator, PartialChunkBuffer, StreamMetrics,
-    create_sse_error_event, HEARTBEAT_INTERVAL,
+    HeartbeatGenerator, StreamMetrics,
 };
 
 // === Buffer Capacity Constants ===
@@ -105,9 +103,8 @@ pub fn create_openai_sse_stream(
 
     // Stream resilience components
     let metrics = StreamMetrics::new("openai", &model);
-    let mut heartbeat = HeartbeatGenerator::new();
-    let mut _last_activity = Instant::now();
-    let mut _parse_error_count = 0usize;
+    let heartbeat = HeartbeatGenerator::new();
+    let mut parse_error_count = 0usize;
 
     let stream = async_stream::stream! {
         while let Some(item) = gemini_stream.next().await {
@@ -119,7 +116,6 @@ pub fn create_openai_sse_stream(
 
             match item {
                 Ok(bytes) => {
-                    _last_activity = Instant::now();
                     metrics.record_bytes_received(bytes.len() as u64);
 
                     // Verbose logging for debugging image fragmentation
@@ -242,15 +238,26 @@ pub fn create_openai_sse_stream(
                                     });
 
                                     let sse_out = format!("data: {}\n\n", serde_json::to_string(&openai_chunk).unwrap_or_default());
-                                    yield Ok::<Bytes, String>(Bytes::from(sse_out));
+                                    let sse_bytes = Bytes::from(sse_out);
+                                    metrics.record_bytes_sent(sse_bytes.len() as u64);
+                                    yield Ok::<Bytes, String>(sse_bytes);
                                     }
                                     Err(e) => {
+                                        parse_error_count += 1;
+                                        metrics.record_error();
+
                                         // Log malformed JSON chunks for debugging
                                         warn!(
-                                            "[OpenAI-SSE] Failed to parse SSE JSON chunk: {}. Raw data (truncated): {}",
+                                            "[OpenAI-SSE] Parse error #{}: {}. Raw data (truncated): {}",
+                                            parse_error_count,
                                             e,
                                             if json_part.len() > 200 { &json_part[..200] } else { json_part }
                                         );
+
+                                        // High error rate warning
+                                        if parse_error_count > 5 {
+                                            warn!("[OpenAI-SSE] High parse error rate ({} errors)", parse_error_count);
+                                        }
                                     }
                                 }
                             }
@@ -258,12 +265,17 @@ pub fn create_openai_sse_stream(
                     }
                 }
                 Err(e) => {
+                    metrics.record_error();
                     yield Err(format!("Upstream error: {e}"));
                 }
             }
         }
+
+        // Mark stream as completed and send final event
+        metrics.mark_completed();
+
         // End of stream signal for OpenAI
-        yield Ok::<Bytes, String>(Bytes::from("data: [DONE]\n\n"));
+        yield Ok::<Bytes, String>(Bytes::from("data:[DONE]\n\n"));
     };
 
     Box::pin(stream)

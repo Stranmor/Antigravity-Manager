@@ -38,6 +38,23 @@ fn apply_jitter(delay_ms: u64) -> u64 {
 
 use crate::proxy::session_manager::SessionManager;
 
+/// Build an SSE response with proper error handling.
+/// This helper avoids panics from Response::builder().body().expect()
+fn build_sse_response(body: axum::body::Body, resolved_model: &str) -> Response {
+    Response::builder()
+        .header("Content-Type", "text/event-stream")
+        .header("Cache-Control", "no-cache")
+        .header("Connection", "keep-alive")
+        .header(crate::proxy::middleware::monitor::X_RESOLVED_MODEL_HEADER, resolved_model)
+        .body(body)
+        .unwrap_or_else(|e| {
+            // This should never happen with valid static headers, but handle gracefully
+            tracing::error!("Failed to build SSE response: {}", e);
+            ProxyError::response_build_error(format!("SSE response build failed: {e}"))
+                .into_response()
+        })
+}
+
 pub async fn handle_chat_completions(
     State(state): State<AppState>,
     Extension(request_id): Extension<RequestId>,
@@ -183,13 +200,7 @@ pub async fn handle_chat_completions(
                     create_openai_sse_stream(Box::pin(gemini_stream), openai_req.model.clone());
                 let body = Body::from_stream(openai_stream);
 
-                return Response::builder()
-                    .header("Content-Type", "text/event-stream")
-                    .header("Cache-Control", "no-cache")
-                    .header("Connection", "keep-alive")
-                    .header(crate::proxy::middleware::monitor::X_RESOLVED_MODEL_HEADER, mapped_model.as_str())
-                    .body(body)
-                    .expect("Failed to build SSE response - this indicates a bug in header construction");
+                return build_sse_response(body, mapped_model.as_str());
             }
 
             let gemini_resp: Value = match response.json().await {
@@ -723,13 +734,7 @@ pub async fn handle_completions(
                     Body::from_stream(s)
                 };
 
-                return Response::builder()
-                    .header("Content-Type", "text/event-stream")
-                    .header("Cache-Control", "no-cache")
-                    .header("Connection", "keep-alive")
-                    .header(crate::proxy::middleware::monitor::X_RESOLVED_MODEL_HEADER, mapped_model.as_str())
-                    .body(body)
-                    .expect("Failed to build SSE response - this indicates a bug in header construction");
+                return build_sse_response(body, mapped_model.as_str());
             }
 
             let gemini_resp: Value = match response.json().await {

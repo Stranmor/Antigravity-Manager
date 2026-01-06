@@ -21,8 +21,8 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 
 ## NEXT BATCH (In Progress)
 - [x] Add Grafana dashboard template for Prometheus metrics `[MODE: B]` (e39bfc5)
-- [ ] Implement account health monitoring (auto-disable on errors) `[MODE: B]` 🔄 Agent working
-- [ ] Improve proxy error handling with request IDs `[MODE: B]` 🔄 Agent working
+- [x] Implement account health monitoring (auto-disable on errors) `[MODE: B]` (9c156bb)
+- [x] Improve proxy error handling with request IDs `[MODE: B]` (9c156bb)
 - [ ] Create CLI tool for account import from desktop app `[MODE: B]`
 
 ## ADMIN API TEST RESULTS (2026-01-06)

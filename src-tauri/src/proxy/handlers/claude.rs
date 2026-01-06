@@ -20,8 +20,27 @@ use crate::proxy::server::AppState;
 use crate::proxy::handlers::common::WithResolvedModel;
 use crate::proxy::error::ProxyError;
 use crate::proxy::middleware::request_id::RequestId;
+use crate::proxy::common::perf::{time_request_transform, time_response_transform, time_upstream_call, time_token_acquire};
 use axum::http::HeaderMap;
 use std::sync::atomic::Ordering;
+
+/// Build an SSE response with proper error handling.
+/// This helper avoids panics from Response::builder().body().expect()
+fn build_sse_response(body: Body, resolved_model: &str) -> Response {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/event-stream")
+        .header(header::CACHE_CONTROL, "no-cache")
+        .header(header::CONNECTION, "keep-alive")
+        .header(crate::proxy::middleware::monitor::X_RESOLVED_MODEL_HEADER, resolved_model)
+        .body(body)
+        .unwrap_or_else(|e| {
+            // This should never happen with valid static headers, but handle gracefully
+            tracing::error!("Failed to build SSE response: {}", e);
+            ProxyError::response_build_error(format!("SSE response build failed: {e}"))
+                .into_response()
+        })
+}
 
 const MAX_RETRY_ATTEMPTS: usize = 3;
 const MIN_SIGNATURE_LENGTH: usize = 10;  // 最小有效签名长度
@@ -699,56 +718,55 @@ pub async fn handle_messages(
                     .header(crate::proxy::middleware::monitor::X_RESOLVED_MODEL_HEADER, resolved_model_for_log.as_str())
                     .body(Body::from_stream(sse_stream))
                     .expect("Failed to build SSE response - this indicates a bug in header construction");
-            } else {
-                // 处理非流式响应
-                let bytes = match response.bytes().await {
-                    Ok(b) => b,
-                    Err(e) => return ProxyError::NetworkError(format!("Failed to read body: {e}"), Some(request_id.clone())).into_response(),
-                };
-                
-                // Debug print
-                if let Ok(text) = String::from_utf8(bytes.to_vec()) {
-                    debug!("Upstream Response for Claude request: {}", text);
-                }
-
-                let gemini_resp: Value = match serde_json::from_slice(&bytes) {
-                    Ok(v) => v,
-                    Err(e) => return ProxyError::parse_error(format!("Parse error: {e}")).with_request_id(request_id.clone()).into_response(),
-                };
-
-                // 解包 response 字段（v1internal 格式）
-                let raw = gemini_resp.get("response").unwrap_or(&gemini_resp);
-
-                // 转换为 Gemini Response 结构
-                let gemini_response: crate::proxy::mappers::claude::models::GeminiResponse = match serde_json::from_value(raw.clone()) {
-                    Ok(r) => r,
-                    Err(e) => return ProxyError::parse_error(format!("Convert error: {e}")).with_request_id(request_id.clone()).into_response(),
-                };
-                
-                // 转换
-                let claude_response = match transform_response(&gemini_response) {
-                    Ok(r) => r,
-                    Err(e) => return ProxyError::TransformError(format!("Transform error: {e}"), Some(request_id.clone())).into_response(),
-                };
-
-                // [Optimization] 记录闭环日志：消耗情况
-                let cache_info = if let Some(cached) = claude_response.usage.cache_read_input_tokens {
-                    format!(", Cached: {cached}")
-                } else {
-                    String::new()
-                };
-                
-                tracing::info!(
-                    "[{}] Request finished. Model: {}, Tokens: In {}, Out {}{}", 
-                    trace_id, 
-                    request_with_mapped.model, 
-                    claude_response.usage.input_tokens, 
-                    claude_response.usage.output_tokens,
-                    cache_info
-                );
-
-                return Json(claude_response).with_resolved_model(&resolved_model_for_log);
             }
+            // 处理非流式响应
+            let bytes = match response.bytes().await {
+                Ok(b) => b,
+                Err(e) => return ProxyError::NetworkError(format!("Failed to read body: {e}"), Some(request_id.clone())).into_response(),
+            };
+
+            // Debug print
+            if let Ok(text) = String::from_utf8(bytes.to_vec()) {
+                debug!("Upstream Response for Claude request: {}", text);
+            }
+
+            let gemini_resp: Value = match serde_json::from_slice(&bytes) {
+                Ok(v) => v,
+                Err(e) => return ProxyError::parse_error(format!("Parse error: {e}")).with_request_id(request_id.clone()).into_response(),
+            };
+
+            // 解包 response 字段（v1internal 格式）
+            let raw = gemini_resp.get("response").unwrap_or(&gemini_resp);
+
+            // 转换为 Gemini Response 结构
+            let gemini_response: crate::proxy::mappers::claude::models::GeminiResponse = match serde_json::from_value(raw.clone()) {
+                Ok(r) => r,
+                Err(e) => return ProxyError::parse_error(format!("Convert error: {e}")).with_request_id(request_id.clone()).into_response(),
+            };
+
+            // 转换
+            let claude_response = match transform_response(&gemini_response) {
+                Ok(r) => r,
+                Err(e) => return ProxyError::TransformError(format!("Transform error: {e}"), Some(request_id.clone())).into_response(),
+            };
+
+            // [Optimization] 记录闭环日志：消耗情况
+            let cache_info = if let Some(cached) = claude_response.usage.cache_read_input_tokens {
+                format!(", Cached: {cached}")
+            } else {
+                String::new()
+            };
+
+            tracing::info!(
+                "[{}] Request finished. Model: {}, Tokens: In {}, Out {}{}",
+                trace_id,
+                request_with_mapped.model,
+                claude_response.usage.input_tokens,
+                claude_response.usage.output_tokens,
+                cache_info
+            );
+
+            return Json(claude_response).with_resolved_model(&resolved_model_for_log);
         }
         
         // 1. 立即提取状态码和 headers（防止 response 被 move）

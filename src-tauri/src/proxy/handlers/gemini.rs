@@ -172,14 +172,18 @@ pub async fn handle_generate(
                 };
                 
                 let body = Body::from_stream(stream);
-                return Ok(Response::builder()
+                let sse_response = Response::builder()
                     .header("Content-Type", "text/event-stream")
                     .header("Cache-Control", "no-cache")
                     .header("Connection", "keep-alive")
                     .header(crate::proxy::middleware::monitor::X_RESOLVED_MODEL_HEADER, mapped_model.as_str())
                     .body(body)
-                    .expect("Failed to build SSE response - this indicates a bug in header construction")
-                    .into_response());
+                    .map_err(|e| {
+                        tracing::error!("Failed to build SSE response: {}", e);
+                        ProxyError::response_build_error(format!("SSE response build failed: {e}"))
+                            .with_request_id(request_id.clone())
+                    })?;
+                return Ok(sse_response.into_response());
             }
 
             let gemini_resp: Value = response

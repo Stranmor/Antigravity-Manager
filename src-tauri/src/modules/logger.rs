@@ -41,7 +41,7 @@ pub fn init_logger() {
     // 1. 设置文件 Appender (使用 tracing-appender 实现滚动记录)
     // 这里使用每天滚动的策略
     let file_appender = tracing_appender::rolling::daily(log_dir, "app.log");
-    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
     
     // 2. 终端输出层（使用本地时区）
     let console_layer = fmt::Layer::new()
@@ -69,9 +69,9 @@ pub fn init_logger() {
         .with(file_layer)
         .try_init();
 
-    // 泄漏 _guard 以确保其生命周期持续到程序退出
+    // 泄漏 guard 以确保其生命周期持续到程序退出
     // 这是使用 tracing_appender::non_blocking 时的推荐做法（如果不需要手动刷盘）
-    let _ = Box::leak(Box::new(_guard));
+    let _ = Box::leak(Box::new(guard));
     
     info!("日志系统已完成初始化 (终端控制台 + 文件持久化)");
 }

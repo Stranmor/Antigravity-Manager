@@ -86,9 +86,8 @@ pub fn find_field(data: &[u8], target_field: u32) -> Result<Option<Vec<u8>>, Str
     let mut offset = 0;
 
     while offset < data.len() {
-        let (tag, new_offset) = match read_varint(data, offset) {
-            Ok(v) => v,
-            Err(_) => break, // 数据不完整，停止
+        let Ok((tag, new_offset)) = read_varint(data, offset) else {
+            break  // 数据不完整，停止
         };
 
         let wire_type = (tag & 7) as u8;

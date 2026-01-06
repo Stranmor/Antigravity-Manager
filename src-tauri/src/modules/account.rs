@@ -199,7 +199,7 @@ pub fn add_account(email: String, name: Option<String>, token: TokenData) -> Res
 
 /// 添加或更新账号
 pub fn upsert_account(email: String, name: Option<String>, token: TokenData) -> Result<Account, String> {
-    let _lock = ACCOUNT_INDEX_LOCK.lock().map_err(|e| format!("获取锁失败: {e}"))?;
+    let lock = ACCOUNT_INDEX_LOCK.lock().map_err(|e| format!("获取锁失败: {e}"))?;
     let mut index = load_account_index()?;
 
     // 先找到账号 ID（如果存在）
@@ -259,7 +259,7 @@ pub fn upsert_account(email: String, name: Option<String>, token: TokenData) -> 
     // 所以我们需要一个不带锁的内部版本，或者重构。简单起见，这里直接展开添加逻辑或不重复加锁
 
     // 释放锁，让 add_account 处理
-    drop(_lock);
+    drop(lock);
     add_account(email, name, token)
 }
 

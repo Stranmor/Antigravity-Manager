@@ -40,7 +40,7 @@ struct Tier {
     id: Option<String>,
     #[allow(dead_code)]
     #[serde(rename = "quotaTier")]
-    tier_quota: Option<String>,
+    quota_type: Option<String>,
     #[allow(dead_code)]
     name: Option<String>,
     #[allow(dead_code)]
@@ -144,7 +144,7 @@ pub async fn fetch_quota_inner(access_token: &str, email: &str) -> crate::error:
                         crate::modules::logger::log_warn("账号无权限 (403 Forbidden),标记为 forbidden 状态");
                         let mut q = QuotaData::new();
                         q.is_forbidden = true;
-                        q.subscription_tier = subscription_tier.clone();
+                        q.subscription_tier.clone_from(&subscription_tier);
                         return Ok((q, project_id.clone()));
                     }
 
@@ -185,7 +185,7 @@ pub async fn fetch_quota_inner(access_token: &str, email: &str) -> crate::error:
                 }
                 
                 // 设置订阅类型
-                quota_data.subscription_tier = subscription_tier.clone();
+                quota_data.subscription_tier.clone_from(&subscription_tier);
                 
                 return Ok((quota_data, project_id.clone()));
             },

@@ -50,7 +50,7 @@ impl TokenManager {
         let accounts_dir = self.data_dir.join("accounts");
         
         if !accounts_dir.exists() {
-            return Err(format!("账号目录不存在: {accounts_dir:?}"));
+            return Err(format!("账号目录不存在: {}", accounts_dir.display()));
         }
 
         // Reload should reflect current on-disk state (accounts can be added/removed/disabled).
