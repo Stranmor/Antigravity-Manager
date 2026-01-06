@@ -27,7 +27,49 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tokio::signal;
 use tokio::sync::RwLock;
-use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
+use tower_governor::{
+    governor::GovernorConfigBuilder, key_extractor::KeyExtractor, GovernorError, GovernorLayer,
+};
+
+/// Custom key extractor for containerized environments
+///
+/// Falls back to a default key if IP extraction fails (common in container networks).
+/// This ensures rate limiting works even when requests come from localhost or
+/// container internal networks without proper X-Forwarded-For headers.
+#[derive(Clone)]
+struct ContainerAwareKeyExtractor;
+
+impl KeyExtractor for ContainerAwareKeyExtractor {
+    type Key = String;
+
+    fn extract<T>(&self, req: &axum::http::Request<T>) -> Result<Self::Key, GovernorError> {
+        // Try X-Forwarded-For first (for reverse proxy scenarios)
+        if let Some(xff) = req.headers().get("x-forwarded-for") {
+            if let Ok(xff_str) = xff.to_str() {
+                // Take the first IP in the chain (client IP)
+                if let Some(first_ip) = xff_str.split(',').next() {
+                    let ip = first_ip.trim();
+                    if !ip.is_empty() {
+                        return Ok(ip.to_string());
+                    }
+                }
+            }
+        }
+
+        // Try X-Real-IP
+        if let Some(real_ip) = req.headers().get("x-real-ip") {
+            if let Ok(ip) = real_ip.to_str() {
+                if !ip.is_empty() {
+                    return Ok(ip.to_string());
+                }
+            }
+        }
+
+        // Fall back to connect info if available (requires ConnectInfo layer)
+        // For now, use a default localhost key to avoid errors
+        Ok("localhost".to_string())
+    }
+}
 use tracing::{error, info, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -724,10 +766,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Admin API Rate Limiting: 60 requests per minute per IP
+    // Uses ContainerAwareKeyExtractor to handle containerized environments
     let governor_config = Arc::new(
         GovernorConfigBuilder::default()
             .per_second(1)
             .burst_size(60)
+            .key_extractor(ContainerAwareKeyExtractor)
             .finish()
             .unwrap(),
     );
