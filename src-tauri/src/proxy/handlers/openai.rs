@@ -1105,6 +1105,7 @@ pub async fn handle_images_generations(
         let final_prompt = final_prompt.clone();
         let aspect_ratio = aspect_ratio.to_string();
         let _response_format = response_format.to_string();
+        let request_timeout = state.request_timeout;
 
         tasks.push(tokio::spawn(async move {
             let gemini_body = json!({
@@ -1135,7 +1136,7 @@ pub async fn handle_images_generations(
             });
 
             match upstream
-                .call_v1_internal("generateContent", &access_token, gemini_body, None, 180)
+                .call_v1_internal("generateContent", &access_token, gemini_body, None, request_timeout)
                 .await
             {
                 Ok(response) => {
@@ -1421,10 +1422,11 @@ pub async fn handle_images_edits(
         let upstream = upstream.clone();
         let access_token = access_token.clone();
         let body = gemini_body.clone();
+        let request_timeout = state.request_timeout;
 
         tasks.push(tokio::spawn(async move {
             match upstream
-                .call_v1_internal("generateContent", &access_token, body, None, 180)
+                .call_v1_internal("generateContent", &access_token, body, None, request_timeout)
                 .await
             {
                 Ok(response) => {

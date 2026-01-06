@@ -32,6 +32,7 @@ pub use config::ProxyAuthMode;
 pub use config::ZaiConfig;
 pub use config::ZaiDispatchMode;
 pub use config::LogRotationConfig;
+pub use config::PoolWarmingConfig;
 pub use token_manager::TokenManager;
 pub use server::AxumServer;
 pub use security::ProxySecurityConfig;

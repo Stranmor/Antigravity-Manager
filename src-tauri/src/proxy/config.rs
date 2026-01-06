@@ -233,6 +233,10 @@ pub struct ProxyConfig {
     /// Log rotation configuration (headless server)
     #[serde(default)]
     pub log_rotation: LogRotationConfig,
+
+    /// Connection pool warming configuration
+    #[serde(default)]
+    pub pool_warming: PoolWarmingConfig,
 }
 
 /// 上游代理配置
@@ -242,6 +246,35 @@ pub struct UpstreamProxyConfig {
     pub enabled: bool,
     /// 代理地址 (http://, https://, socks5://)
     pub url: String,
+}
+
+/// Connection pool warming configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolWarmingConfig {
+    /// Enable connection pool warming (default: true)
+    #[serde(default = "default_pool_warming_enabled")]
+    pub enabled: bool,
+
+    /// Interval between warming pings in seconds (default: 30)
+    #[serde(default = "default_pool_warming_interval")]
+    pub interval_secs: u64,
+}
+
+fn default_pool_warming_enabled() -> bool {
+    true
+}
+
+fn default_pool_warming_interval() -> u64 {
+    30
+}
+
+impl Default for PoolWarmingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_pool_warming_enabled(),
+            interval_secs: default_pool_warming_interval(),
+        }
+    }
 }
 
 /// Get default proxy port from env or use 8045
@@ -270,6 +303,7 @@ impl Default for ProxyConfig {
             zai: ZaiConfig::default(),
             scheduling: crate::proxy::sticky_config::StickySessionConfig::default(),
             log_rotation: LogRotationConfig::default(),
+            pool_warming: PoolWarmingConfig::default(),
         }
     }
 }

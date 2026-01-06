@@ -3,6 +3,7 @@
 //! High-performance HTTP client for upstream API calls with:
 //! - Multi-endpoint fallback support
 //! - Circuit breaker pattern for resilience
+//! - Connection pool warming for reduced latency
 //! - Proper error handling without panics
 
 use reqwest::{header, Client, Response, StatusCode};
@@ -11,6 +12,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
 
 // Cloud Code v1internal endpoints (fallback order: prod -> daily)
 const V1_INTERNAL_BASE_URL_PROD: &str = "https://cloudcode-pa.googleapis.com/v1internal";
@@ -505,6 +507,143 @@ impl UpstreamClient {
 
         Err(last_err.unwrap_or_else(|| "All endpoints failed".to_string()))
     }
+
+    /// Perform a lightweight ping to warm the connection pool for an endpoint
+    ///
+    /// Uses HEAD request to the base URL to establish/refresh connections
+    /// without consuming significant bandwidth or triggering API logic.
+    async fn warm_endpoint(&self, idx: usize, base_url: &str) -> bool {
+        let circuit_breaker = &self.circuit_breakers[idx];
+
+        // Skip endpoints with open circuit breakers
+        if !circuit_breaker.should_allow().await {
+            tracing::debug!(
+                "Pool warming: skipping {} (circuit breaker open)",
+                base_url
+            );
+            return false;
+        }
+
+        // Use a short timeout for warming pings (5 seconds)
+        let warmup_timeout = Duration::from_secs(5);
+
+        // Send HEAD request to the base URL (just to establish connection)
+        // We use the base URL without method suffix since we just want to warm the pool
+        let result = tokio::time::timeout(
+            warmup_timeout,
+            self.http_client
+                .head(base_url)
+                .header(header::USER_AGENT, "antigravity/1.11.9 windows/amd64")
+                .send(),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(response)) => {
+                // Any response (even 404/405) means connection was established
+                let status = response.status();
+                tracing::debug!(
+                    "Pool warming: {} responded with {} (connection warm)",
+                    base_url,
+                    status
+                );
+                // Don't record success on circuit breaker for warming pings
+                // as they don't represent actual API functionality
+                true
+            }
+            Ok(Err(e)) => {
+                tracing::warn!(
+                    "Pool warming: {} connection error: {}",
+                    base_url,
+                    e
+                );
+                // Record failure for significant connection errors
+                if e.is_connect() || e.is_timeout() {
+                    circuit_breaker.record_failure().await;
+                }
+                false
+            }
+            Err(_elapsed) => {
+                tracing::warn!(
+                    "Pool warming: {} timed out after {:?}",
+                    base_url,
+                    warmup_timeout
+                );
+                circuit_breaker.record_failure().await;
+                false
+            }
+        }
+    }
+
+    /// Warm all endpoint connection pools
+    ///
+    /// Pings all configured endpoints to establish/refresh connections.
+    /// Respects circuit breaker state - skips endpoints that are marked as failed.
+    pub async fn warm_all_pools(&self) -> (usize, usize) {
+        let mut success_count = 0;
+        let mut skip_count = 0;
+
+        for (idx, base_url) in V1_INTERNAL_BASE_URL_FALLBACKS.iter().enumerate() {
+            if self.warm_endpoint(idx, base_url).await {
+                success_count += 1;
+            } else {
+                skip_count += 1;
+            }
+        }
+
+        (success_count, skip_count)
+    }
+
+    /// Start a background task that periodically warms connection pools
+    ///
+    /// # Arguments
+    /// * `config` - Pool warming configuration (interval, enabled state)
+    ///
+    /// # Returns
+    /// A `JoinHandle` that can be used to cancel the background task.
+    /// The task will run until cancelled or the client is dropped.
+    pub fn start_pool_warming_task(
+        self: &Arc<Self>,
+        config: crate::proxy::config::PoolWarmingConfig,
+    ) -> JoinHandle<()> {
+        let client = Arc::clone(self);
+        let interval = Duration::from_secs(config.interval_secs);
+
+        tokio::spawn(async move {
+            if !config.enabled {
+                tracing::info!("Pool warming disabled by configuration");
+                return;
+            }
+
+            tracing::info!(
+                "Pool warming task started (interval: {}s)",
+                config.interval_secs
+            );
+
+            // Perform initial warmup immediately
+            let (success, skip) = client.warm_all_pools().await;
+            tracing::info!(
+                "Initial pool warming complete: {} endpoints warmed, {} skipped",
+                success,
+                skip
+            );
+
+            // Then run on interval
+            let mut interval_timer = tokio::time::interval(interval);
+            interval_timer.tick().await; // Skip first immediate tick (we already did initial warmup)
+
+            loop {
+                interval_timer.tick().await;
+
+                let (success, skip) = client.warm_all_pools().await;
+                tracing::debug!(
+                    "Pool warming cycle complete: {} endpoints warmed, {} skipped",
+                    success,
+                    skip
+                );
+            }
+        })
+    }
 }
 
 #[cfg(test)]
@@ -563,5 +702,24 @@ mod tests {
         // Should still be closed
         assert_eq!(cb.state().await, CircuitState::Closed);
         assert_eq!(cb.failure_count.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn test_pool_warming_config_defaults() {
+        let config = crate::proxy::config::PoolWarmingConfig::default();
+        assert!(config.enabled);
+        assert_eq!(config.interval_secs, 30);
+    }
+
+    #[tokio::test]
+    async fn test_upstream_client_creation() {
+        let client = UpstreamClient::new(None);
+        // Verify circuit breakers are initialized for all endpoints
+        let status = client.get_circuit_breaker_status().await;
+        assert_eq!(status.len(), V1_INTERNAL_BASE_URL_FALLBACKS.len());
+        // All should be in closed state initially
+        for (_, state, _) in &status {
+            assert_eq!(*state, CircuitState::Closed);
+        }
     }
 }

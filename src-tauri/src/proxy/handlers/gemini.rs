@@ -90,7 +90,7 @@ pub async fn handle_generate(
         let upstream_method = if is_stream { "streamGenerateContent" } else { "generateContent" };
 
         let response = match upstream
-            .call_v1_internal(upstream_method, &access_token, wrapped_body, query_string, 300)
+            .call_v1_internal(upstream_method, &access_token, wrapped_body, query_string, state.request_timeout)
             .await {
                 Ok(r) => r,
                 Err(e) => {
