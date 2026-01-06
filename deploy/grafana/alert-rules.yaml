@@ -1,0 +1,290 @@
+# Grafana Cloud Alert Rules for Antigravity Server
+# Reference: https://grafana.com/docs/grafana/latest/alerting/alerting-rules/
+#
+# Import via: Alerting > Alert rules > Import
+# Requires: Prometheus datasource configured
+#
+apiVersion: 1
+
+groups:
+  - name: antigravity-critical
+    folder: Antigravity
+    interval: 1m
+    rules:
+      # ============================================================
+      # ServerDown - Alert when uptime not increasing (server dead)
+      # ============================================================
+      - uid: antigravity-server-down
+        title: ServerDown
+        condition: C
+        data:
+          # Query A: Current uptime value
+          - refId: A
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: antigravity_uptime_seconds
+              instant: true
+              refId: A
+          # Query B: Uptime value 2 minutes ago
+          - refId: B
+            relativeTimeRange:
+              from: 240
+              to: 120
+            datasourceUid: ${datasource}
+            model:
+              expr: antigravity_uptime_seconds
+              instant: true
+              refId: B
+          # Condition C: Alert if uptime not increasing (current <= previous or absent)
+          - refId: C
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: math
+              expression: "$A <= $B or $A < 1"
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          summary: "Antigravity server is down or not responding"
+          description: "Server uptime is not increasing - current: {{ $values.A.Value }}s, previous: {{ $values.B.Value }}s"
+          runbook_url: "Check systemd service: ssh vps-production 'systemctl status antigravity-server'"
+        labels:
+          severity: critical
+          service: antigravity
+
+      # ============================================================
+      # AccountsLow - Alert when available accounts < 2
+      # ============================================================
+      - uid: antigravity-accounts-low
+        title: AccountsLow
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: antigravity_accounts_available
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 2
+                  operator:
+                    type: and
+                  reducer:
+                    type: last
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: "Antigravity: Low available accounts ({{ $values.A.Value }})"
+          description: "Only {{ $values.A.Value }} accounts available. Requests may fail due to account exhaustion."
+          runbook_url: "Add more accounts or check account health status"
+        labels:
+          severity: warning
+          service: antigravity
+
+  - name: antigravity-warning
+    folder: Antigravity
+    interval: 1m
+    rules:
+      # ============================================================
+      # HighErrorRate - Alert when error rate > 10% over 5 minutes
+      # ============================================================
+      - uid: antigravity-high-error-rate
+        title: HighErrorRate
+        condition: C
+        data:
+          # Query A: Total requests in last 5 minutes
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: sum(rate(antigravity_requests_total[5m])) or vector(0)
+              instant: true
+              refId: A
+          # Query B: Error requests in last 5 minutes
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: sum(rate(antigravity_requests_total{status!="success"}[5m])) or vector(0)
+              instant: true
+              refId: B
+          # Condition C: Alert if error rate > 10% and total requests > 0
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: math
+              expression: "$A > 0 and ($B / $A) > 0.1"
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: "Antigravity: High error rate detected ({{ $values.B.Value | printf \"%.2f\" }}/{{ $values.A.Value | printf \"%.2f\" }})"
+          description: "Error rate is above 10% threshold. Check upstream providers and account health."
+          runbook_url: "Check logs: ssh vps-production 'journalctl -u antigravity-server -n 100'"
+        labels:
+          severity: warning
+          service: antigravity
+
+      # ============================================================
+      # RateLimitingActive - Alert when rate limited accounts > 50%
+      # ============================================================
+      - uid: antigravity-rate-limiting
+        title: RateLimitingActive
+        condition: C
+        data:
+          # Query A: Total accounts
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: antigravity_accounts_total
+              instant: true
+              refId: A
+          # Query B: Available accounts
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: antigravity_accounts_available
+              instant: true
+              refId: B
+          # Condition C: Alert if (total - available) / total > 50%
+          # This means more than 50% of accounts are unavailable (rate limited, forbidden, etc.)
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: math
+              expression: "$A > 0 and (($A - $B) / $A) > 0.5"
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: "Antigravity: Rate limiting affecting >50% of accounts"
+          description: "{{ $values.A.Value | printf \"%.0f\" }} total accounts, only {{ $values.B.Value | printf \"%.0f\" }} available. Many accounts may be rate limited."
+          runbook_url: "Check account health via API: curl http://localhost:9101/api/health"
+        labels:
+          severity: warning
+          service: antigravity
+
+      # ============================================================
+      # LatencyHigh - Alert when p95 latency > 5 seconds
+      # ============================================================
+      - uid: antigravity-latency-high
+        title: LatencyHigh
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: histogram_quantile(0.95, sum by (le) (rate(antigravity_request_duration_seconds_bucket[5m])))
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 5
+                  operator:
+                    type: and
+                  reducer:
+                    type: last
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: "Antigravity: High latency detected (p95: {{ $values.A.Value | printf \"%.2f\" }}s)"
+          description: "95th percentile latency is above 5 seconds. Check upstream provider performance."
+          runbook_url: "Monitor upstream: check Gemini API status page"
+        labels:
+          severity: warning
+          service: antigravity
+
+      # ============================================================
+      # StreamErrorsHigh - Alert when stream errors spike
+      # ============================================================
+      - uid: antigravity-stream-errors
+        title: StreamErrorsHigh
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: sum(rate(antigravity_stream_total[5m])) or vector(0)
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: sum(rate(antigravity_stream_errors_total[5m])) or vector(0)
+              instant: true
+              refId: B
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: math
+              expression: "$A > 0 and ($B / $A) > 0.2"
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: "Antigravity: High stream error rate (>20%)"
+          description: "Streaming connections are failing at a high rate. May indicate network issues or upstream problems."
+          runbook_url: "Check network connectivity and SSE stream logs"
+        labels:
+          severity: warning
+          service: antigravity
