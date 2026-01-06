@@ -329,18 +329,19 @@ component NavButton inherits Rectangle {
     in property <string> icon;
     in property <bool> selected: false;
     in property <int> badge_count: 0;
+    in property <string> shortcut: ""; // Keyboard shortcut hint
     callback clicked();
-    
+
     height: 44px;
     border-radius: 8px;
-    background: selected ? Theme.accent.with-alpha(0.15) : 
+    background: selected ? Theme.accent.with-alpha(0.15) :
                 touch.has-hover ? Palette.alternate-background : transparent;
-    
+
     HorizontalBox {
         padding-left: 12px;
         padding-right: 12px;
         spacing: 12px;
-        
+
         Text {
             text: icon;
             font-size: 18px;
@@ -354,12 +355,19 @@ component NavButton inherits Rectangle {
             vertical-alignment: center;
             horizontal-stretch: 1;
         }
+        if shortcut != "": Text {
+            text: shortcut;
+            font-size: 10px;
+            color: Palette.foreground;
+            opacity: 0.4;
+            vertical-alignment: center;
+        }
         if badge_count > 0: Badge {
             text: "\{badge_count}";
             bg_color: Theme.accent;
         }
     }
-    
+
     touch := TouchArea {
         clicked => { root.clicked(); }
     }
@@ -1118,28 +1126,32 @@ component Sidebar inherits Rectangle {
         Rectangle { height: 16px; }
         
         // Navigation
-        NavButton { 
-            label: "Dashboard"; 
+        NavButton {
+            label: "Dashboard";
             icon: "📊";
+            shortcut: "^1";
             selected: AppState.current_page == 0;
             clicked => { AppState.current_page = 0; }
         }
-        NavButton { 
-            label: "Accounts"; 
+        NavButton {
+            label: "Accounts";
             icon: "👥";
+            shortcut: "^2";
             selected: AppState.current_page == 1;
             badge_count: AppState.accounts.length;
             clicked => { AppState.current_page = 1; }
         }
-        NavButton { 
-            label: "API Proxy"; 
+        NavButton {
+            label: "API Proxy";
             icon: "🔌";
+            shortcut: "^3";
             selected: AppState.current_page == 2;
             clicked => { AppState.current_page = 2; }
         }
         NavButton {
             label: "Monitor";
             icon: "📈";
+            shortcut: "^4";
             selected: AppState.current_page == 3;
             badge_count: AppState.request_logs.length;
             clicked => { AppState.current_page = 3; }
@@ -1147,38 +1159,68 @@ component Sidebar inherits Rectangle {
         NavButton {
             label: "Analytics";
             icon: "📉";
+            shortcut: "^5";
             selected: AppState.current_page == 4;
             clicked => { AppState.current_page = 4; }
         }
         NavButton {
             label: "Settings";
             icon: "⚙️";
+            shortcut: "^6";
             selected: AppState.current_page == 5;
             clicked => { AppState.current_page = 5; }
         }
         
         Rectangle { vertical-stretch: 1; }
-        
+
+        // Keyboard Shortcuts Hint
+        Rectangle {
+            height: 48px;
+            border-radius: 8px;
+            background: Palette.alternate-background.darker(0.05);
+
+            VerticalBox {
+                padding: 8px;
+                spacing: 2px;
+
+                Text {
+                    text: "Shortcuts: ^R Refresh | ^P Proxy";
+                    font-size: 9px;
+                    color: Palette.foreground;
+                    opacity: 0.5;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "F5 Refresh View | Esc Close Dialog";
+                    font-size: 9px;
+                    color: Palette.foreground;
+                    opacity: 0.5;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+
         // Proxy Status
         Rectangle {
             height: 64px;
             border-radius: 12px;
             background: AppState.proxy_running ? Theme.success.with-alpha(0.1) : Theme.error.with-alpha(0.1);
-            
+
             HorizontalBox {
                 padding: 12px;
                 spacing: 12px;
-                
+
                 Rectangle {
                     width: 12px;
                     height: 12px;
                     border-radius: 6px;
                     background: AppState.proxy_running ? Theme.success : Theme.error;
                 }
-                
+
                 VerticalBox {
                     spacing: 2px;
-                    
+                    horizontal-stretch: 1;
+
                     Text {
                         text: AppState.proxy_running ? "Proxy Running" : "Proxy Stopped";
                         font-size: 13px;
@@ -1192,8 +1234,17 @@ component Sidebar inherits Rectangle {
                         opacity: 0.6;
                     }
                 }
+
+                // Keyboard shortcut hint
+                Text {
+                    text: "^P";
+                    font-size: 10px;
+                    color: Palette.foreground;
+                    opacity: 0.4;
+                    vertical-alignment: center;
+                }
             }
-            
+
             TouchArea {
                 clicked => { AppState.toggle_proxy(); }
             }
@@ -2220,14 +2271,102 @@ export component MainWindow inherits Window {
     min-width: 900px;
     min-height: 600px;
     background: Palette.background;
-    
+
+    // Forward keyboard focus to global key handler
+    forward-focus: global-key-handler;
+
     init => {
         Palette.color-scheme = AppState.dark_mode ? ColorScheme.dark : ColorScheme.light;
     }
-    
+
+    // Global FocusScope for keyboard shortcuts
+    global-key-handler := FocusScope {
+        x: 0;
+        y: 0;
+        width: 0;
+        height: 0;
+
+        key-pressed(event) => {
+            // Escape: Close any open dialogs
+            if (event.text == Key.Escape) {
+                if (AppState.show_add_account_dialog) {
+                    AppState.show_add_account_dialog = false;
+                    return accept;
+                }
+                if (AppState.oauth_in_progress) {
+                    AppState.cancel_oauth();
+                    return accept;
+                }
+                return reject;
+            }
+
+            // F5: Refresh current view
+            if (event.text == Key.F5) {
+                if (AppState.current_page == 0 || AppState.current_page == 1) {
+                    AppState.refresh_all_quotas();
+                } else if (AppState.current_page == 4) {
+                    AppState.refresh_analytics();
+                } else {
+                    AppState.refresh_accounts();
+                }
+                return accept;
+            }
+
+            // Ctrl+R: Refresh accounts
+            if (event.modifiers.control && (event.text == "r" || event.text == "R")) {
+                AppState.refresh_accounts();
+                return accept;
+            }
+
+            // Ctrl+P: Toggle proxy on/off
+            if (event.modifiers.control && (event.text == "p" || event.text == "P")) {
+                AppState.toggle_proxy();
+                return accept;
+            }
+
+            // Ctrl+1: Dashboard
+            if (event.modifiers.control && event.text == "1") {
+                AppState.current_page = 0;
+                return accept;
+            }
+
+            // Ctrl+2: Accounts
+            if (event.modifiers.control && event.text == "2") {
+                AppState.current_page = 1;
+                return accept;
+            }
+
+            // Ctrl+3: API Proxy
+            if (event.modifiers.control && event.text == "3") {
+                AppState.current_page = 2;
+                return accept;
+            }
+
+            // Ctrl+4: Monitor
+            if (event.modifiers.control && event.text == "4") {
+                AppState.current_page = 3;
+                return accept;
+            }
+
+            // Ctrl+5: Analytics
+            if (event.modifiers.control && event.text == "5") {
+                AppState.current_page = 4;
+                return accept;
+            }
+
+            // Ctrl+6: Settings
+            if (event.modifiers.control && event.text == "6") {
+                AppState.current_page = 5;
+                return accept;
+            }
+
+            reject
+        }
+    }
+
     HorizontalBox {
         Sidebar {}
-        
+
         Rectangle {
             horizontal-stretch: 1;
 
@@ -2239,21 +2378,21 @@ export component MainWindow inherits Window {
             if AppState.current_page == 5: SettingsPage {}
         }
     }
-    
+
     // Add Account Dialog Overlay
     if AppState.show_add_account_dialog: Rectangle {
         background: black.with-alpha(0.5);
-        
+
         TouchArea {
             clicked => { AppState.show_add_account_dialog = false; }
         }
-        
+
         AddAccountDialog {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
         }
     }
-    
+
     // Status Toast
     if AppState.status_message != "": Rectangle {
         x: (parent.width - self.width) / 2;
@@ -2264,7 +2403,7 @@ export component MainWindow inherits Window {
         background: AppState.status_type == "success" ? Theme.success :
                     AppState.status_type == "error" ? Theme.error :
                     AppState.status_type == "warning" ? Theme.warning : Theme.info;
-        
+
         Text {
             text: AppState.status_message;
             font-size: 14px;
