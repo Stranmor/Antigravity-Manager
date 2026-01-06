@@ -1,0 +1,381 @@
+import { Button, VerticalBox, HorizontalBox, ListView, StandardTableView, LineEdit, CheckBox, ComboBox, Slider, ProgressIndicator, Switch, TabWidget, GroupBox, ScrollView, Palette } from "std-widgets.slint";
+
+export struct Account {
+    email: string,
+    tier: string,
+    quota_used: int,
+    quota_total: int,
+    enabled: bool,
+    last_refresh: string,
+}
+
+export struct ProxyStats {
+    total_requests: int,
+    success_rate: float,
+    active_accounts: int,
+    uptime_seconds: int,
+}
+
+export global AppState {
+    in-out property <[Account]> accounts: [];
+    in-out property <ProxyStats> stats: { total_requests: 0, success_rate: 0.0, active_accounts: 0, uptime_seconds: 0 };
+    in-out property <bool> proxy_running: false;
+    in-out property <int> current_page: 0;
+    in-out property <bool> dark_mode: true;
+    
+    callback refresh_accounts();
+    callback toggle_proxy();
+    callback toggle_account(int);
+    callback delete_account(int);
+    callback open_settings();
+}
+
+component NavButton inherits Rectangle {
+    in property <string> label;
+    in property <string> icon;
+    in property <bool> selected: false;
+    callback clicked();
+    
+    height: 44px;
+    border-radius: 8px;
+    background: selected ? Palette.accent-background : transparent;
+    
+    HorizontalBox {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 12px;
+        
+        Text {
+            text: icon;
+            font-size: 18px;
+            vertical-alignment: center;
+        }
+        Text {
+            text: label;
+            color: selected ? Palette.accent-foreground : Palette.foreground;
+            font-size: 15px;
+            font-weight: selected ? 600 : 400;
+            vertical-alignment: center;
+        }
+    }
+    
+    TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+component StatCard inherits Rectangle {
+    in property <string> title;
+    in property <int> value;
+    in property <string> suffix;
+    
+    horizontal-stretch: 1;
+    height: 100px;
+    border-radius: 12px;
+    background: Palette.alternate-background;
+    
+    VerticalBox {
+        padding: 16px;
+        spacing: 8px;
+        
+        Text {
+            text: title;
+            font-size: 14px;
+            color: Palette.foreground;
+            opacity: 0.7;
+        }
+        Text {
+            text: "\{value}\{suffix}";
+            font-size: 32px;
+            font-weight: 700;
+            color: Palette.foreground;
+        }
+    }
+}
+
+component AccountRow inherits Rectangle {
+    in property <Account> account;
+    in property <int> index;
+    
+    height: 64px;
+    background: Math.mod(index, 2) == 0 ? transparent : Palette.alternate-background.darker(0.05);
+    
+    HorizontalBox {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 16px;
+        
+        Switch {
+            checked: account.enabled;
+            toggled => { AppState.toggle_account(index); }
+        }
+        
+        VerticalBox {
+            horizontal-stretch: 1;
+            spacing: 4px;
+            
+            Text {
+                text: account.email;
+                font-size: 14px;
+                font-weight: 500;
+                color: Palette.foreground;
+            }
+            Text {
+                text: account.tier;
+                font-size: 12px;
+                color: Palette.foreground;
+                opacity: 0.6;
+            }
+        }
+        
+        VerticalBox {
+            width: 120px;
+            spacing: 4px;
+            
+            HorizontalBox {
+                Text {
+                    text: "\{account.quota_used}/\{account.quota_total}";
+                    font-size: 12px;
+                    color: Palette.foreground;
+                }
+            }
+            ProgressIndicator {
+                progress: account.quota_total > 0 ? account.quota_used / account.quota_total : 0;
+                height: 6px;
+            }
+        }
+        
+        Text {
+            text: account.last_refresh;
+            font-size: 12px;
+            color: Palette.foreground;
+            opacity: 0.5;
+            width: 100px;
+        }
+        
+        Button {
+            text: "🗑";
+            clicked => { AppState.delete_account(index); }
+        }
+    }
+}
+
+component Sidebar inherits Rectangle {
+    width: 220px;
+    background: Palette.alternate-background;
+    
+    VerticalBox {
+        padding: 16px;
+        spacing: 8px;
+        
+        Text {
+            text: "Antigravity";
+            font-size: 24px;
+            font-weight: 700;
+            color: Palette.foreground;
+        }
+        
+        Rectangle { height: 24px; }
+        
+        NavButton { 
+            label: "Dashboard"; 
+            icon: "📊";
+            selected: AppState.current_page == 0;
+            clicked => { AppState.current_page = 0; }
+        }
+        NavButton { 
+            label: "Accounts"; 
+            icon: "👥";
+            selected: AppState.current_page == 1;
+            clicked => { AppState.current_page = 1; }
+        }
+        NavButton { 
+            label: "Settings"; 
+            icon: "⚙️";
+            selected: AppState.current_page == 2;
+            clicked => { AppState.current_page = 2; }
+        }
+        
+        Rectangle { vertical-stretch: 1; }
+        
+        HorizontalBox {
+            spacing: 8px;
+            Text { 
+                text: AppState.proxy_running ? "● Running" : "○ Stopped";
+                color: AppState.proxy_running ? #22c55e : #ef4444;
+                font-size: 14px;
+            }
+        }
+    }
+}
+
+component DashboardPage inherits VerticalBox {
+    padding: 24px;
+    spacing: 24px;
+    
+    Text {
+        text: "Dashboard";
+        font-size: 28px;
+        font-weight: 700;
+        color: Palette.foreground;
+    }
+    
+    HorizontalBox {
+        spacing: 16px;
+        
+        StatCard {
+            title: "Total Requests";
+            value: AppState.stats.total_requests;
+            suffix: "";
+        }
+        StatCard {
+            title: "Success Rate";
+            value: Math.round(AppState.stats.success_rate * 100);
+            suffix: "%";
+        }
+        StatCard {
+            title: "Active Accounts";
+            value: AppState.stats.active_accounts;
+            suffix: "";
+        }
+        StatCard {
+            title: "Uptime";
+            value: Math.floor(AppState.stats.uptime_seconds / 3600);
+            suffix: "h";
+        }
+    }
+    
+    GroupBox {
+        title: "Proxy Control";
+        
+        HorizontalBox {
+            spacing: 16px;
+            padding: 16px;
+            
+            Button {
+                text: AppState.proxy_running ? "Stop Proxy" : "Start Proxy";
+                primary: !AppState.proxy_running;
+                clicked => { AppState.toggle_proxy(); }
+            }
+            
+            Button {
+                text: "Refresh Accounts";
+                clicked => { AppState.refresh_accounts(); }
+            }
+        }
+    }
+    
+    Rectangle { vertical-stretch: 1; }
+}
+
+component AccountsPage inherits VerticalBox {
+    padding: 24px;
+    spacing: 16px;
+    
+    HorizontalBox {
+        Text {
+            text: "Accounts";
+            font-size: 28px;
+            font-weight: 700;
+            color: Palette.foreground;
+            horizontal-stretch: 1;
+        }
+        
+        Button {
+            text: "Add Account";
+            primary: true;
+        }
+        
+        Button {
+            text: "Refresh All";
+            clicked => { AppState.refresh_accounts(); }
+        }
+    }
+    
+    Rectangle {
+        vertical-stretch: 1;
+        border-radius: 8px;
+        background: Palette.alternate-background;
+        clip: true;
+        
+        ListView {
+            for account[idx] in AppState.accounts: AccountRow {
+                account: account;
+                index: idx;
+            }
+        }
+    }
+}
+
+component SettingsPage inherits VerticalBox {
+    padding: 24px;
+    spacing: 24px;
+    
+    Text {
+        text: "Settings";
+        font-size: 28px;
+        font-weight: 700;
+        color: Palette.foreground;
+    }
+    
+    GroupBox {
+        title: "Appearance";
+        
+        HorizontalBox {
+            padding: 16px;
+            spacing: 16px;
+            
+            Text {
+                text: "Dark Mode";
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            Switch {
+                checked: AppState.dark_mode;
+                toggled => { AppState.dark_mode = self.checked; }
+            }
+        }
+    }
+    
+    GroupBox {
+        title: "Proxy Configuration";
+        
+        VerticalBox {
+            padding: 16px;
+            spacing: 12px;
+            
+            HorizontalBox {
+                spacing: 8px;
+                Text { text: "Listen Port:"; width: 120px; vertical-alignment: center; }
+                LineEdit { text: "8045"; horizontal-stretch: 1; }
+            }
+            
+            HorizontalBox {
+                spacing: 8px;
+                Text { text: "Admin Port:"; width: 120px; vertical-alignment: center; }
+                LineEdit { text: "9101"; horizontal-stretch: 1; }
+            }
+        }
+    }
+    
+    Rectangle { vertical-stretch: 1; }
+}
+
+export component MainWindow inherits Window {
+    title: "Antigravity Tools";
+    width: 1024px;
+    height: 700px;
+    background: Palette.background;
+    
+    HorizontalBox {
+        Sidebar {}
+        
+        Rectangle {
+            horizontal-stretch: 1;
+            
+            if AppState.current_page == 0: DashboardPage {}
+            if AppState.current_page == 1: AccountsPage {}
+            if AppState.current_page == 2: SettingsPage {}
+        }
+    }
+}

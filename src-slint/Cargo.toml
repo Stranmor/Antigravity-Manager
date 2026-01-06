@@ -1,0 +1,45 @@
+[package]
+name = "antigravity-desktop"
+version = "4.0.0"
+edition = "2021"
+description = "Antigravity Tools - Native Desktop UI"
+license = "CC-BY-NC-SA-4.0"
+default-run = "antigravity-desktop"
+
+[dependencies]
+slint = { version = "1.9", features = ["backend-winit", "renderer-skia", "compat-1-2"] }
+
+tokio = { version = "1", features = ["full"] }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+tray-icon = "0.19"
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+chrono = { version = "0.4", features = ["serde"] }
+
+dirs = "5"
+
+anyhow = "1"
+thiserror = "2"
+
+antigravity_tools_lib = { path = "../src-tauri", package = "antigravity_tools", default-features = false }
+
+[build-dependencies]
+slint-build = "1.9"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[[bin]]
+name = "antigravity-desktop"
+path = "src/main.rs"
