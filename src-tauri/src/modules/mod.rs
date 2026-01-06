@@ -5,15 +5,18 @@ pub mod logger;
 pub mod db;
 pub mod process;
 pub mod oauth;
+#[cfg(feature = "desktop")]
 pub mod oauth_server;
 pub mod migration;
+#[cfg(feature = "desktop")]
 pub mod tray;
+#[cfg(feature = "desktop")]
 pub mod i18n;
 pub mod proxy_db;
 
 use crate::models;
 
-// 重新导出常用函数到 modules 命名空间顶级，方便外部调用
+// Re-export commonly used functions to modules namespace top-level
 pub use account::*;
 #[allow(unused_imports)]
 pub use quota::*;

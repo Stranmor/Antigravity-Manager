@@ -1,25 +1,31 @@
 pub mod models;
 pub mod modules;
+#[cfg(feature = "desktop")]
 mod commands;
 pub mod utils;
-pub mod proxy;  // 反代服务模块
+pub mod proxy;  // Proxy server module
 pub mod error;
 
+#[cfg(feature = "desktop")]
 use tauri::Manager;
+#[cfg(feature = "desktop")]
 use modules::logger;
+#[cfg(feature = "desktop")]
 use tracing::{info, error};
 
-// 测试命令
+// Test command
+#[cfg(feature = "desktop")]
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {name}! You've been greeted from Rust!")
 }
 
+#[cfg(feature = "desktop")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // 初始化日志
+    // Initialize logging
     logger::init_logger();
-    
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -42,28 +48,28 @@ pub fn run() {
             info!("Setup starting...");
             modules::tray::create_tray(app.handle())?;
             info!("Tray created");
-            
-            // 自动启动反代服务
+
+            // Auto-start proxy service
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                // 加载配置
+                // Load configuration
                 if let Ok(config) = modules::config::load_app_config() {
                     if config.proxy.auto_start {
                         let state = handle.state::<commands::proxy::ProxyServiceState>();
-                        // 尝试启动服务
+                        // Try to start service
                         if let Err(e) = commands::proxy::start_proxy_service(
                             config.proxy,
                             state,
                             handle.clone(),
                         ).await {
-                            error!("自动启动反代服务失败: {}", e);
+                            error!("Auto-start proxy service failed: {}", e);
                         } else {
-                            info!("反代服务自动启动成功");
+                            info!("Proxy service auto-started successfully");
                         }
                     }
                 }
             });
-            
+
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -79,7 +85,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             greet,
-            // 账号管理命令
+            // Account management commands
             commands::list_accounts,
             commands::add_account,
             commands::delete_account,
@@ -87,13 +93,13 @@ pub fn run() {
             commands::reorder_accounts,
             commands::switch_account,
             commands::get_current_account,
-            // 配额命令
+            // Quota commands
             commands::fetch_account_quota,
             commands::refresh_all_quotas,
-            // 配置命令
+            // Config commands
             commands::load_config,
             commands::save_config,
-            // 新增命令
+            // New commands
             commands::prepare_oauth_url,
             commands::start_oauth_login,
             commands::complete_oauth_login,
@@ -111,7 +117,7 @@ pub fn run() {
             commands::get_antigravity_args,
             commands::check_for_updates,
             commands::toggle_proxy_status,
-            // 反代服务命令
+            // Proxy service commands
             commands::proxy::start_proxy_service,
             commands::proxy::stop_proxy_service,
             commands::proxy::get_proxy_status,
@@ -126,7 +132,7 @@ pub fn run() {
             commands::proxy::get_proxy_scheduling_config,
             commands::proxy::update_proxy_scheduling_config,
             commands::proxy::clear_proxy_session_bindings,
-            // Autostart 命令
+            // Autostart commands
             commands::autostart::toggle_auto_launch,
             commands::autostart::is_auto_launch_enabled,
         ])

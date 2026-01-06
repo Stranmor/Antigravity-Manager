@@ -12,6 +12,7 @@ pub enum AppError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[cfg(feature = "desktop")]
     #[error("Tauri error: {0}")]
     Tauri(#[from] tauri::Error),
 
@@ -28,7 +29,7 @@ pub enum AppError {
     Unknown(String),
 }
 
-// 实现 Serialize 以便可以作为 Tauri 命令的返回值
+// Implement Serialize to allow usage as Tauri command return value
 impl Serialize for AppError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -38,5 +39,5 @@ impl Serialize for AppError {
     }
 }
 
-// 为 Result 实现别名，简化使用
+// Result type alias for convenience
 pub type AppResult<T> = Result<T, AppError>;

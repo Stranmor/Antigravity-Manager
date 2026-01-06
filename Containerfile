@@ -1,32 +1,25 @@
 # Antigravity Server - Multi-stage Container Build
-# Optimized for minimal image size (<100MB) with static musl binary
+# Runtime: Debian Bookworm slim (~100MB) with glibc binary
 #
 # Build: podman build -t antigravity-server .
 # Run:   podman run -d -p 8045:8045 -v ./data:/var/lib/antigravity antigravity-server
 
 # ============================================================================
-# Stage 1: Builder - Rust toolchain with musl for static linking
+# Stage 1: Builder - Rust toolchain with glibc (Debian-based)
 # ============================================================================
-FROM docker.io/rust:1.83-alpine AS builder
+FROM docker.io/rust:1.92-slim-bookworm AS builder
 
 # Install build dependencies
-RUN apk add --no-cache \
-    musl-dev \
-    openssl-dev \
-    openssl-libs-static \
-    pkgconf \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libssl-dev \
     git \
     perl \
     make \
-    # Required for ring crate (cryptography)
-    linux-headers
+    && rm -rf /var/lib/apt/lists/*
 
-# Set environment for static linking
-ENV OPENSSL_STATIC=1 \
-    OPENSSL_LIB_DIR=/usr/lib \
-    OPENSSL_INCLUDE_DIR=/usr/include \
-    PKG_CONFIG_ALLOW_CROSS=1 \
-    RUSTFLAGS="-C target-feature=+crt-static -C link-arg=-s"
+# Set environment for optimized build
+ENV RUSTFLAGS="-C link-arg=-s"
 
 WORKDIR /build
 
@@ -36,19 +29,19 @@ COPY src-tauri/Cargo.toml src-tauri/Cargo.lock ./
 # Create minimal build.rs that works without Tauri context
 RUN echo 'fn main() {}' > build.rs
 
-# Create dummy lib.rs to cache dependencies
+# Create dummy lib.rs to cache dependencies (headless mode)
 RUN mkdir -p src/bin src/proxy src/commands src/modules src/models src/utils && \
-    echo "pub mod proxy; pub mod commands; pub mod modules; pub mod models; pub mod utils; pub mod error;" > src/lib.rs && \
+    echo "pub mod proxy; pub mod modules; pub mod models; pub mod utils; pub mod error;" > src/lib.rs && \
     echo "fn main() {}" > src/main.rs && \
     echo "fn main() {}" > src/bin/server.rs && \
-    touch src/proxy/mod.rs src/commands/mod.rs src/modules/mod.rs src/models/mod.rs src/utils/mod.rs src/error.rs && \
-    cargo build --release --bin antigravity-server 2>/dev/null || true
+    touch src/proxy/mod.rs src/modules/mod.rs src/models/mod.rs src/utils/mod.rs src/error.rs && \
+    cargo build --release --no-default-features --features headless --bin antigravity-server 2>/dev/null || true
 
 # Copy actual source code
 COPY src-tauri/src ./src
 
-# Build the server binary (release profile optimized for size)
-RUN cargo build --release --bin antigravity-server && \
+# Build the server binary (release profile, headless mode - no Tauri/GTK deps)
+RUN cargo build --release --no-default-features --features headless --bin antigravity-server && \
     strip /build/target/release/antigravity-server
 
 # ============================================================================
@@ -69,9 +62,9 @@ RUN git clone --depth=1 https://github.com/pufferffish/wireproxy.git . && \
     CGO_ENABLED=0 go build -ldflags="-s -w" -o /usr/local/bin/wireproxy ./cmd/wireproxy
 
 # ============================================================================
-# Stage 3: Runtime - Minimal Alpine image
+# Stage 3: Runtime - Minimal Debian image (for glibc compatibility)
 # ============================================================================
-FROM docker.io/alpine:3.21 AS runtime
+FROM docker.io/debian:bookworm-slim AS runtime
 
 # Labels for container metadata
 LABEL org.opencontainers.image.title="Antigravity Server" \
@@ -81,19 +74,15 @@ LABEL org.opencontainers.image.title="Antigravity Server" \
       org.opencontainers.image.source="https://github.com/lbjlaq/Antigravity-Manager"
 
 # Install runtime dependencies (minimal)
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     tzdata \
-    # For WARP (WireGuard userspace)
     wireguard-tools \
-    # For health checks
-    curl && \
-    # Create non-root user
-    addgroup -g 1000 antigravity && \
-    adduser -u 1000 -G antigravity -h /var/lib/antigravity -D antigravity && \
-    # Create data directories
-    mkdir -p /var/lib/antigravity/accounts /var/lib/antigravity/logs && \
-    chown -R antigravity:antigravity /var/lib/antigravity
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -u 1000 -m -d /var/lib/antigravity antigravity \
+    && mkdir -p /var/lib/antigravity/accounts /var/lib/antigravity/logs \
+    && chown -R antigravity:antigravity /var/lib/antigravity
 
 # Copy binaries from builders
 COPY --from=builder /build/target/release/antigravity-server /usr/local/bin/
