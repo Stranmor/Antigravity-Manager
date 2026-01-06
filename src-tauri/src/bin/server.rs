@@ -840,13 +840,37 @@ async fn import_accounts(from: Option<PathBuf>, to: Option<PathBuf>) -> Result<(
         }
     }
     
+    // Merge accounts.json index
     if source_index.exists() {
         let target_index = target_dir.join("accounts.json");
         if !target_index.exists() {
             tokio::fs::copy(&source_index, &target_index).await?;
             info!("Imported accounts.json index");
         } else {
-            warn!("Target accounts.json already exists, merging required manually");
+            // Merge: combine unique account IDs from both files
+            info!("Merging accounts.json indices...");
+            
+            let source_content = tokio::fs::read_to_string(&source_index).await?;
+            let target_content = tokio::fs::read_to_string(&target_index).await?;
+            
+            let source_ids: std::collections::HashSet<String> = 
+                serde_json::from_str(&source_content).unwrap_or_default();
+            let mut target_ids: std::collections::HashSet<String> = 
+                serde_json::from_str(&target_content).unwrap_or_default();
+            
+            let before_count = target_ids.len();
+            target_ids.extend(source_ids);
+            let after_count = target_ids.len();
+            let merged_count = after_count - before_count;
+            
+            // Convert to sorted Vec for consistent output
+            let mut merged_vec: Vec<String> = target_ids.into_iter().collect();
+            merged_vec.sort();
+            
+            let merged_json = serde_json::to_string_pretty(&merged_vec)?;
+            tokio::fs::write(&target_index, merged_json).await?;
+            
+            info!("Merged accounts.json: {} new entries added (total: {})", merged_count, after_count);
         }
     }
     
