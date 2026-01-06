@@ -449,6 +449,10 @@ impl AppController {
             let is_running = state.server.is_some();
 
             if is_running {
+                // Stop stats polling task first
+                if let Some(poll_handle) = state.stats_poll_handle.take() {
+                    poll_handle.abort();
+                }
                 if let Some(server) = state.server.take() {
                     server.stop();
                 }
@@ -527,7 +531,50 @@ impl AppController {
                         state.server = Some(server);
                         state.handle = Some(handle);
                         state.token_manager = Some(token_manager);
-                        state.monitor = Some(monitor);
+                        state.monitor = Some(monitor.clone());
+
+                        // Start throttled stats polling task (10Hz = 100ms interval)
+                        let stats_cache = state.stats_cache.clone();
+                        let monitor_for_poll = monitor;
+                        let app_weak_for_poll = app_weak.clone();
+                        let stats_poll_handle = tokio::spawn(async move {
+                            let mut interval = tokio::time::interval(
+                                std::time::Duration::from_millis(ThrottledStatsCache::THROTTLE_INTERVAL_MS)
+                            );
+                            loop {
+                                interval.tick().await;
+
+                                // Fetch stats from monitor
+                                let monitor_stats = monitor_for_poll.get_stats().await;
+
+                                // Update cache and check if changed
+                                let changed = stats_cache.update(
+                                    monitor_stats.total_requests,
+                                    monitor_stats.success_count,
+                                    monitor_stats.error_count,
+                                );
+
+                                // Only push to UI if values changed AND throttle allows
+                                if changed && stats_cache.should_update_ui() {
+                                    let (total, success, errors) = stats_cache.get_stats();
+                                    let app_weak_inner = app_weak_for_poll.clone();
+                                    let _ = slint::invoke_from_event_loop(move || {
+                                        if let Some(app) = app_weak_inner.upgrade() {
+                                            let mut stats = app.global::<AppState>().get_stats();
+                                            stats.total_requests = total as i32;
+                                            stats.success_count = success as i32;
+                                            stats.error_count = errors as i32;
+                                            // Calculate success rate
+                                            if total > 0 {
+                                                stats.success_rate = success as f32 / total as f32;
+                                            }
+                                            app.global::<AppState>().set_stats(stats);
+                                        }
+                                    });
+                                }
+                            }
+                        });
+                        state.stats_poll_handle = Some(stats_poll_handle);
 
                         let port = cfg.proxy.port;
                         let _ = slint::invoke_from_event_loop(move || {
