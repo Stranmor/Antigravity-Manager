@@ -966,7 +966,7 @@ impl AppController {
 
             // Convert database stats to Slint AccountAnalytics
             let mut account_analytics: Vec<AccountAnalytics> = today_stats.iter()
-                .filter_map(|stat| {
+                .map(|stat| {
                     let (email, tier) = account_map.get(&stat.account_id)
                         .copied()
                         .unwrap_or(("Unknown", "FREE"));
@@ -977,7 +977,7 @@ impl AppController {
                         1.0
                     };
 
-                    Some(AccountAnalytics {
+                    AccountAnalytics {
                         account_id: stat.account_id.clone().into(),
                         email: email.into(),
                         tier: tier.to_uppercase().into(),
@@ -990,7 +990,7 @@ impl AppController {
                         rate_limit_hits: stat.rate_limit_hits as i32,
                         circuit_state: "closed".into(), // Default - would need circuit breaker integration
                         last_request_time: stat.date.clone().into(),
-                    })
+                    }
                 })
                 .collect();
 
@@ -1000,7 +1000,7 @@ impl AppController {
             // For accounts without any requests today, add them with zero stats
             for acc in &accounts {
                 if !acc.disabled {
-                    let has_stats = account_analytics.iter().any(|a| a.account_id.to_string() == acc.id);
+                    let has_stats = account_analytics.iter().any(|a| a.account_id.as_str() == acc.id);
                     if !has_stats {
                         let tier = acc.quota.as_ref()
                             .and_then(|q| q.subscription_tier.as_deref())
