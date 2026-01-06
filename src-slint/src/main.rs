@@ -30,18 +30,14 @@ struct AppController {
     app: slint::Weak<MainWindow>,
     start_time: std::time::Instant,
     proxy_state: Arc<RwLock<ProxyState>>,
-    #[allow(dead_code)]
-    clipboard: Arc<RwLock<Option<arboard::Clipboard>>>,
 }
 
 impl AppController {
     fn new(app: &MainWindow) -> Self {
-        let clipboard = arboard::Clipboard::new().ok();
         Self {
             app: app.as_weak(),
             start_time: std::time::Instant::now(),
             proxy_state: Arc::new(RwLock::new(ProxyState::new())),
-            clipboard: Arc::new(RwLock::new(clipboard)),
         }
     }
 
@@ -570,8 +566,26 @@ impl AppController {
     }
 
     fn copy_to_clipboard(&self, text: &str) {
-        tracing::info!("Copy: {}", text);
-        self.show_status("Copied to clipboard", "success");
+        // arboard::Clipboard is NOT Send on Linux (X11/Wayland), so we cannot use tokio::spawn
+        // We must create a fresh clipboard instance on each call (cheap operation)
+        match arboard::Clipboard::new() {
+            Ok(mut clipboard) => {
+                match clipboard.set_text(text) {
+                    Ok(()) => {
+                        tracing::debug!("Copied to clipboard: {} chars", text.len());
+                        self.show_status("Copied to clipboard", "success");
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to copy to clipboard: {}", e);
+                        self.show_status("Failed to copy to clipboard", "error");
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to access clipboard: {}", e);
+                self.show_status("Clipboard not available", "error");
+            }
+        }
     }
 
     fn clear_logs(&self) {
