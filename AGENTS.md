@@ -23,6 +23,9 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Add Grafana dashboard template for Prometheus metrics `[MODE: B]` (e39bfc5)
 - [x] Implement account health monitoring (auto-disable on errors) `[MODE: B]` (9c156bb)
 - [x] Improve proxy error handling with request IDs `[MODE: B]` (9c156bb)
+- [x] **Refactor: Extract common modules (retry, sse, background_task)** `[MODE: B]` (2645ba7)
+- [x] **Refactor: Deduplicate handler code (claude, openai, gemini)** `[MODE: B]` (32beac5, d88e4c7)
+- [x] **Refactor: Move proxy_db.rs to proxy/db.rs** `[MODE: B]` (2645ba7)
 - [ ] Create CLI tool for account import from desktop app `[MODE: B]`
 
 ## ADMIN API TEST RESULTS (2026-01-06)
