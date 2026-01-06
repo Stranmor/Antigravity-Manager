@@ -3,7 +3,6 @@
 use axum::{
     body::Body,
     extract::{Json, State},
-    http::{header, StatusCode},
     response::{IntoResponse, Response},
     Extension,
 };
@@ -21,45 +20,16 @@ use crate::proxy::handlers::common::WithResolvedModel;
 use crate::proxy::error::ProxyError;
 use crate::proxy::middleware::request_id::RequestId;
 use crate::proxy::common::perf::{time_request_transform, time_response_transform, time_upstream_call};
+use crate::proxy::common::retry::{
+    apply_jitter, determine_retry_strategy, execute_retry_strategy, should_rotate_account,
+    MAX_RETRY_ATTEMPTS, MAX_OVERLOAD_RETRIES, OVERLOAD_BASE_DELAY_MS, OVERLOAD_MAX_DELAY_MS,
+};
+use crate::proxy::common::sse::build_sse_response;
+use crate::proxy::common::background_task::{self, BackgroundTaskType};
 use axum::http::HeaderMap;
 use std::sync::atomic::Ordering;
 
-/// Build an SSE response with proper error handling.
-/// This helper avoids panics from Response::builder().body().expect()
-fn build_sse_response(body: Body, resolved_model: &str) -> Response {
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/event-stream")
-        .header(header::CACHE_CONTROL, "no-cache")
-        .header(header::CONNECTION, "keep-alive")
-        .header(crate::proxy::middleware::monitor::X_RESOLVED_MODEL_HEADER, resolved_model)
-        .body(body)
-        .unwrap_or_else(|e| {
-            // This should never happen with valid static headers, but handle gracefully
-            tracing::error!("Failed to build SSE response: {}", e);
-            ProxyError::response_build_error(format!("SSE response build failed: {e}"))
-                .into_response()
-        })
-}
-
-const MAX_RETRY_ATTEMPTS: usize = 3;
-const MIN_SIGNATURE_LENGTH: usize = 10;  // 最小有效签名长度
-
-// ===== 529 Overloaded Retry Configuration =====
-// 529 errors indicate server overload - NOT account-specific limits
-// We should retry aggressively with the SAME account until success
-const MAX_OVERLOAD_RETRIES: usize = 30;      // Max retries for 529 errors (independent of account pool)
-const OVERLOAD_BASE_DELAY_MS: u64 = 2000;    // Base delay: 2 seconds
-const OVERLOAD_MAX_DELAY_MS: u64 = 60000;    // Max delay cap: 60 seconds
-
-// ===== Model Constants for Background Tasks =====
-// These can be adjusted for performance/cost optimization
-const BACKGROUND_MODEL_LITE: &str = "gemini-2.5-flash-lite";  // For simple/lightweight tasks
-const BACKGROUND_MODEL_STANDARD: &str = "gemini-2.5-flash";   // For complex background tasks
-
-// ===== Jitter Configuration =====
-// Jitter helps prevent thundering herd problem in retry scenarios
-const JITTER_FACTOR: f64 = 0.2;  // ±20% jitter
+const MIN_SIGNATURE_LENGTH: usize = 10;
 
 // ===== Thinking 块处理辅助函数 =====
 
@@ -187,160 +157,6 @@ fn remove_trailing_unsigned_thinking(blocks: &mut Vec<ContentBlock>) {
         debug!("Removed {} trailing unsigned thinking block(s)", removed);
     }
 }
-
-// ===== 统一退避策略模块 =====
-
-/// Apply jitter to a delay value to prevent thundering herd
-/// Returns delay ± JITTER_FACTOR (e.g., 1000ms ± 20% = 800-1200ms)
-fn apply_jitter(delay_ms: u64) -> u64 {
-    use rand::Rng;
-    let jitter_range = (delay_ms as f64 * JITTER_FACTOR) as i64;
-    let jitter: i64 = rand::thread_rng().gen_range(-jitter_range..=jitter_range);
-    ((delay_ms as i64) + jitter).max(1) as u64
-}
-
-/// 重试策略枚举
-#[derive(Debug, Clone)]
-enum RetryStrategy {
-    /// 不重试，直接返回错误
-    NoRetry,
-    /// 固定延迟
-    FixedDelay(Duration),
-    /// 线性退避：base_ms * (attempt + 1)
-    LinearBackoff { base_ms: u64 },
-    /// 指数退避：base_ms * 2^attempt，上限 max_ms
-    ExponentialBackoff { base_ms: u64, max_ms: u64 },
-}
-
-/// 根据错误状态码和错误信息确定重试策略
-fn determine_retry_strategy(
-    status_code: u16,
-    error_text: &str,
-    retried_without_thinking: bool,
-) -> RetryStrategy {
-    match status_code {
-        // 400 错误：Thinking 签名失败
-        400 if !retried_without_thinking
-            && (error_text.contains("Invalid `signature`")
-                || error_text.contains("thinking.signature")
-                || error_text.contains("thinking.thinking")) =>
-        {
-            // 固定 200ms 延迟后重试
-            RetryStrategy::FixedDelay(Duration::from_millis(200))
-        }
-
-        // 429 限流错误
-        429 => {
-            // 优先使用服务端返回的 Retry-After
-            if let Some(delay_ms) = crate::proxy::upstream::retry::parse_retry_delay(error_text) {
-                let actual_delay = delay_ms.saturating_add(200).min(10_000);
-                RetryStrategy::FixedDelay(Duration::from_millis(actual_delay))
-            } else {
-                // 否则使用线性退避：1s, 2s, 3s
-                RetryStrategy::LinearBackoff { base_ms: 1000 }
-            }
-        }
-
-        // 503 服务不可用 / 529 服务器过载
-        503 | 529 => {
-            // 指数退避：1s, 2s, 4s, 8s
-            RetryStrategy::ExponentialBackoff {
-                base_ms: 1000,
-                max_ms: 8000,
-            }
-        }
-
-        // 500 服务器内部错误
-        500 => {
-            // 线性退避：500ms, 1s, 1.5s
-            RetryStrategy::LinearBackoff { base_ms: 500 }
-        }
-
-        // 401/403 认证/权限错误：可重试（轮换账号）
-        401 | 403 => RetryStrategy::FixedDelay(Duration::from_millis(100)),
-
-        // 其他错误：不重试
-        _ => RetryStrategy::NoRetry,
-    }
-}
-
-/// 执行退避策略并返回是否应该继续重试
-async fn apply_retry_strategy(
-    strategy: RetryStrategy,
-    attempt: usize,
-    status_code: u16,
-    trace_id: &str,
-) -> bool {
-    match strategy {
-        RetryStrategy::NoRetry => {
-            debug!("[{}] Non-retryable error {}, stopping", trace_id, status_code);
-            false
-        }
-
-        RetryStrategy::FixedDelay(duration) => {
-            // Apply jitter to fixed delays to prevent synchronized retries
-            let base_ms = duration.as_millis() as u64;
-            let jittered_ms = apply_jitter(base_ms);
-            info!(
-                "[{}] ⏱️  Retry with fixed delay: status={}, attempt={}/{}, base={}ms, actual={}ms (jitter applied)",
-                trace_id,
-                status_code,
-                attempt + 1,
-                MAX_RETRY_ATTEMPTS,
-                base_ms,
-                jittered_ms
-            );
-            sleep(Duration::from_millis(jittered_ms)).await;
-            true
-        }
-
-        RetryStrategy::LinearBackoff { base_ms } => {
-            let calculated_ms = base_ms * (attempt as u64 + 1);
-            let jittered_ms = apply_jitter(calculated_ms);
-            info!(
-                "[{}] ⏱️  Retry with linear backoff: status={}, attempt={}/{}, base={}ms, actual={}ms (jitter applied)",
-                trace_id,
-                status_code,
-                attempt + 1,
-                MAX_RETRY_ATTEMPTS,
-                calculated_ms,
-                jittered_ms
-            );
-            sleep(Duration::from_millis(jittered_ms)).await;
-            true
-        }
-
-        RetryStrategy::ExponentialBackoff { base_ms, max_ms } => {
-            let calculated_ms = (base_ms * 2_u64.pow(attempt as u32)).min(max_ms);
-            let jittered_ms = apply_jitter(calculated_ms);
-            info!(
-                "[{}] ⏱️  Retry with exponential backoff: status={}, attempt={}/{}, base={}ms, actual={}ms (jitter applied)",
-                trace_id,
-                status_code,
-                attempt + 1,
-                MAX_RETRY_ATTEMPTS,
-                calculated_ms,
-                jittered_ms
-            );
-            sleep(Duration::from_millis(jittered_ms)).await;
-            true
-        }
-    }
-}
-
-/// 判断是否应该轮换账号
-fn should_rotate_account(status_code: u16) -> bool {
-    match status_code {
-        // 这些错误是账号级别的，需要轮换
-        429 | 401 | 403 | 500 => true,
-        // 这些错误是服务端级别的，轮换账号无意义
-        400 | 503 | 529 => false,
-        // 其他错误默认不轮换
-        _ => false,
-    }
-}
-
-// ===== 退避策略模块结束 =====
 
 /// 处理 Claude messages 请求
 /// 处理 Chat 消息请求流程
@@ -604,7 +420,7 @@ pub async fn handle_messages(
 
         if let Some(task_type) = background_task_type {
             // 检测到后台任务,强制降级到 Flash 模型
-            let downgrade_model = select_background_model(task_type);
+            let downgrade_model = background_task::select_model(task_type);
             
             info!(
                 "[{}][AUTO] 检测到后台任务 (类型: {:?}),强制降级: {} -> {}",
@@ -837,7 +653,7 @@ pub async fn handle_messages(
             
             // 使用统一退避策略
             let strategy = determine_retry_strategy(status_code, &error_text, retried_without_thinking);
-            if apply_retry_strategy(strategy, attempt, status_code, &trace_id).await {
+            if execute_retry_strategy(strategy, attempt, status_code, &trace_id).await {
                 continue;
             }
         }
@@ -887,7 +703,7 @@ pub async fn handle_messages(
         let strategy = determine_retry_strategy(status_code, &error_text, retried_without_thinking);
 
         // 执行退避
-        if apply_retry_strategy(strategy, attempt, status_code, &trace_id).await {
+        if execute_retry_strategy(strategy, attempt, status_code, &trace_id).await {
             // Record error in health monitor for 403/401 (may auto-disable account)
             if status_code == 403 || status_code == 401 {
                 state.health_monitor.record_error(&account_id, status_code, &error_text).await;
@@ -990,115 +806,14 @@ mod tests {
 }
 */
 
-// ===== 后台任务检测辅助函数 =====
+// ===== Background Task Detection (Claude-specific wrapper) =====
 
-/// 后台任务类型
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum BackgroundTaskType {
-    TitleGeneration,      // 标题生成
-    SimpleSummary,        // 简单摘要
-    ContextCompression,   // 上下文压缩
-    PromptSuggestion,     // 提示建议
-    SystemMessage,        // 系统消息
-    EnvironmentProbe,     // 环境探测
-}
-
-/// 标题生成关键词
-const TITLE_KEYWORDS: &[&str] = &[
-    "write a 5-10 word title",
-    "Please write a 5-10 word title",
-    "Respond with the title",
-    "Generate a title for",
-    "Create a brief title",
-    "title for the conversation",
-    "conversation title",
-    "生成标题",
-    "为对话起个标题",
-];
-
-/// 摘要生成关键词
-const SUMMARY_KEYWORDS: &[&str] = &[
-    "Summarize this coding conversation",
-    "Summarize the conversation",
-    "Concise summary",
-    "in under 50 characters",
-    "compress the context",
-    "Provide a concise summary",
-    "condense the previous messages",
-    "shorten the conversation history",
-    "extract key points from",
-];
-
-/// 建议生成关键词
-const SUGGESTION_KEYWORDS: &[&str] = &[
-    "prompt suggestion generator",
-    "suggest next prompts",
-    "what should I ask next",
-    "generate follow-up questions",
-    "recommend next steps",
-    "possible next actions",
-];
-
-/// 系统消息关键词
-const SYSTEM_KEYWORDS: &[&str] = &[
-    "Warmup",
-    "<system-reminder>",
-    // Removed: "Caveat: The messages below were generated" - this is a normal Claude Desktop system prompt
-    "This is a system message",
-];
-
-/// 环境探测关键词
-const PROBE_KEYWORDS: &[&str] = &[
-    "check current directory",
-    "list available tools",
-    "verify environment",
-    "test connection",
-];
-
-/// 检测后台任务并返回任务类型
 fn detect_background_task_type(request: &ClaudeRequest) -> Option<BackgroundTaskType> {
-    let last_user_msg = extract_last_user_message_for_detection(request)?;
-    let preview = last_user_msg.chars().take(500).collect::<String>();
-    
-    // 长度过滤：后台任务通常不超过 800 字符
-    if last_user_msg.len() > 800 {
-        return None;
-    }
-    
-    // 按优先级匹配
-    if matches_keywords(&preview, SYSTEM_KEYWORDS) {
-        return Some(BackgroundTaskType::SystemMessage);
-    }
-    
-    if matches_keywords(&preview, TITLE_KEYWORDS) {
-        return Some(BackgroundTaskType::TitleGeneration);
-    }
-    
-    if matches_keywords(&preview, SUMMARY_KEYWORDS) {
-        if preview.contains("in under 50 characters") {
-            return Some(BackgroundTaskType::SimpleSummary);
-        }
-        return Some(BackgroundTaskType::ContextCompression);
-    }
-    
-    if matches_keywords(&preview, SUGGESTION_KEYWORDS) {
-        return Some(BackgroundTaskType::PromptSuggestion);
-    }
-    
-    if matches_keywords(&preview, PROBE_KEYWORDS) {
-        return Some(BackgroundTaskType::EnvironmentProbe);
-    }
-    
-    None
+    let last_user_msg = extract_last_user_message(request)?;
+    background_task::detect_from_text(&last_user_msg)
 }
 
-/// 辅助函数：关键词匹配
-fn matches_keywords(text: &str, keywords: &[&str]) -> bool {
-    keywords.iter().any(|kw| text.contains(kw))
-}
-
-/// 辅助函数：提取最后一条用户消息（用于检测）
-fn extract_last_user_message_for_detection(request: &ClaudeRequest) -> Option<String> {
+fn extract_last_user_message(request: &ClaudeRequest) -> Option<String> {
     request.messages.iter().rev()
         .filter(|m| m.role == "user")
         .find_map(|m| {
@@ -1124,16 +839,4 @@ fn extract_last_user_message_for_detection(request: &ClaudeRequest) -> Option<St
                 Some(content)
             }
         })
-}
-
-/// 根据后台任务类型选择合适的模型
-fn select_background_model(task_type: BackgroundTaskType) -> &'static str {
-    match task_type {
-        BackgroundTaskType::TitleGeneration => BACKGROUND_MODEL_LITE,     // 极简任务
-        BackgroundTaskType::SimpleSummary => BACKGROUND_MODEL_LITE,       // 简单摘要
-        BackgroundTaskType::SystemMessage => BACKGROUND_MODEL_LITE,       // 系统消息
-        BackgroundTaskType::PromptSuggestion => BACKGROUND_MODEL_LITE,    // 建议生成
-        BackgroundTaskType::EnvironmentProbe => BACKGROUND_MODEL_LITE,    // 环境探测
-        BackgroundTaskType::ContextCompression => BACKGROUND_MODEL_STANDARD, // 复杂压缩
-    }
 }

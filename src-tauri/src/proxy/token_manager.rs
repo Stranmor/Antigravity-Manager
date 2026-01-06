@@ -634,12 +634,6 @@ impl TokenManager {
         tracing::debug!("Scheduling configuration updated: {:?}", *config);
     }
 
-    /// 清除特定会话的粘性映射
-    #[allow(dead_code)]
-    pub fn clear_session_binding(&self, session_id: &str) {
-        self.session_accounts.remove(session_id);
-    }
-
     /// 解绑会话从指定账号（当账号被限流时调用）
     /// 返回被解绑的会话 ID 列表
     pub fn unbind_sessions_from_account(&self, account_id: &str) -> Vec<String> {
