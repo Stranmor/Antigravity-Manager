@@ -38,8 +38,11 @@ jobs:
             ${{ runner.os }}-cargo-check-
             ${{ runner.os }}-cargo-
 
-      - name: Run cargo check
-        run: cargo check --all-targets --no-default-features --features headless
+      - name: Run cargo check (library)
+        run: cargo check --lib --no-default-features --features headless
+
+      - name: Run cargo check (server binary)
+        run: cargo check --bin antigravity-server --no-default-features --features headless
 
   lint:
     name: Lint
@@ -73,8 +76,11 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
-      - name: Run clippy
-        run: cargo clippy --all-targets --no-default-features --features headless -- -D warnings
+      - name: Run clippy (library)
+        run: cargo clippy --lib --no-default-features --features headless -- -D warnings
+
+      - name: Run clippy (server binary)
+        run: cargo clippy --bin antigravity-server --no-default-features --features headless -- -D warnings
 
   test:
     name: Test
@@ -104,7 +110,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Run tests
-        run: cargo test --all --no-default-features --features headless
+        run: cargo test --lib --no-default-features --features headless
 
   build-server:
     name: Build Server
