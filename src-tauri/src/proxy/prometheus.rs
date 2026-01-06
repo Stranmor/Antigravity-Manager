@@ -23,6 +23,25 @@ static PROMETHEUS_HANDLE: OnceLock<PrometheusHandle> = OnceLock::new();
 /// Global server start time for uptime calculation
 static METRICS_START_TIME: OnceLock<Instant> = OnceLock::new();
 
+/// Custom histogram buckets optimized for LLM API latency distribution.
+///
+/// LLM APIs have bimodal latency patterns:
+/// - Fast responses (cache hits, short prompts): 100ms - 1s
+/// - Slow responses (long generation, complex reasoning): 5s - 60s+
+///
+/// These buckets provide granular visibility into both patterns.
+const LLM_LATENCY_BUCKETS: &[f64] = &[
+    0.1,   // 100ms - very fast (cache hits)
+    0.25,  // 250ms - fast
+    0.5,   // 500ms - typical short response
+    1.0,   // 1s - normal response
+    2.0,   // 2s - moderate generation
+    5.0,   // 5s - longer generation
+    10.0,  // 10s - complex reasoning
+    30.0,  // 30s - extended generation
+    60.0,  // 60s - very long operations
+];
+
 /// Initialize Prometheus metrics recorder.
 /// Must be called once at application startup before any metrics are recorded.
 ///
@@ -31,7 +50,9 @@ pub fn init_metrics() -> PrometheusHandle {
     let _ = METRICS_START_TIME.get_or_init(Instant::now);
 
     let handle = PROMETHEUS_HANDLE.get_or_init(|| {
-        let builder = PrometheusBuilder::new();
+        let builder = PrometheusBuilder::new()
+            .set_buckets(LLM_LATENCY_BUCKETS)
+            .expect("Failed to set histogram buckets");
         let handle = builder
             .install_recorder()
             .expect("Failed to install Prometheus metrics recorder");
