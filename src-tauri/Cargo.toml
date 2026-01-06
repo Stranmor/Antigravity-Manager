@@ -133,8 +133,13 @@ codegen-units = 1      # Single codegen unit for better optimization
 panic = "abort"        # Smaller binary, no unwinding
 strip = true           # Strip debug symbols
 
-# Server-optimized profile for container builds
 [profile.server]
 inherits = "release"
-opt-level = "z"        # Maximum size optimization for containers
-lto = "fat"            # Aggressive LTO for smallest binary
+opt-level = "z"
+lto = "fat"
+
+[profile.release-fast]
+inherits = "release"
+lto = false
+codegen-units = 16
+strip = false
