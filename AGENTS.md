@@ -24,7 +24,7 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [ ] Deploy Grafana Tempo on VPS for distributed tracing `[MODE: B]`
 - [ ] Add rate limit tracking to analytics persistence `[MODE: B]`
 - [ ] Implement account usage visualization in Slint analytics page `[MODE: B]`
-- [ ] Add keyboard shortcuts to Slint UI (Ctrl+R refresh, etc.) `[MODE: B]`
+- [x] Add keyboard shortcuts to Slint UI (Ctrl+R refresh, etc.) `[MODE: B]` (a27065f7)
 - [ ] Implement log rotation for proxy logs `[MODE: B]`
 - [ ] Add health check endpoint with detailed component status `[MODE: B]`
 
@@ -854,3 +854,29 @@ Replaced `Vec` with `SmallVec<[Bytes; 4]>` from the `smallvec` crate:
 2. Reduced memory fragmentation during streaming
 3. Better cache locality for small collections
 4. No API changes required (SmallVec implements Vec-like interface)
+
+## KEYBOARD SHORTCUTS IMPLEMENTATION (2026-01-07)
+**Status: IMPLEMENTED (a27065f7)**
+
+**Global FocusScope** captures keyboard input at the root level using `forward-focus` pattern from Slint 1.9.
+
+**Implemented Shortcuts:**
+| Shortcut | Action | Description |
+|----------|--------|-------------|
+| Ctrl+R | `refresh_accounts()` | Refresh account list |
+| Ctrl+P | `toggle_proxy()` | Start/Stop proxy server |
+| Ctrl+1 | Page 0 | Dashboard |
+| Ctrl+2 | Page 1 | Accounts |
+| Ctrl+3 | Page 2 | API Proxy |
+| Ctrl+4 | Page 3 | Monitor |
+| Ctrl+5 | Page 4 | Analytics |
+| Ctrl+6 | Page 5 | Settings |
+| Escape | Close dialogs | Closes Add Account dialog, cancels OAuth |
+| F5 | Context refresh | Refresh current view (page-aware) |
+
+**UI Hints Added:**
+- NavButton component now displays shortcut hints (e.g., "^1")
+- Proxy status card shows "^P" hint
+- Sidebar includes keyboard shortcuts reference panel
+
+**Code Location:** `src-slint/ui/main.slint` lines 2231-2313 (FocusScope handler)
