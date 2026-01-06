@@ -61,6 +61,14 @@ cargo build --profile release-fast # Testing (fast, still optimized)
 - [x] Sync VPS with latest binary `[MODE: B]` (2026-01-06)
 - [x] Fix CI workflow (adjust for headless feature) `[MODE: B]` (7a9088d)
 - [x] Optimize token rotation with sorted cache `[MODE: B]` (9a9e450)
+- [x] Fix clippy warnings in proxy mappers `[MODE: B]` (68c36db)
+
+## CODE QUALITY BATCH (2026-01-06)
+- [x] Fix remaining clippy warnings (format!, clone_on_ref_ptr) `[MODE: B]` (6524fce)
+- [x] Eliminate unwrap() calls in src-slint/main.rs `[MODE: B]` (ffb9b41)
+- [x] Add UI update throttling for dashboard telemetry `[MODE: B]` (1be8b80)
+- [ ] Migrate from chrono to time crate (SOTA 2026) `[MODE: R]`
+- [ ] Add property-based tests for account filtering `[MODE: C]`
 
 ## CLI IMPORT TOOL (Complete - 2026-01-06)
 **Status: ✓ IMPLEMENTED AND TESTED**
