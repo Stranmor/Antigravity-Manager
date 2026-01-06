@@ -2,11 +2,18 @@ import { Link, useLocation } from 'react-router-dom';
 import { Sun, Moon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useConfigStore } from '../../stores/useConfigStore';
+import { getVersion } from '@tauri-apps/api/app';
+import { useState, useEffect } from 'react';
 
 function Navbar() {
     const location = useLocation();
     const { t, i18n } = useTranslation();
     const { config, saveConfig } = useConfigStore();
+    const [version, setVersion] = useState<string>('');
+
+    useEffect(() => {
+        void getVersion().then(setVersion);
+    }, []);
 
     const navItems = [
         { path: '/', label: t('nav.dashboard') },
@@ -108,6 +115,11 @@ function Navbar() {
                     <div className="flex items-center">
                         <Link to="/" className="text-xl font-semibold text-gray-900 dark:text-base-content flex items-center gap-2">
                             Antigravity Tools
+                            {version && (
+                                <span className="text-xs font-normal text-gray-400 dark:text-gray-500">
+                                    v{version}
+                                </span>
+                            )}
                         </Link>
                     </div>
 

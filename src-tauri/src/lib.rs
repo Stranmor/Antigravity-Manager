@@ -46,6 +46,26 @@ pub fn run() {
         .manage(commands::proxy::ProxyServiceState::new())
         .setup(|app| {
             info!("Setup starting...");
+            
+            if let Some(window) = app.get_webview_window("main") {
+                let version = env!("CARGO_PKG_VERSION");
+                let title = format!("Antigravity Tools v{}", version);
+                let _ = window.set_title(&title);
+                
+                // Fallback: show window after 3 seconds if frontend doesn't show it
+                let window_clone = window.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                    if let Ok(visible) = window_clone.is_visible() {
+                        if !visible {
+                            info!("Fallback: showing window from backend (frontend didn't show it)");
+                            let _ = window_clone.show();
+                            let _ = window_clone.set_focus();
+                        }
+                    }
+                });
+            }
+            
             modules::tray::create_tray(app.handle())?;
             info!("Tray created");
 
