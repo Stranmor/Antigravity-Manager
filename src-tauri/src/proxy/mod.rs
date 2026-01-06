@@ -5,6 +5,7 @@ pub mod server;
 pub mod security;
 pub mod error;
 pub mod db;
+pub mod server_logger;
 
 pub mod mappers;
 pub mod handlers;
@@ -30,6 +31,8 @@ pub use config::ProxyConfig;
 pub use config::ProxyAuthMode;
 pub use config::ZaiConfig;
 pub use config::ZaiDispatchMode;
+pub use config::LogRotationConfig;
 pub use token_manager::TokenManager;
 pub use server::AxumServer;
 pub use security::ProxySecurityConfig;
+pub use server_logger::{init_server_logger, cleanup_old_logs, start_log_cleanup_task, LogGuards};

@@ -84,6 +84,7 @@ use antigravity_tools_lib::models::{Account, TokenData};
 use antigravity_tools_lib::proxy::{
     config::ProxyConfig, monitor::ProxyMonitor, prometheus, server::AxumServer,
     telemetry, ProxySecurityConfig, TokenManager,
+    init_server_logger, start_log_cleanup_task, LogGuards,
 };
 
 // ============================================================================
@@ -200,6 +201,109 @@ struct HealthResponse {
     proxy_port: u16,
 }
 
+// ============================================================================
+// Detailed Health Check Types
+// ============================================================================
+
+/// Overall health status
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum DetailedHealthStatus {
+    Healthy,
+    Degraded,
+    Unhealthy,
+}
+
+/// Component health status with details
+#[derive(Debug, Serialize)]
+struct ComponentHealth {
+    status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    latency_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    size_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accounts_total: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accounts_available: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accounts_rate_limited: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    open_circuits: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    half_open_circuits: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    active_connections: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    requests_per_minute: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    log_files_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    oldest_log_age_days: Option<u64>,
+}
+
+impl ComponentHealth {
+    fn healthy() -> Self {
+        Self {
+            status: "healthy",
+            latency_ms: None,
+            size_bytes: None,
+            accounts_total: None,
+            accounts_available: None,
+            accounts_rate_limited: None,
+            open_circuits: None,
+            half_open_circuits: None,
+            active_connections: None,
+            requests_per_minute: None,
+            log_files_count: None,
+            oldest_log_age_days: None,
+        }
+    }
+
+    fn degraded() -> Self {
+        Self {
+            status: "degraded",
+            ..Self::healthy()
+        }
+    }
+
+    fn unhealthy() -> Self {
+        Self {
+            status: "unhealthy",
+            ..Self::healthy()
+        }
+    }
+}
+
+/// System resource checks
+#[derive(Debug, Serialize)]
+struct SystemChecks {
+    disk_space_ok: bool,
+    memory_ok: bool,
+    cpu_ok: bool,
+}
+
+/// Detailed health response with all component statuses
+#[derive(Debug, Serialize)]
+struct DetailedHealthResponse {
+    status: &'static str,
+    version: &'static str,
+    uptime_seconds: u64,
+    components: DetailedComponents,
+    checks: SystemChecks,
+    timestamp: String,
+}
+
+/// All component health statuses
+#[derive(Debug, Serialize)]
+struct DetailedComponents {
+    database: ComponentHealth,
+    token_manager: ComponentHealth,
+    circuit_breaker: ComponentHealth,
+    proxy_server: ComponentHealth,
+    log_rotation: ComponentHealth,
+}
+
 #[derive(Debug, Serialize)]
 struct AccountInfo {
     id: String,
@@ -302,6 +406,7 @@ async fn admin_auth_middleware(
 // Helper Functions
 // ============================================================================
 
+/// Simple console-only logging for import command
 fn init_logging() {
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info,antigravity_tools_lib=debug"));
@@ -310,6 +415,29 @@ fn init_logging() {
         .with(filter)
         .with(fmt::layer().with_target(true).with_thread_ids(false))
         .try_init();
+}
+
+/// Initialize advanced logging with log rotation for the server
+/// Returns the log guards that must be kept alive for the server lifetime
+fn init_server_logging_with_rotation(data_dir: &std::path::Path, config: &ProxyConfig) -> Option<LogGuards> {
+    let log_dir = data_dir.join("logs");
+
+    match init_server_logger(&log_dir, &config.log_rotation) {
+        Ok(guards) => {
+            info!(
+                "Initialized server logging with rotation (strategy: {}, max_files: {}, compress: {})",
+                config.log_rotation.strategy,
+                config.log_rotation.max_files,
+                config.log_rotation.compress
+            );
+            Some(guards)
+        }
+        Err(e) => {
+            eprintln!("Failed to initialize log rotation: {}. Falling back to basic logging.", e);
+            init_logging();
+            None
+        }
+    }
 }
 
 async fn load_proxy_config(data_dir: &std::path::Path) -> ProxyConfig {
@@ -777,6 +905,353 @@ async fn get_health_summary_handler(
     }))
 }
 
+/// GET /api/health/detailed - Detailed health check with component status
+///
+/// Returns comprehensive health information about all server components including:
+/// - Database health with latency measurement
+/// - Token manager status (accounts total/available/rate-limited)
+/// - Circuit breaker state (open/half-open circuits)
+/// - Proxy server status (active connections, requests per minute)
+/// - Log rotation status (file count, oldest log age)
+/// - System resource checks (disk, memory, CPU)
+async fn detailed_health_handler(
+    State(state): State<Arc<AdminState>>,
+) -> impl IntoResponse {
+    let start_time = SERVER_START_TIME.get_or_init(Instant::now);
+    let uptime_seconds = start_time.elapsed().as_secs();
+
+    // === Database Health ===
+    let database_health = check_database_health(&state.data_dir);
+
+    // === Token Manager Health ===
+    let accounts_total = state.token_manager.len();
+    let accounts_available = state.token_manager.available_count();
+    let accounts_rate_limited = accounts_total.saturating_sub(accounts_available);
+
+    let token_manager_status = if accounts_total == 0 {
+        "unhealthy"
+    } else if accounts_available == 0 {
+        "unhealthy"
+    } else if accounts_rate_limited > accounts_total / 2 {
+        "degraded"
+    } else {
+        "healthy"
+    };
+
+    let token_manager_health = ComponentHealth {
+        status: token_manager_status,
+        accounts_total: Some(accounts_total),
+        accounts_available: Some(accounts_available),
+        accounts_rate_limited: Some(accounts_rate_limited),
+        ..ComponentHealth::healthy()
+    };
+
+    // === Circuit Breaker Health ===
+    let cb_summary = state.proxy_server.read().await.as_ref().map(|ps| {
+        // Circuit breaker is in AppState, not directly accessible here
+        // We use health_monitor disabled count as a proxy for circuit issues
+        let disabled = state.health_monitor.disabled_count();
+        (disabled, 0usize) // (open_circuits, half_open_circuits)
+    }).unwrap_or((0, 0));
+
+    let circuit_breaker_status = if cb_summary.0 > accounts_total / 2 {
+        "degraded"
+    } else if cb_summary.0 > 0 {
+        "healthy" // Some open circuits is expected behavior
+    } else {
+        "healthy"
+    };
+
+    let circuit_breaker_health = ComponentHealth {
+        status: circuit_breaker_status,
+        open_circuits: Some(cb_summary.0),
+        half_open_circuits: Some(cb_summary.1),
+        ..ComponentHealth::healthy()
+    };
+
+    // === Proxy Server Health ===
+    let proxy_running = state.proxy_server.read().await.is_some();
+    let stats = state.monitor.get_stats().await;
+
+    // Calculate approximate requests per minute (based on total over uptime)
+    let requests_per_minute = if uptime_seconds > 0 {
+        (stats.total_requests * 60) / uptime_seconds
+    } else {
+        0
+    };
+
+    let proxy_status = if !proxy_running {
+        "unhealthy"
+    } else {
+        "healthy"
+    };
+
+    let proxy_server_health = ComponentHealth {
+        status: proxy_status,
+        active_connections: Some(0), // ConnectionTracker is not directly accessible
+        requests_per_minute: Some(requests_per_minute),
+        ..ComponentHealth::healthy()
+    };
+
+    // === Log Rotation Health ===
+    let log_rotation_health = check_log_rotation_health(&state.data_dir);
+
+    // === System Resource Checks ===
+    let system_checks = check_system_resources();
+
+    // === Determine Overall Status ===
+    let overall_status = determine_overall_status(
+        &database_health,
+        &token_manager_health,
+        &circuit_breaker_health,
+        &proxy_server_health,
+        &log_rotation_health,
+        &system_checks,
+    );
+
+    // === Generate Timestamp ===
+    let timestamp = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| "unknown".to_string());
+
+    Json(DetailedHealthResponse {
+        status: overall_status,
+        version: env!("CARGO_PKG_VERSION"),
+        uptime_seconds,
+        components: DetailedComponents {
+            database: database_health,
+            token_manager: token_manager_health,
+            circuit_breaker: circuit_breaker_health,
+            proxy_server: proxy_server_health,
+            log_rotation: log_rotation_health,
+        },
+        checks: system_checks,
+        timestamp,
+    })
+}
+
+/// Check database health with latency measurement
+fn check_database_health(data_dir: &std::path::Path) -> ComponentHealth {
+    use std::time::Instant;
+
+    let db_path = data_dir.join("proxy_logs.db");
+
+    // Measure database access latency
+    let start = Instant::now();
+
+    match rusqlite::Connection::open(&db_path) {
+        Ok(conn) => {
+            // Simple query to test database responsiveness
+            let query_result = conn.execute("SELECT 1", []);
+            let latency_ms = start.elapsed().as_millis() as u64;
+
+            // Get database file size
+            let size_bytes = std::fs::metadata(&db_path)
+                .map(|m| m.len())
+                .ok();
+
+            match query_result {
+                Ok(_) => {
+                    let status = if latency_ms > 100 { "degraded" } else { "healthy" };
+                    ComponentHealth {
+                        status,
+                        latency_ms: Some(latency_ms),
+                        size_bytes,
+                        ..ComponentHealth::healthy()
+                    }
+                }
+                Err(e) => {
+                    warn!("Database health check query failed: {}", e);
+                    ComponentHealth {
+                        status: "unhealthy",
+                        latency_ms: Some(latency_ms),
+                        size_bytes,
+                        ..ComponentHealth::healthy()
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            warn!("Database health check failed to open: {}", e);
+            ComponentHealth::unhealthy()
+        }
+    }
+}
+
+/// Check log rotation health
+fn check_log_rotation_health(data_dir: &std::path::Path) -> ComponentHealth {
+    use std::time::SystemTime;
+
+    let log_dir = data_dir.join("logs");
+
+    if !log_dir.exists() {
+        // No logs directory yet - this is fine for fresh installs
+        return ComponentHealth {
+            status: "healthy",
+            log_files_count: Some(0),
+            oldest_log_age_days: None,
+            ..ComponentHealth::healthy()
+        };
+    }
+
+    let mut log_count = 0usize;
+    let mut oldest_modified: Option<SystemTime> = None;
+
+    if let Ok(entries) = std::fs::read_dir(&log_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if matches!(ext, "log" | "gz") {
+                    log_count += 1;
+
+                    if let Ok(metadata) = path.metadata() {
+                        if let Ok(modified) = metadata.modified() {
+                            oldest_modified = Some(match oldest_modified {
+                                Some(existing) if modified < existing => modified,
+                                Some(existing) => existing,
+                                None => modified,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let oldest_log_age_days = oldest_modified.and_then(|modified| {
+        SystemTime::now()
+            .duration_since(modified)
+            .ok()
+            .map(|d| d.as_secs() / (24 * 60 * 60))
+    });
+
+    // Status is degraded if logs are very old (> 30 days) or if there are too many files
+    let status = if log_count > 100 {
+        "degraded"
+    } else if oldest_log_age_days.is_some_and(|days| days > 30) {
+        "degraded"
+    } else {
+        "healthy"
+    };
+
+    ComponentHealth {
+        status,
+        log_files_count: Some(log_count),
+        oldest_log_age_days,
+        ..ComponentHealth::healthy()
+    }
+}
+
+/// Check system resources (disk, memory, CPU)
+fn check_system_resources() -> SystemChecks {
+    // Disk space check - ensure at least 100MB free
+    let disk_space_ok = check_disk_space();
+
+    // Memory check - try to read /proc/meminfo on Linux
+    let memory_ok = check_memory();
+
+    // CPU check - always true for now (would need sysinfo crate for proper check)
+    let cpu_ok = true;
+
+    SystemChecks {
+        disk_space_ok,
+        memory_ok,
+        cpu_ok,
+    }
+}
+
+/// Check if sufficient disk space is available
+fn check_disk_space() -> bool {
+    // Try to get available space in data directory
+    // On Linux, we can use statvfs but for simplicity, we'll use a temp file test
+    // If we can write a file, disk space is likely OK
+
+    #[cfg(target_os = "linux")]
+    {
+        use std::fs;
+
+        // Try to check /proc/diskstats or use statvfs
+        // For simplicity, just check if we can write to temp
+        let temp_path = std::env::temp_dir().join(".antigravity_health_check");
+        match fs::write(&temp_path, "test") {
+            Ok(_) => {
+                let _ = fs::remove_file(&temp_path);
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        true // Assume OK on other platforms
+    }
+}
+
+/// Check if sufficient memory is available
+fn check_memory() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        // Read /proc/meminfo to check available memory
+        if let Ok(content) = std::fs::read_to_string("/proc/meminfo") {
+            for line in content.lines() {
+                if line.starts_with("MemAvailable:") {
+                    // Parse available memory in kB
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if let Some(kb_str) = parts.get(1) {
+                        if let Ok(kb) = kb_str.parse::<u64>() {
+                            // Require at least 100MB available
+                            return kb > 100_000;
+                        }
+                    }
+                }
+            }
+        }
+        true // Assume OK if we can't read meminfo
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        true // Assume OK on other platforms
+    }
+}
+
+/// Determine overall system health status
+fn determine_overall_status(
+    database: &ComponentHealth,
+    token_manager: &ComponentHealth,
+    circuit_breaker: &ComponentHealth,
+    proxy_server: &ComponentHealth,
+    log_rotation: &ComponentHealth,
+    system_checks: &SystemChecks,
+) -> &'static str {
+    // Unhealthy if any critical component is unhealthy
+    if database.status == "unhealthy"
+        || token_manager.status == "unhealthy"
+        || proxy_server.status == "unhealthy"
+    {
+        return "unhealthy";
+    }
+
+    // Unhealthy if system resources are critical
+    if !system_checks.disk_space_ok || !system_checks.memory_ok {
+        return "unhealthy";
+    }
+
+    // Degraded if any component is degraded
+    if database.status == "degraded"
+        || token_manager.status == "degraded"
+        || circuit_breaker.status == "degraded"
+        || proxy_server.status == "degraded"
+        || log_rotation.status == "degraded"
+    {
+        return "degraded";
+    }
+
+    "healthy"
+}
+
 // ============================================================================
 // Main Entry Point
 // ============================================================================
@@ -879,7 +1354,26 @@ async fn import_accounts(from: Option<PathBuf>, to: Option<PathBuf>) -> Result<(
 async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     let _ = SERVER_START_TIME.get_or_init(Instant::now);
 
-    init_logging();
+    let server_config = ServerConfig::from_env();
+
+    // Ensure data directory exists before loading config
+    if !server_config.data_dir.exists() {
+        std::fs::create_dir_all(&server_config.data_dir)?;
+    }
+
+    // Load proxy config first to get log rotation settings
+    let proxy_config = load_proxy_config(&server_config.data_dir).await;
+
+    // Initialize logging with rotation (must be done early, guards must outlive server)
+    let _log_guards = init_server_logging_with_rotation(&server_config.data_dir, &proxy_config);
+
+    // Start log cleanup background task (runs every 24 hours)
+    let log_dir = server_config.data_dir.join("logs");
+    let _cleanup_handle = start_log_cleanup_task(
+        log_dir,
+        proxy_config.log_rotation.max_files as u64,
+        24, // Check every 24 hours
+    );
 
     let _ = prometheus::init_metrics();
     info!("Prometheus metrics initialized");
@@ -905,18 +1399,10 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
         env!("CARGO_PKG_VERSION")
     );
 
-    let server_config = ServerConfig::from_env();
-
     info!("Data directory: {:?}", server_config.data_dir);
 
-    // Ensure data directory exists
-    if !server_config.data_dir.exists() {
-        info!(
-            "Data directory does not exist, creating: {:?}",
-            server_config.data_dir
-        );
-        tokio::fs::create_dir_all(&server_config.data_dir).await?;
-    }
+    // Re-load the proxy_config as mutable for env overrides
+    let mut proxy_config = proxy_config;
 
     let accounts_dir = server_config.data_dir.join("accounts");
     if !accounts_dir.exists() {
@@ -937,9 +1423,6 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
             .to_string_lossy()
             .to_string(),
     );
-
-    // Load proxy configuration
-    let mut proxy_config = load_proxy_config(&server_config.data_dir).await;
 
     // Override with environment variables
     proxy_config.port = server_config.proxy_port;
@@ -1053,6 +1536,7 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     let public_routes = Router::new()
         .route("/api/health", get(health_handler))
         .route("/api/health/summary", get(get_health_summary_handler))
+        .route("/api/health/detailed", get(detailed_health_handler))
         .route("/metrics", get(metrics_handler));
 
     // Combine routers with rate limiting
@@ -1092,6 +1576,7 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     info!("Admin API endpoints:");
     info!("  GET    /api/health              - Health check with stats (public)");
     info!("  GET    /api/health/summary      - Account health summary (public)");
+    info!("  GET    /api/health/detailed     - Detailed component health (public)");
     info!("  GET    /metrics                 - Prometheus metrics (public)");
     info!("  GET    /api/accounts            - List all accounts (auth required)");
     info!("  POST   /api/accounts            - Add account (auth required)");

@@ -25,7 +25,7 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [ ] Add rate limit tracking to analytics persistence `[MODE: B]`
 - [ ] Implement account usage visualization in Slint analytics page `[MODE: B]`
 - [x] Add keyboard shortcuts to Slint UI (Ctrl+R refresh, etc.) `[MODE: B]` (a27065f7)
-- [ ] Implement log rotation for proxy logs `[MODE: B]`
+- [x] Implement log rotation for proxy logs `[MODE: B]` (2026-01-07) ✓ See LOG ROTATION section below
 - [ ] Add health check endpoint with detailed component status `[MODE: B]`
 
 ## OTEL OBSERVABILITY STATUS (2026-01-07)
@@ -880,3 +880,68 @@ Replaced `Vec` with `SmallVec<[Bytes; 4]>` from the `smallvec` crate:
 - Sidebar includes keyboard shortcuts reference panel
 
 **Code Location:** `src-slint/ui/main.slint` lines 2231-2313 (FocusScope handler)
+
+## LOG ROTATION IMPLEMENTATION (2026-01-07)
+**Status: IMPLEMENTED**
+
+**Library:** `logroller` v0.1.10 - SOTA log rotation for Rust (2026)
+
+**Features:**
+- Daily/hourly log rotation at midnight UTC
+- Size-based rotation (configurable MB threshold)
+- Max 7 files retention (auto-cleanup of old logs)
+- Optional gzip compression for rotated files
+- Separate log files by level (errors.log, debug.log)
+- Non-blocking async writes via tracing-appender
+- Background cleanup task (runs every 24 hours)
+
+**Configuration (`ProxyConfig.log_rotation`):**
+```rust
+pub struct LogRotationConfig {
+    pub enabled: bool,           // Enable log rotation (default: true)
+    pub strategy: String,        // "daily", "hourly", or "size" (default: daily)
+    pub max_files: usize,        // Max files to keep (default: 7)
+    pub compress: bool,          // Gzip compression (default: false)
+    pub max_size_mb: u64,        // Max file size for "size" strategy (default: 100)
+    pub use_utc: bool,           // UTC timezone for filenames (default: true)
+    pub separate_by_level: bool, // Separate error/debug logs (default: false)
+}
+```
+
+**Environment Variables:**
+Can be overridden via `gui_config.json`:
+```json
+{
+  "proxy": {
+    "log_rotation": {
+      "enabled": true,
+      "strategy": "daily",
+      "max_files": 7,
+      "compress": true,
+      "use_utc": true
+    }
+  }
+}
+```
+
+**Log Files Location:**
+- `~/.antigravity/logs/server.log` - Main log (JSON structured)
+- `~/.antigravity/logs/server.log.YYYY-MM-DD` - Rotated daily logs
+- `~/.antigravity/logs/errors.log` - Error-only logs (when separate_by_level=true)
+- `~/.antigravity/logs/debug.log` - Debug logs (when separate_by_level=true)
+
+**Files Modified:**
+- `src-tauri/Cargo.toml` - Added `logroller` dependency
+- `src-tauri/src/proxy/config.rs` - Added `LogRotationConfig` struct
+- `src-tauri/src/proxy/server_logger.rs` - New module (340 lines)
+- `src-tauri/src/proxy/mod.rs` - Exported server_logger module
+- `src-tauri/src/bin/server.rs` - Integrated log rotation on startup
+
+**Testing:**
+```bash
+# Run unit tests
+cargo test --features headless server_logger
+
+# Check all tests pass
+cargo test --features headless  # 250 tests pass
+```

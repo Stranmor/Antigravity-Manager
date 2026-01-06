@@ -2,6 +2,73 @@ use serde::{Deserialize, Serialize};
 // use std::path::PathBuf;
 use std::collections::HashMap;
 
+/// Log rotation configuration for the headless server
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogRotationConfig {
+    /// Enable log rotation (default: true)
+    #[serde(default = "default_log_rotation_enabled")]
+    pub enabled: bool,
+
+    /// Rotation strategy: "daily", "hourly", or "size"
+    #[serde(default = "default_log_rotation_strategy")]
+    pub strategy: String,
+
+    /// Maximum number of log files to keep (default: 7)
+    /// Old files beyond this limit are automatically deleted
+    #[serde(default = "default_log_max_files")]
+    pub max_files: usize,
+
+    /// Enable compression for rotated logs (gzip)
+    #[serde(default)]
+    pub compress: bool,
+
+    /// Maximum file size in MB before rotation (only for "size" strategy)
+    #[serde(default = "default_log_max_size_mb")]
+    pub max_size_mb: u64,
+
+    /// Use UTC timezone for log file naming (default: true)
+    #[serde(default = "default_log_use_utc")]
+    pub use_utc: bool,
+
+    /// Separate log files by level (errors.log, debug.log, etc.)
+    #[serde(default)]
+    pub separate_by_level: bool,
+}
+
+fn default_log_rotation_enabled() -> bool {
+    true
+}
+
+fn default_log_rotation_strategy() -> String {
+    "daily".to_string()
+}
+
+fn default_log_max_files() -> usize {
+    7
+}
+
+fn default_log_max_size_mb() -> u64 {
+    100
+}
+
+fn default_log_use_utc() -> bool {
+    true
+}
+
+impl Default for LogRotationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_log_rotation_enabled(),
+            strategy: default_log_rotation_strategy(),
+            max_files: default_log_max_files(),
+            compress: false,
+            max_size_mb: default_log_max_size_mb(),
+            use_utc: default_log_use_utc(),
+            separate_by_level: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[derive(Default)]
@@ -162,6 +229,10 @@ pub struct ProxyConfig {
     /// 账号调度配置 (粘性会话/限流重试)
     #[serde(default)]
     pub scheduling: crate::proxy::sticky_config::StickySessionConfig,
+
+    /// Log rotation configuration (headless server)
+    #[serde(default)]
+    pub log_rotation: LogRotationConfig,
 }
 
 /// 上游代理配置
@@ -198,6 +269,7 @@ impl Default for ProxyConfig {
             upstream_proxy: UpstreamProxyConfig::default(),
             zai: ZaiConfig::default(),
             scheduling: crate::proxy::sticky_config::StickySessionConfig::default(),
+            log_rotation: LogRotationConfig::default(),
         }
     }
 }
