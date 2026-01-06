@@ -8,18 +8,91 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
-use std::time::Instant;
-use tokio::sync::oneshot;
+use std::time::{Duration, Instant};
+use tokio::sync::{broadcast, RwLock};
 use tower_http::trace::TraceLayer;
-use tracing::{debug, error};
-use tokio::sync::RwLock;
-use std::sync::atomic::AtomicUsize;
+use tracing::{debug, error, info, warn};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Server start time for uptime calculation
 static SERVER_START_TIME: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
 
 /// Application version from Cargo.toml
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Default graceful shutdown timeout in seconds
+const GRACEFUL_SHUTDOWN_TIMEOUT_SECS: u64 = 30;
+
+/// Tracks active connections for graceful shutdown
+#[derive(Debug)]
+pub struct ConnectionTracker {
+    /// Number of active connections being processed
+    active_count: AtomicUsize,
+    /// Notify when all connections are drained
+    drain_complete: tokio::sync::Notify,
+}
+
+impl ConnectionTracker {
+    pub fn new() -> Self {
+        Self {
+            active_count: AtomicUsize::new(0),
+            drain_complete: tokio::sync::Notify::new(),
+        }
+    }
+
+    /// Increment active connection count
+    pub fn connection_started(&self) {
+        self.active_count.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Decrement active connection count and notify if drained
+    pub fn connection_finished(&self) {
+        let prev = self.active_count.fetch_sub(1, Ordering::SeqCst);
+        if prev == 1 {
+            // Was 1, now 0 - all connections drained
+            self.drain_complete.notify_waiters();
+        }
+    }
+
+    /// Get current active connection count
+    pub fn active_connections(&self) -> usize {
+        self.active_count.load(Ordering::SeqCst)
+    }
+
+    /// Wait until all connections are drained (with timeout)
+    pub async fn wait_for_drain(&self, timeout: Duration) -> bool {
+        let active = self.active_connections();
+        if active == 0 {
+            return true;
+        }
+
+        info!(
+            "Waiting for {} active connection(s) to complete (timeout: {:?})",
+            active, timeout
+        );
+
+        tokio::select! {
+            () = self.drain_complete.notified() => {
+                info!("All connections drained successfully");
+                true
+            }
+            () = tokio::time::sleep(timeout) => {
+                let remaining = self.active_connections();
+                warn!(
+                    "Graceful shutdown timeout reached with {} active connection(s) remaining",
+                    remaining
+                );
+                false
+            }
+        }
+    }
+}
+
+impl Default for ConnectionTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Axum 应用状态
 #[derive(Clone)]
@@ -41,17 +114,22 @@ pub struct AppState {
     pub monitor: Arc<crate::proxy::monitor::ProxyMonitor>,
     /// Health monitor for account health tracking with auto-disable/recovery
     pub health_monitor: Arc<crate::proxy::health::HealthMonitor>,
+    /// Account-level circuit breaker for fast-fail behavior
+    pub circuit_breaker: Arc<crate::proxy::common::circuit_breaker::CircuitBreakerManager>,
 }
 
 /// Axum 服务器实例
 pub struct AxumServer {
-    shutdown_tx: Option<oneshot::Sender<()>>,
+    /// Shutdown signal sender (broadcast for multiple receivers)
+    shutdown_tx: Option<broadcast::Sender<()>>,
     anthropic_mapping: Arc<tokio::sync::RwLock<std::collections::HashMap<String, String>>>,
     openai_mapping: Arc<tokio::sync::RwLock<std::collections::HashMap<String, String>>>,
     custom_mapping: Arc<tokio::sync::RwLock<std::collections::HashMap<String, String>>>,
     proxy_state: Arc<tokio::sync::RwLock<crate::proxy::config::UpstreamProxyConfig>>,
     security_state: Arc<RwLock<crate::proxy::ProxySecurityConfig>>,
     zai_state: Arc<RwLock<crate::proxy::ZaiConfig>>,
+    /// Connection tracker for graceful shutdown
+    connection_tracker: Arc<ConnectionTracker>,
 }
 
 impl AxumServer {
@@ -124,6 +202,12 @@ impl AxumServer {
         // Start the recovery background task
         let _recovery_handle = health_monitor.start_recovery_task();
 
+        // Initialize account-level circuit breaker with default config
+        let circuit_breaker_config = crate::proxy::common::circuit_breaker::CircuitBreakerConfig::default();
+        let circuit_breaker = Arc::new(
+            crate::proxy::common::circuit_breaker::CircuitBreakerManager::new(circuit_breaker_config)
+        );
+
 	        let state = AppState {
 	            token_manager: token_manager.clone(),
 	            anthropic_mapping: mapping_state.clone(),
@@ -142,6 +226,7 @@ impl AxumServer {
             zai_vision_mcp: zai_vision_mcp_state,
             monitor: monitor.clone(),
             health_monitor,
+            circuit_breaker,
         };
 
 
@@ -226,8 +311,16 @@ impl AxumServer {
 
         tracing::info!("反代服务器启动在 http://{addr}");
 
-        // 创建关闭通道
-        let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
+        // Create shutdown channel (broadcast for multiple receivers)
+        // Buffer size of 1 is sufficient since we only send shutdown once
+        let (shutdown_tx, _) = broadcast::channel::<()>(1);
+
+        // Create connection tracker for graceful shutdown
+        let connection_tracker = Arc::new(ConnectionTracker::new());
+        let tracker_for_task = connection_tracker.clone();
+
+        // Subscribe to shutdown signal for the accept loop
+        let mut shutdown_rx = shutdown_tx.subscribe();
 
         let server_instance = Self {
             shutdown_tx: Some(shutdown_tx),
@@ -237,6 +330,7 @@ impl AxumServer {
             proxy_state,
             security_state,
             zai_state,
+            connection_tracker,
         };
 
         // 在新任务中启动服务器
@@ -249,18 +343,31 @@ impl AxumServer {
                 tokio::select! {
                     res = listener.accept() => {
                         match res {
-                            Ok((stream, _)) => {
+                            Ok((stream, remote_addr)) => {
                                 let io = TokioIo::new(stream);
                                 let service = TowerToHyperService::new(app.clone());
+                                let tracker = tracker_for_task.clone();
+
+                                // Track this connection
+                                tracker.connection_started();
+                                debug!("Connection accepted from {:?} (active: {})", remote_addr, tracker.active_connections());
 
                                 tokio::task::spawn(async move {
-                                    if let Err(err) = http1::Builder::new()
+                                    let result = http1::Builder::new()
                                         .serve_connection(io, service)
                                         .with_upgrades() // 支持 WebSocket (如果以后需要)
-                                        .await
-                                    {
-                                        debug!("连接处理结束或出错: {:?}", err);
+                                        .await;
+
+                                    if let Err(err) = result {
+                                        // Only log if it's not a normal connection close
+                                        if !err.is_incomplete_message() {
+                                            debug!("连接处理结束或出错: {:?}", err);
+                                        }
                                     }
+
+                                    // Connection finished - decrement counter
+                                    tracker.connection_finished();
+                                    debug!("Connection closed (active: {})", tracker.active_connections());
                                 });
                             }
                             Err(e) => {
@@ -268,22 +375,66 @@ impl AxumServer {
                             }
                         }
                     }
-                    _ = &mut shutdown_rx => {
-                        tracing::info!("反代服务器停止监听");
+                    _ = shutdown_rx.recv() => {
+                        info!("Graceful shutdown initiated - stopping new connections");
                         break;
                     }
                 }
             }
+
+            info!("Server accept loop stopped, waiting for in-flight requests to complete...");
         });
 
         Ok((server_instance, handle))
     }
 
-    /// 停止服务器
+    /// Stop the server gracefully
+    ///
+    /// This method:
+    /// 1. Signals the server to stop accepting new connections
+    /// 2. Waits for in-flight requests to complete (with 30s timeout)
+    /// 3. Returns true if all connections drained cleanly, false if timeout
+    pub async fn stop_gracefully(mut self) -> bool {
+        info!("Initiating graceful shutdown...");
+
+        // Signal shutdown to stop accepting new connections
+        if let Some(tx) = self.shutdown_tx.take() {
+            // Send to all subscribers (accept loop + any future listeners)
+            let _ = tx.send(());
+        }
+
+        // Wait for active connections to drain
+        let timeout = Duration::from_secs(GRACEFUL_SHUTDOWN_TIMEOUT_SECS);
+        let drained = self.connection_tracker.wait_for_drain(timeout).await;
+
+        if drained {
+            info!("Graceful shutdown completed successfully");
+        } else {
+            warn!(
+                "Graceful shutdown incomplete - {} connections still active after {}s timeout",
+                self.connection_tracker.active_connections(),
+                GRACEFUL_SHUTDOWN_TIMEOUT_SECS
+            );
+        }
+
+        drained
+    }
+
+    /// Stop the server immediately (legacy sync method for backward compatibility)
+    ///
+    /// Note: This sends the shutdown signal but does NOT wait for connections to drain.
+    /// For graceful shutdown, use `stop_gracefully()` instead.
     pub fn stop(mut self) {
+        info!("Stopping server (immediate)...");
         if let Some(tx) = self.shutdown_tx.take() {
             let _ = tx.send(());
         }
+        // Note: Not waiting for connections - use stop_gracefully() for that
+    }
+
+    /// Get the number of currently active connections
+    pub fn active_connections(&self) -> usize {
+        self.connection_tracker.active_connections()
     }
 }
 

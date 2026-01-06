@@ -422,9 +422,23 @@ pub async fn handle_messages(
             }
         };
 
-        info!("✓ Using account: {} (type: {})", email, config.request_type);
-        
-        
+        info!("Using account: {} (type: {})", email, config.request_type);
+
+        // === Circuit Breaker Check ===
+        // Fast-fail if account has too many recent failures
+        if let Err(retry_after) = state.circuit_breaker.should_allow(&account_id) {
+            tracing::warn!(
+                "[{}] Circuit breaker OPEN for account {} - skipping (retry in {:?})",
+                trace_id,
+                email,
+                retry_after
+            );
+            // Force rotate to next account on retry
+            attempt += 1;
+            last_error = format!("Circuit breaker open for account {email}");
+            continue;
+        }
+
         // ===== 【优化】后台任务智能检测与降级 =====
         // 使用新的检测系统，支持 5 大类关键词和多 Flash 模型策略
         let background_task_type = detect_background_task_type(&request_for_body);
@@ -549,8 +563,9 @@ pub async fn handle_messages(
 
         // 成功
         if status.is_success() {
-            // Record success in health monitor
+            // Record success in health monitor and circuit breaker
             state.health_monitor.record_success(&account_id);
+            state.circuit_breaker.record_success(&account_id);
 
             // 处理流式响应
             if request.stream {
@@ -653,7 +668,13 @@ pub async fn handle_messages(
         let error_text = response.text().await.unwrap_or_else(|_| format!("HTTP {status}"));
         last_error = format!("HTTP {status_code}: {error_text}");
         debug!("[{trace_id}] Upstream Error Response: {error_text}");
-        
+
+        // 2.5 Record failure in circuit breaker for account-specific errors
+        // Skip 529 (global overload) as it's not account-specific
+        if status_code != 529 && (status_code >= 400) {
+            state.circuit_breaker.record_failure(&account_id, &error_text);
+        }
+
         // 3. 标记限流状态（用于 UI 显示）并自动解绑所有关联会话
         // [IMPROVEMENT] 使用 mark_rate_limited_and_unbind 确保 429 时立即切换账号
         // [FIX] 使用 account_id 而非 email 作为 rate limit key

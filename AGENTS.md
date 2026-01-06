@@ -4,10 +4,10 @@
 Optimize the Antigravity Manager codebase for 2026 standards, starting with style consistency and clippy compliance.
 
 ## CURRENT ACTIVE BATCH (Phase 5 - Hardening)
-- [ ] Add circuit breaker for upstream API calls `[MODE: B]`
-- [ ] Implement connection pooling for reqwest client `[MODE: B]`
-- [ ] Add graceful shutdown handling for proxy server `[MODE: B]`
-- [ ] Research OpenTelemetry integration (distributed tracing) `[MODE: R]`
+- [x] Add circuit breaker for upstream API calls `[MODE: B]` ✓ Already implemented in upstream/client.rs
+- [x] Implement connection pooling for reqwest client `[MODE: B]` ✓ Already configured (pool_max_idle_per_host=16)
+- [ ] Add graceful shutdown handling for proxy server `[MODE: B]` (in progress)
+- [ ] Research OpenTelemetry integration (distributed tracing) `[MODE: R]` (in progress)
 - [ ] Add account usage analytics dashboard in Slint UI `[MODE: B]`
 - [ ] Optimize SSE memory allocation (reduce Box<dyn> overhead) `[MODE: B]`
 

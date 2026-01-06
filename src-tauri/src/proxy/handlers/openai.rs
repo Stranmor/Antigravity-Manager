@@ -139,7 +139,22 @@ pub async fn handle_chat_completions(
         // Suppress unused warning for account_id (used for rate limiting in error paths)
         let _ = &account_id;
 
-        info!("✓ Using account: {} (type: {})", email, config.request_type);
+        info!("Using account: {} (type: {})", email, config.request_type);
+
+        // === Circuit Breaker Check ===
+        // Fast-fail if account has too many recent failures
+        if let Err(retry_after) = state.circuit_breaker.should_allow(&account_id) {
+            tracing::warn!(
+                "[{}] Circuit breaker OPEN for account {} - skipping (retry in {:?})",
+                trace_id,
+                email,
+                retry_after
+            );
+            // Force rotate to next account on retry
+            attempt += 1;
+            last_error = format!("Circuit breaker open for account {email}");
+            continue;
+        }
 
         // [PERF] Time request transformation
         let _transform_timer = time_request_transform("openai", &mapped_model);
@@ -202,8 +217,9 @@ pub async fn handle_chat_completions(
 
         let status = response.status();
         if status.is_success() {
-            // Record success in health monitor
+            // Record success in health monitor and circuit breaker
             state.health_monitor.record_success(&account_id);
+            state.circuit_breaker.record_success(&account_id);
 
             // 5. 处理流式 vs 非流式
             if list_response {
@@ -259,6 +275,12 @@ pub async fn handle_chat_completions(
             status_code,
             error_text
         );
+
+        // Record failure in circuit breaker for account-specific errors
+        // Skip 529 (global overload) as it's not account-specific
+        if status_code != 529 && (status_code >= 400) {
+            state.circuit_breaker.record_failure(&account_id, &error_text);
+        }
 
         // 429/529/503 智能处理
         if status_code == 429 || status_code == 529 || status_code == 503 || status_code == 500 {

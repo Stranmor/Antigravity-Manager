@@ -5,3 +5,4 @@ pub mod perf;
 pub mod retry;
 pub mod sse;
 pub mod background_task;
+pub mod circuit_breaker;

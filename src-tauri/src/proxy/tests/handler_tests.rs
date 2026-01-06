@@ -57,7 +57,7 @@ mod claude_request_transformation {
         let parts = contents[0]["parts"].as_array().unwrap();
         assert!(parts.iter().any(|p| p["text"]
             .as_str()
-            .map_or(false, |t| t.contains("Hello, Claude!"))));
+            .is_some_and(|t| t.contains("Hello, Claude!"))));
     }
 
     /// Test system prompt transformation
@@ -823,13 +823,13 @@ mod openai_request_transformation {
         let has_function_call = contents.iter().any(|c| {
             c["parts"]
                 .as_array()
-                .map_or(false, |p| p.iter().any(|part| part.get("functionCall").is_some()))
+                .is_some_and(|p| p.iter().any(|part| part.get("functionCall").is_some()))
         });
         assert!(has_function_call, "Should have function call");
 
         // Find function response
         let has_function_response = contents.iter().any(|c| {
-            c["parts"].as_array().map_or(false, |p| {
+            c["parts"].as_array().is_some_and(|p| {
                 p.iter()
                     .any(|part| part.get("functionResponse").is_some())
             })

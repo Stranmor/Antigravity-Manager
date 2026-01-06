@@ -1100,12 +1100,20 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     // Cleanup
     info!("Shutting down...");
 
-    // Stop proxy server
+    // Stop proxy server gracefully (with timeout for in-flight requests)
     let mut proxy_lock = admin_state.proxy_server.write().await;
     if let Some(instance) = proxy_lock.take() {
-        instance.server.stop();
+        // Use graceful shutdown that waits for connections
+        let drained = instance.server.stop_gracefully().await;
+
+        // Wait for the server task to complete
         let _ = instance.handle.await;
-        info!("Proxy server stopped");
+
+        if drained {
+            info!("Proxy server shutdown complete - all connections drained");
+        } else {
+            warn!("Proxy server shutdown complete - some connections were terminated");
+        }
     }
 
     info!("Antigravity Server shutdown complete");
