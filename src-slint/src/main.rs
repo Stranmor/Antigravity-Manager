@@ -1214,34 +1214,34 @@ fn generate_csv_export(data: &AnalyticsExportData) -> Result<String, Box<dyn std
     let mut wtr = csv::Writer::from_writer(vec![]);
 
     // Write metadata comment as first row
-    wtr.write_record(&[
+    wtr.write_record([
         "# Antigravity Analytics Export",
         &data.export_timestamp,
         &format!("Format: {}", data.export_format),
     ])?;
 
     // Write summary section header
-    wtr.write_record(&["# Summary Statistics", "", ""])?;
-    wtr.write_record(&["Metric", "Value", ""])?;
-    wtr.write_record(&["Total Requests Today", &data.summary.total_requests_today.to_string(), ""])?;
-    wtr.write_record(&["Total Requests All Time", &data.summary.total_requests_all_time.to_string(), ""])?;
-    wtr.write_record(&["Overall Success Rate", &format!("{:.2}%", data.summary.overall_success_rate * 100.0), ""])?;
-    wtr.write_record(&["Total Tokens Used", &data.summary.total_tokens_used.to_string(), ""])?;
-    wtr.write_record(&["Active Accounts", &data.summary.active_accounts.to_string(), ""])?;
-    wtr.write_record(&["Rate Limited Accounts", &data.summary.rate_limited_accounts.to_string(), ""])?;
+    wtr.write_record(["# Summary Statistics", "", ""])?;
+    wtr.write_record(["Metric", "Value", ""])?;
+    wtr.write_record(["Total Requests Today", &data.summary.total_requests_today.to_string(), ""])?;
+    wtr.write_record(["Total Requests All Time", &data.summary.total_requests_all_time.to_string(), ""])?;
+    wtr.write_record(["Overall Success Rate", &format!("{:.2}%", data.summary.overall_success_rate * 100.0), ""])?;
+    wtr.write_record(["Total Tokens Used", &data.summary.total_tokens_used.to_string(), ""])?;
+    wtr.write_record(["Active Accounts", &data.summary.active_accounts.to_string(), ""])?;
+    wtr.write_record(["Rate Limited Accounts", &data.summary.rate_limited_accounts.to_string(), ""])?;
 
     // Circuit breaker summary
-    wtr.write_record(&["# Circuit Breaker Status", "", ""])?;
-    wtr.write_record(&["Closed (Healthy)", &data.summary.circuit_breaker_closed.to_string(), ""])?;
-    wtr.write_record(&["Open (Failing)", &data.summary.circuit_breaker_open.to_string(), ""])?;
-    wtr.write_record(&["Half-Open (Testing)", &data.summary.circuit_breaker_half_open.to_string(), ""])?;
-    wtr.write_record(&["Total Trips", &data.summary.circuit_breaker_total_trips.to_string(), ""])?;
+    wtr.write_record(["# Circuit Breaker Status", "", ""])?;
+    wtr.write_record(["Closed (Healthy)", &data.summary.circuit_breaker_closed.to_string(), ""])?;
+    wtr.write_record(["Open (Failing)", &data.summary.circuit_breaker_open.to_string(), ""])?;
+    wtr.write_record(["Half-Open (Testing)", &data.summary.circuit_breaker_half_open.to_string(), ""])?;
+    wtr.write_record(["Total Trips", &data.summary.circuit_breaker_total_trips.to_string(), ""])?;
 
     // Empty row separator
-    wtr.write_record(&["", "", ""])?;
+    wtr.write_record(["", "", ""])?;
 
     // Per-account analytics header
-    wtr.write_record(&[
+    wtr.write_record([
         "Account ID",
         "Email",
         "Tier",
@@ -1258,7 +1258,7 @@ fn generate_csv_export(data: &AnalyticsExportData) -> Result<String, Box<dyn std
 
     // Per-account rows
     for account in &data.accounts {
-        wtr.write_record(&[
+        wtr.write_record([
             &account.account_id,
             &account.email,
             &account.tier,
