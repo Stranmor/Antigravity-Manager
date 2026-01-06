@@ -137,9 +137,7 @@ struct ServerConfig {
 impl ServerConfig {
     fn from_env() -> Self {
         // Default data dir is ~/.antigravity for VPS deployments
-        let default_data_dir = dirs::home_dir()
-            .map(|h| h.join(".antigravity"))
-            .unwrap_or_else(|| PathBuf::from("/var/lib/antigravity"));
+        let default_data_dir = dirs::home_dir().map_or_else(|| PathBuf::from("/var/lib/antigravity"), |h| h.join(".antigravity"));
 
         Self {
             data_dir: std::env::var("ANTIGRAVITY_DATA_DIR")
@@ -309,7 +307,7 @@ fn init_logging() {
         .try_init();
 }
 
-async fn load_proxy_config(data_dir: &PathBuf) -> ProxyConfig {
+async fn load_proxy_config(data_dir: &std::path::Path) -> ProxyConfig {
     // Try gui_config.json first (matches Tauri app), then config.json
     for config_name in ["gui_config.json", "config.json"] {
         let config_path = data_dir.join(config_name);
@@ -339,44 +337,44 @@ async fn load_proxy_config(data_dir: &PathBuf) -> ProxyConfig {
     ProxyConfig::default()
 }
 
-async fn save_proxy_config(data_dir: &PathBuf, config: &ProxyConfig) -> Result<(), String> {
+/// Serializable config wrapper for GUI config file
+#[derive(Serialize, Deserialize, Default)]
+struct AppConfigWrapper {
+    #[serde(default)]
+    language: String,
+    #[serde(default)]
+    theme: String,
+    #[serde(default)]
+    auto_refresh: bool,
+    #[serde(default)]
+    refresh_interval: i32,
+    #[serde(default)]
+    auto_sync: bool,
+    #[serde(default)]
+    sync_interval: i32,
+    #[serde(default)]
+    default_export_path: Option<String>,
+    #[serde(default)]
+    proxy: ProxyConfig,
+    #[serde(default)]
+    antigravity_executable: Option<String>,
+    #[serde(default)]
+    antigravity_args: Option<Vec<String>>,
+    #[serde(default)]
+    auto_launch: bool,
+}
+
+async fn save_proxy_config(data_dir: &std::path::Path, config: &ProxyConfig) -> Result<(), String> {
     let config_path = data_dir.join("gui_config.json");
 
-    // Read existing config or create new
-    #[derive(Serialize, Deserialize, Default)]
-    struct AppConfig {
-        #[serde(default)]
-        language: String,
-        #[serde(default)]
-        theme: String,
-        #[serde(default)]
-        auto_refresh: bool,
-        #[serde(default)]
-        refresh_interval: i32,
-        #[serde(default)]
-        auto_sync: bool,
-        #[serde(default)]
-        sync_interval: i32,
-        #[serde(default)]
-        default_export_path: Option<String>,
-        #[serde(default)]
-        proxy: ProxyConfig,
-        #[serde(default)]
-        antigravity_executable: Option<String>,
-        #[serde(default)]
-        antigravity_args: Option<Vec<String>>,
-        #[serde(default)]
-        auto_launch: bool,
-    }
-
-    let mut app_config: AppConfig = if config_path.exists() {
+    let mut app_config: AppConfigWrapper = if config_path.exists() {
         tokio::fs::read_to_string(&config_path)
             .await
             .ok()
             .and_then(|content| serde_json::from_str(&content).ok())
             .unwrap_or_default()
     } else {
-        AppConfig::default()
+        AppConfigWrapper::default()
     };
 
     app_config.proxy = config.clone();
@@ -704,14 +702,14 @@ async fn get_account_health_handler(
                     } else {
                         (
                             StatusCode::NOT_FOUND,
-                            Json(ErrorResponse::new(format!("Account {} not found", account_id))),
+                            Json(ErrorResponse::new(format!("Account {account_id} not found"))),
                         )
                             .into_response()
                     }
                 }
                 Err(e) => (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse::new(format!("Failed to check accounts: {}", e))),
+                    Json(ErrorResponse::new(format!("Failed to check accounts: {e}"))),
                 )
                     .into_response(),
             }
@@ -747,8 +745,7 @@ async fn force_enable_account_handler(
         (
             StatusCode::NOT_FOUND,
             Json(ErrorResponse::new(format!(
-                "Account {} not found or not disabled",
-                account_id
+                "Account {account_id} not found or not disabled"
             ))),
         )
             .into_response()
@@ -796,15 +793,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn import_accounts(from: Option<PathBuf>, to: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     let source_dir = from.unwrap_or_else(|| {
-        dirs::home_dir()
-            .map(|h| h.join(".antigravity_tools"))
-            .unwrap_or_else(|| PathBuf::from(".antigravity_tools"))
+        dirs::home_dir().map_or_else(|| PathBuf::from(".antigravity_tools"), |h| h.join(".antigravity_tools"))
     });
     
     let target_dir = to.unwrap_or_else(|| {
-        dirs::home_dir()
-            .map(|h| h.join(".antigravity"))
-            .unwrap_or_else(|| PathBuf::from(".antigravity"))
+        dirs::home_dir().map_or_else(|| PathBuf::from(".antigravity"), |h| h.join(".antigravity"))
     });
     
     info!("Importing accounts from {:?} to {:?}", source_dir, target_dir);
@@ -825,7 +818,7 @@ async fn import_accounts(from: Option<PathBuf>, to: Option<PathBuf>) -> Result<(
     
     while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
-        if path.extension().map_or(false, |e| e == "json") {
+        if path.extension().is_some_and(|e| e == "json") {
             let filename = path.file_name().unwrap();
             let target_path = target_accounts.join(filename);
             
@@ -843,10 +836,7 @@ async fn import_accounts(from: Option<PathBuf>, to: Option<PathBuf>) -> Result<(
     // Merge accounts.json index
     if source_index.exists() {
         let target_index = target_dir.join("accounts.json");
-        if !target_index.exists() {
-            tokio::fs::copy(&source_index, &target_index).await?;
-            info!("Imported accounts.json index");
-        } else {
+        if target_index.exists() {
             // Merge: combine unique account IDs from both files
             info!("Merging accounts.json indices...");
             
@@ -871,6 +861,9 @@ async fn import_accounts(from: Option<PathBuf>, to: Option<PathBuf>) -> Result<(
             tokio::fs::write(&target_index, merged_json).await?;
             
             info!("Merged accounts.json: {} new entries added (total: {})", merged_count, after_count);
+        } else {
+            tokio::fs::copy(&source_index, &target_index).await?;
+            info!("Imported accounts.json index");
         }
     }
     
@@ -933,7 +926,7 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     proxy_config.enable_logging = server_config.enable_logging;
 
     if let Some(api_key) = &server_config.api_key {
-        proxy_config.api_key = api_key.clone();
+        proxy_config.api_key.clone_from(api_key);
     }
 
     // Initialize token manager and load accounts
@@ -984,7 +977,7 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
         monitor.clone(),
     )
     .await
-    .map_err(|e| format!("Failed to start proxy server: {}", e))?;
+    .map_err(|e| format!("Failed to start proxy server: {e}"))?;
 
     // Initialize health monitor with default configuration
     let health_config = antigravity_tools_lib::proxy::health::HealthConfig::default();
@@ -1059,7 +1052,7 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     let admin_addr = format!("{}:{}", bind_addr, server_config.admin_port);
     let admin_listener = tokio::net::TcpListener::bind(&admin_addr)
         .await
-        .map_err(|e| format!("Failed to bind admin API to {}: {}", admin_addr, e))?;
+        .map_err(|e| format!("Failed to bind admin API to {admin_addr}: {e}"))?;
 
     info!("Antigravity Server is running!");
     info!(

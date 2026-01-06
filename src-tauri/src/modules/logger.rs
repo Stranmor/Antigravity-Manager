@@ -13,9 +13,9 @@ impl tracing_subscriber::fmt::time::FormatTime for LocalTimer {
             .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
         let format = time::format_description::well_known::Rfc3339;
         if let Ok(formatted) = now.format(&format) {
-            write!(w, "{}", formatted)
+            write!(w, "{formatted}")
         } else {
-            write!(w, "{}", now)
+            write!(w, "{now}")
         }
     }
 }
