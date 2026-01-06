@@ -205,15 +205,6 @@ struct HealthResponse {
 // Detailed Health Check Types
 // ============================================================================
 
-/// Overall health status
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "lowercase")]
-enum DetailedHealthStatus {
-    Healthy,
-    Degraded,
-    Unhealthy,
-}
-
 /// Component health status with details
 #[derive(Debug, Serialize)]
 struct ComponentHealth {
@@ -260,6 +251,7 @@ impl ComponentHealth {
         }
     }
 
+    #[allow(dead_code)]
     fn degraded() -> Self {
         Self {
             status: "degraded",
@@ -928,9 +920,7 @@ async fn detailed_health_handler(
     let accounts_available = state.token_manager.available_count();
     let accounts_rate_limited = accounts_total.saturating_sub(accounts_available);
 
-    let token_manager_status = if accounts_total == 0 {
-        "unhealthy"
-    } else if accounts_available == 0 {
+    let token_manager_status = if accounts_total == 0 || accounts_available == 0 {
         "unhealthy"
     } else if accounts_rate_limited > accounts_total / 2 {
         "degraded"
@@ -947,17 +937,18 @@ async fn detailed_health_handler(
     };
 
     // === Circuit Breaker Health ===
-    let cb_summary = state.proxy_server.read().await.as_ref().map(|ps| {
-        // Circuit breaker is in AppState, not directly accessible here
-        // We use health_monitor disabled count as a proxy for circuit issues
-        let disabled = state.health_monitor.disabled_count();
-        (disabled, 0usize) // (open_circuits, half_open_circuits)
-    }).unwrap_or((0, 0));
+    let cb_summary = state.proxy_server.read().await.as_ref().map_or(
+        (0, 0usize),
+        |_ps| {
+            // Circuit breaker is in AppState, not directly accessible here
+            // We use health_monitor disabled count as a proxy for circuit issues
+            let disabled = state.health_monitor.disabled_count();
+            (disabled, 0usize) // (open_circuits, half_open_circuits)
+        },
+    );
 
     let circuit_breaker_status = if cb_summary.0 > accounts_total / 2 {
         "degraded"
-    } else if cb_summary.0 > 0 {
-        "healthy" // Some open circuits is expected behavior
     } else {
         "healthy"
     };
@@ -980,10 +971,10 @@ async fn detailed_health_handler(
         0
     };
 
-    let proxy_status = if !proxy_running {
-        "unhealthy"
-    } else {
+    let proxy_status = if proxy_running {
         "healthy"
+    } else {
+        "unhealthy"
     };
 
     let proxy_server_health = ComponentHealth {
@@ -1127,9 +1118,7 @@ fn check_log_rotation_health(data_dir: &std::path::Path) -> ComponentHealth {
     });
 
     // Status is degraded if logs are very old (> 30 days) or if there are too many files
-    let status = if log_count > 100 {
-        "degraded"
-    } else if oldest_log_age_days.is_some_and(|days| days > 30) {
+    let status = if log_count > 100 || oldest_log_age_days.is_some_and(|days| days > 30) {
         "degraded"
     } else {
         "healthy"
@@ -1174,12 +1163,11 @@ fn check_disk_space() -> bool {
         // Try to check /proc/diskstats or use statvfs
         // For simplicity, just check if we can write to temp
         let temp_path = std::env::temp_dir().join(".antigravity_health_check");
-        match fs::write(&temp_path, "test") {
-            Ok(_) => {
-                let _ = fs::remove_file(&temp_path);
-                true
-            }
-            Err(_) => false,
+        if fs::write(&temp_path, "test").is_ok() {
+            let _ = fs::remove_file(&temp_path);
+            true
+        } else {
+            false
         }
     }
 
