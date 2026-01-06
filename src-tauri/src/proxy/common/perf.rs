@@ -233,14 +233,14 @@ pub fn time_json_parse() -> MicroTimer {
 /// Log timing breakdown for debugging (only in debug builds).
 #[cfg(debug_assertions)]
 pub fn log_timing_breakdown(
-    trace_id: &str,
+    request_id: &str,
     transform_ms: f64,
     upstream_ms: f64,
     response_ms: f64,
 ) {
     tracing::debug!(
         "[{}] Timing breakdown: transform={:.2}ms, upstream={:.2}ms, response={:.2}ms, total={:.2}ms",
-        trace_id,
+        request_id,
         transform_ms,
         upstream_ms,
         response_ms,

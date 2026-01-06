@@ -78,11 +78,8 @@ pub async fn handle_chat_completions(
     #[allow(unused)]  // Reserved for future logging/metrics of overload patterns
     let mut current_overload_account: Option<String> = None;
 
-    // Generate trace ID for logging
-    let trace_id: String = rand::Rng::sample_iter(rand::thread_rng(), &rand::distributions::Alphanumeric)
-        .take(6)
-        .map(char::from)
-        .collect::<String>().to_lowercase();
+    // Use middleware-provided request_id for consistent tracing
+    let trace_id = request_id.as_str();
 
     // Use manual loop instead of `for` to allow 529 retries without consuming attempt quota
     let mut attempt: usize = 0;
@@ -635,11 +632,8 @@ pub async fn handle_completions(
     #[allow(unused)]  // Reserved for future logging/metrics of overload patterns
     let mut current_overload_account: Option<String> = None;
 
-    // Generate trace ID for logging
-    let trace_id: String = rand::Rng::sample_iter(rand::thread_rng(), &rand::distributions::Alphanumeric)
-        .take(6)
-        .map(char::from)
-        .collect::<String>().to_lowercase();
+    // Use middleware-provided request_id for consistent tracing
+    let trace_id = request_id.as_str();
 
     // Use manual loop for 529 resilience
     let mut attempt: usize = 0;

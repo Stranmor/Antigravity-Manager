@@ -65,11 +65,11 @@ pub async fn execute_retry_strategy(
     strategy: RetryStrategy,
     attempt: usize,
     status_code: u16,
-    trace_id: &str,
+    request_id: &str,
 ) -> bool {
     match strategy {
         RetryStrategy::NoRetry => {
-            debug!("[{}] Non-retryable error {}, stopping", trace_id, status_code);
+            debug!("[{}] Non-retryable error {}, stopping", request_id, status_code);
             false
         }
 
@@ -77,8 +77,8 @@ pub async fn execute_retry_strategy(
             let base_ms = duration.as_millis() as u64;
             let jittered_ms = apply_jitter(base_ms);
             info!(
-                "[{}] ⏱️  Retry with fixed delay: status={}, attempt={}/{}, base={}ms, actual={}ms (jitter applied)",
-                trace_id,
+                "[{}] Retry with fixed delay: status={}, attempt={}/{}, base={}ms, actual={}ms (jitter applied)",
+                request_id,
                 status_code,
                 attempt + 1,
                 MAX_RETRY_ATTEMPTS,
@@ -93,8 +93,8 @@ pub async fn execute_retry_strategy(
             let calculated_ms = base_ms * (attempt as u64 + 1);
             let jittered_ms = apply_jitter(calculated_ms);
             info!(
-                "[{}] ⏱️  Retry with linear backoff: status={}, attempt={}/{}, base={}ms, actual={}ms (jitter applied)",
-                trace_id,
+                "[{}] Retry with linear backoff: status={}, attempt={}/{}, base={}ms, actual={}ms (jitter applied)",
+                request_id,
                 status_code,
                 attempt + 1,
                 MAX_RETRY_ATTEMPTS,
@@ -109,8 +109,8 @@ pub async fn execute_retry_strategy(
             let calculated_ms = (base_ms * 2_u64.pow(attempt as u32)).min(max_ms);
             let jittered_ms = apply_jitter(calculated_ms);
             info!(
-                "[{}] ⏱️  Retry with exponential backoff: status={}, attempt={}/{}, base={}ms, actual={}ms (jitter applied)",
-                trace_id,
+                "[{}] Retry with exponential backoff: status={}, attempt={}/{}, base={}ms, actual={}ms (jitter applied)",
+                request_id,
                 status_code,
                 attempt + 1,
                 MAX_RETRY_ATTEMPTS,

@@ -168,11 +168,8 @@ pub async fn handle_messages(
 ) -> Response {
     tracing::error!(">>> [RED ALERT] handle_messages called! Body JSON len: {}", body.to_string().len());
 
-    // 生成随机 Trace ID 用户追踪
-    let trace_id: String = rand::Rng::sample_iter(rand::thread_rng(), &rand::distributions::Alphanumeric)
-        .take(6)
-        .map(char::from)
-        .collect::<String>().to_lowercase();
+    // Use middleware-provided request_id for consistent tracing
+    let trace_id = request_id.as_str();
         
     // Decide whether this request should be handled by z.ai (Anthropic passthrough) or the existing Google flow.
     let zai = state.zai.read().await.clone();
@@ -522,7 +519,7 @@ pub async fn handle_messages(
             if request.stream {
                 let stream = response.bytes_stream();
                 let gemini_stream = Box::pin(stream);
-                let claude_stream = create_claude_sse_stream(gemini_stream, trace_id, email);
+                let claude_stream = create_claude_sse_stream(gemini_stream, trace_id.to_string(), email);
 
                 // 转换为 Bytes stream
                 let sse_stream = claude_stream.map(|result| -> Result<Bytes, std::io::Error> {
@@ -654,7 +651,7 @@ pub async fn handle_messages(
             
             // 使用统一退避策略
             let strategy = determine_retry_strategy(status_code, &error_text, retried_without_thinking);
-            if execute_retry_strategy(strategy, attempt, status_code, &trace_id).await {
+            if execute_retry_strategy(strategy, attempt, status_code, trace_id).await {
                 continue;
             }
         }
@@ -704,7 +701,7 @@ pub async fn handle_messages(
         let strategy = determine_retry_strategy(status_code, &error_text, retried_without_thinking);
 
         // 执行退避
-        if execute_retry_strategy(strategy, attempt, status_code, &trace_id).await {
+        if execute_retry_strategy(strategy, attempt, status_code, trace_id).await {
             // Record error in health monitor for 403/401 (may auto-disable account)
             if status_code == 403 || status_code == 401 {
                 state.health_monitor.record_error(&account_id, status_code, &error_text).await;
