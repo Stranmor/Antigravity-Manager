@@ -12,6 +12,17 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Deploy to VPS production `[MODE: B]` ✓ LIVE (2026-01-06)
 - [x] Test Admin API endpoints `[MODE: C]` ✓ All endpoints verified working
 - [x] Implement rate limiting for Admin API (60 req/min) `[MODE: B]`
+- [x] Add API key authentication middleware `[MODE: B]` (f8fc59f)
+- [x] Add Prometheus /metrics endpoint `[MODE: B]` (81eb990)
+- [x] Fix build.rs conditional compilation for headless `[MODE: B]` (9f49ba3)
+- [x] Fix rate limiter ContainerAwareKeyExtractor `[MODE: B]` (6275292)
+- [x] Improve SSE streaming error handling and tests `[MODE: B]` (b016767)
+
+## NEXT BATCH (Proposed)
+- [ ] Add Grafana dashboard template for Prometheus metrics `[MODE: B]`
+- [ ] Implement account health monitoring (auto-disable on errors) `[MODE: B]`
+- [ ] Add request tracing with unique IDs for debugging `[MODE: B]`
+- [ ] Create CLI tool for account import from desktop app `[MODE: B]`
 
 ## ADMIN API TEST RESULTS (2026-01-06)
 All endpoints tested successfully on localhost:9102:
@@ -50,6 +61,10 @@ ssh vps-production "curl -s http://localhost:9101/api/health | jq"
 - Sub-agent 11: [COMPLETED] - Creating Containerfile and deployment configs (a254cd1)
 - Sub-agent 12: [COMPLETED] - Container build with headless feature (a9f0268)
 - Sub-agent 13: [COMPLETED] - VPS deployment and service start (af07522)
+- Sub-agent 14: [COMPLETED] - Admin API security (aa83a5d, a43a82b)
+- Sub-agent 15: [COMPLETED] - Rate limiting (a941914)
+- Sub-agent 16: [COMPLETED] - Prometheus metrics (a7db427)
+- Sub-agent 17: [COMPLETED] - SSE streaming improvements (a970f3e, b016767)
 
 ## VPS DEPLOYMENT CHARACTERISTICS (2026-01-06)
 **Server Binary:**
