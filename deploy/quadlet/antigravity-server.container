@@ -1,0 +1,86 @@
+# Antigravity Server - Systemd Quadlet Container Unit
+# Install to: /etc/containers/systemd/antigravity-server.container
+# Then run: systemctl daemon-reload && systemctl start antigravity-server
+#
+# Quadlet documentation: https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html
+
+[Unit]
+Description=Antigravity Proxy Server
+Documentation=https://github.com/lbjlaq/Antigravity-Manager
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+# Image configuration
+Image=localhost/antigravity-server:latest
+ContainerName=antigravity-server
+
+# Auto-update support
+AutoUpdate=registry
+
+# Port mappings
+PublishPort=8045:8045
+PublishPort=9101:9101
+
+# Environment variables
+Environment=ANTIGRAVITY_DATA_DIR=/var/lib/antigravity
+Environment=ANTIGRAVITY_PROXY_PORT=8045
+Environment=ANTIGRAVITY_ADMIN_PORT=9101
+Environment=ANTIGRAVITY_ALLOW_LAN=true
+Environment=ANTIGRAVITY_ENABLE_LOGGING=true
+Environment=RUST_LOG=info,antigravity_tools_lib=debug
+Environment=TZ=UTC
+
+# Optional: Set API key via environment file
+# EnvironmentFile=/etc/antigravity/env
+
+# Volume mounts
+Volume=antigravity-data.volume:/var/lib/antigravity:Z
+
+# Resource limits
+PodmanArgs=--memory=512m
+PodmanArgs=--cpus=2.0
+PodmanArgs=--memory-reservation=64m
+
+# Security
+SecurityLabelDisable=false
+NoNewPrivileges=true
+DropCapability=ALL
+AddCapability=NET_BIND_SERVICE
+
+# Health check
+HealthCmd=curl -sf http://localhost:8045/healthz || exit 1
+HealthInterval=30s
+HealthTimeout=5s
+HealthRetries=3
+HealthStartPeriod=10s
+
+# Logging
+LogDriver=journald
+
+# Run as non-root (UID 1000 inside container)
+User=1000
+Group=1000
+
+[Service]
+# Restart policy
+Restart=always
+RestartSec=10
+TimeoutStartSec=300
+TimeoutStopSec=30
+
+# Notify systemd when container is ready
+Type=notify
+NotifyAccess=all
+
+# Graceful shutdown
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=antigravity-server
+
+[Install]
+WantedBy=multi-user.target default.target

@@ -1,0 +1,67 @@
+# Antigravity Container Build - Ignore Patterns
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Node.js (frontend - not needed for server build)
+node_modules
+dist
+coverage
+.vscode
+*.log
+
+# Rust build artifacts
+src-tauri/target
+*.rlib
+*.rmeta
+
+# IDE
+.idea
+*.iml
+*.swp
+*.swo
+*~
+
+# Documentation
+*.md
+!README.md
+docs
+
+# macOS
+.DS_Store
+*.app
+Casks
+
+# Development files
+.claude
+.env
+.env.local
+*.local
+
+# Test files
+__tests__
+*.test.*
+*.spec.*
+vitest.config.ts
+eslint.config.js
+
+# Lock files (not needed, Cargo.lock is explicitly copied)
+bun.lock
+package-lock.json
+
+# Frontend configs (not needed for server)
+tailwind.config.js
+postcss.config.cjs
+tsconfig*.json
+vite.config.ts
+index.html
+src/
+public/
+
+# Scripts (except deploy)
+scripts/
+
+# GitHub Actions
+.github

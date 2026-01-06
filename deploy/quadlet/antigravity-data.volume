@@ -1,0 +1,13 @@
+# Antigravity Data Volume - Systemd Quadlet Volume Unit
+# Install to: /etc/containers/systemd/antigravity-data.volume
+
+[Volume]
+# Named volume for persistent data
+VolumeName=antigravity-data
+
+# Volume driver options
+Driver=local
+
+# Labels for identification
+Label=app=antigravity
+Label=component=data

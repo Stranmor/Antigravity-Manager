@@ -1,0 +1,98 @@
+# Antigravity Server - Compose Configuration
+# For local development and testing with Podman or Docker
+#
+# Usage:
+#   podman-compose up -d        # Start services
+#   podman-compose logs -f      # View logs
+#   podman-compose down         # Stop services
+#
+# Alternative (podman play kube):
+#   podman play kube compose.yaml
+
+name: antigravity
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Containerfile
+    image: localhost/antigravity-server:latest
+    container_name: antigravity-server
+    restart: unless-stopped
+
+    # Port mappings
+    ports:
+      - "8045:8045"   # Proxy API (OpenAI/Claude/Gemini compatible)
+      - "9101:9101"   # Admin API (metrics, config)
+
+    # Environment configuration
+    environment:
+      # Core settings
+      ANTIGRAVITY_DATA_DIR: /var/lib/antigravity
+      ANTIGRAVITY_PROXY_PORT: "8045"
+      ANTIGRAVITY_ADMIN_PORT: "9101"
+      ANTIGRAVITY_ALLOW_LAN: "true"
+      ANTIGRAVITY_ENABLE_LOGGING: "true"
+
+      # Optional: API key (auto-generated if not set)
+      # ANTIGRAVITY_API_KEY: "sk-your-api-key-here"
+
+      # Optional: WARP proxy (Cloudflare)
+      # WARP_ENABLED: "true"
+
+      # Logging
+      RUST_LOG: "info,antigravity_tools_lib=debug"
+      TZ: "${TZ:-UTC}"
+
+    # Volume mounts for data persistence
+    volumes:
+      # Main data directory (accounts, config, logs)
+      - antigravity-data:/var/lib/antigravity
+
+      # Optional: Mount local config for development
+      # - ./data/config.json:/var/lib/antigravity/config.json:ro
+      # - ./data/accounts:/var/lib/antigravity/accounts:ro
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8045/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 64M
+
+    # Security settings
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+
+    # Logging configuration
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Named volumes for data persistence
+volumes:
+  antigravity-data:
+    driver: local
+
+# Network configuration (optional, use host network for WARP)
+networks:
+  default:
+    driver: bridge
