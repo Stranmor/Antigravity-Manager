@@ -488,7 +488,7 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
                     account.email
                 ));
                 account.disabled = true;
-                account.disabled_at = Some(chrono::Utc::now().timestamp());
+                account.disabled_at = Some(time::OffsetDateTime::now_utc().unix_timestamp());
                 account.disabled_reason = Some(format!("invalid_grant: {e}"));
                 let _ = save_account(account);
             }
@@ -564,7 +564,7 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
                                 account.email
                             ));
                             account.disabled = true;
-                            account.disabled_at = Some(chrono::Utc::now().timestamp());
+                            account.disabled_at = Some(time::OffsetDateTime::now_utc().unix_timestamp());
                             account.disabled_reason = Some(format!("invalid_grant: {e}"));
                             let _ = save_account(account);
                         }

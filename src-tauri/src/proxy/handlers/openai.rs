@@ -1072,7 +1072,7 @@ pub async fn handle_images_generations(
 
     // 6. 构建 OpenAI 格式响应
     let openai_response = json!({
-        "created": chrono::Utc::now().timestamp(),
+        "created": time::OffsetDateTime::now_utc().unix_timestamp(),
         "data": images
     });
 
@@ -1362,7 +1362,7 @@ pub async fn handle_images_edits(
     );
 
     let openai_response = json!({
-        "created": chrono::Utc::now().timestamp(),
+        "created": time::OffsetDateTime::now_utc().unix_timestamp(),
         "data": images
     });
 

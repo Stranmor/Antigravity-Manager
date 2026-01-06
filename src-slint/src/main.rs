@@ -879,7 +879,7 @@ impl AppController {
 }
 
 fn format_relative_time(timestamp: i64) -> String {
-    let now = chrono::Utc::now().timestamp();
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
     let diff = now - timestamp;
     
     if diff < 0 { "just now".into() }
@@ -985,4 +985,353 @@ fn setup_callbacks(app: &MainWindow, controller: Arc<AppController>) {
     app.global::<AppState>().on_open_data_folder({ let c = controller.clone(); move || c.open_data_folder() });
     app.global::<AppState>().on_copy_to_clipboard({ let c = controller.clone(); move |text| c.copy_to_clipboard(&text) });
     app.global::<AppState>().on_filter_accounts({ let c = controller.clone(); move |filter| c.filter_accounts(&filter) });
+}
+
+// ========================================
+// TESTABLE FILTER LOGIC (Pure Functions)
+// ========================================
+
+/// Testable account representation for property-based testing.
+/// Mirrors the relevant fields from Slint's Account struct.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TestAccount {
+    pub id: String,
+    pub email: String,
+    pub tier: String,
+    pub quota_percentage: i32,
+    pub enabled: bool,
+    pub is_forbidden: bool,
+}
+
+/// Pure filtering function that matches the logic in `apply_filter_internal`.
+/// This is extracted for testability without Slint UI dependencies.
+pub fn filter_accounts_pure(accounts: &[TestAccount], filter: &str) -> Vec<TestAccount> {
+    accounts
+        .iter()
+        .filter(|a| match filter {
+            "available" => a.enabled && !a.is_forbidden && a.quota_percentage > 10,
+            "low_quota" => a.quota_percentage < 20,
+            "pro" => a.tier.to_uppercase() == "PRO",
+            "ultra" => a.tier.to_uppercase() == "ULTRA",
+            "free" => {
+                let tier = a.tier.to_uppercase();
+                tier == "FREE" || tier.is_empty()
+            }
+            _ => true, // "all" or any unknown filter
+        })
+        .cloned()
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    // Strategy to generate random tier values
+    fn tier_strategy() -> impl Strategy<Value = String> {
+        prop_oneof![
+            Just("PRO".to_string()),
+            Just("ULTRA".to_string()),
+            Just("FREE".to_string()),
+            Just("".to_string()),
+            Just("pro".to_string()),   // lowercase variants
+            Just("Ultra".to_string()), // mixed case
+            Just("free".to_string()),
+        ]
+    }
+
+    // Strategy to generate a random TestAccount
+    fn account_strategy() -> impl Strategy<Value = TestAccount> {
+        (
+            "[a-z0-9]{8}",           // id
+            "[a-z]+@[a-z]+\\.[a-z]+", // email pattern
+            tier_strategy(),
+            0..=100i32,              // quota_percentage
+            any::<bool>(),           // enabled
+            any::<bool>(),           // is_forbidden
+        )
+            .prop_map(|(id, email, tier, quota_percentage, enabled, is_forbidden)| {
+                TestAccount {
+                    id,
+                    email,
+                    tier,
+                    quota_percentage,
+                    enabled,
+                    is_forbidden,
+                }
+            })
+    }
+
+    // Strategy to generate a vector of accounts
+    fn accounts_strategy() -> impl Strategy<Value = Vec<TestAccount>> {
+        prop::collection::vec(account_strategy(), 0..50)
+    }
+
+    proptest! {
+        /// Property: Filtering by "pro" tier produces only accounts with tier "PRO" (case-insensitive)
+        #[test]
+        fn prop_filter_pro_returns_only_pro_accounts(accounts in accounts_strategy()) {
+            let filtered = filter_accounts_pure(&accounts, "pro");
+            for account in &filtered {
+                prop_assert_eq!(account.tier.to_uppercase(), "PRO");
+            }
+        }
+
+        /// Property: Filtering by "ultra" tier produces only accounts with tier "ULTRA" (case-insensitive)
+        #[test]
+        fn prop_filter_ultra_returns_only_ultra_accounts(accounts in accounts_strategy()) {
+            let filtered = filter_accounts_pure(&accounts, "ultra");
+            for account in &filtered {
+                prop_assert_eq!(account.tier.to_uppercase(), "ULTRA");
+            }
+        }
+
+        /// Property: Filtering by "free" tier produces only accounts with tier "FREE" or empty
+        #[test]
+        fn prop_filter_free_returns_only_free_accounts(accounts in accounts_strategy()) {
+            let filtered = filter_accounts_pure(&accounts, "free");
+            for account in &filtered {
+                let tier_upper = account.tier.to_uppercase();
+                prop_assert!(tier_upper == "FREE" || tier_upper.is_empty(),
+                    "Expected FREE or empty tier, got: {}", account.tier);
+            }
+        }
+
+        /// Property: Filtering by "available" excludes disabled accounts
+        #[test]
+        fn prop_filter_available_excludes_disabled(accounts in accounts_strategy()) {
+            let filtered = filter_accounts_pure(&accounts, "available");
+            for account in &filtered {
+                prop_assert!(account.enabled, "Disabled account should not pass 'available' filter");
+            }
+        }
+
+        /// Property: Filtering by "available" excludes forbidden accounts
+        #[test]
+        fn prop_filter_available_excludes_forbidden(accounts in accounts_strategy()) {
+            let filtered = filter_accounts_pure(&accounts, "available");
+            for account in &filtered {
+                prop_assert!(!account.is_forbidden, "Forbidden account should not pass 'available' filter");
+            }
+        }
+
+        /// Property: Filtering by "available" excludes accounts with quota <= 10
+        #[test]
+        fn prop_filter_available_excludes_low_quota(accounts in accounts_strategy()) {
+            let filtered = filter_accounts_pure(&accounts, "available");
+            for account in &filtered {
+                prop_assert!(account.quota_percentage > 10,
+                    "Account with quota {} should not pass 'available' filter (must be > 10)",
+                    account.quota_percentage);
+            }
+        }
+
+        /// Property: Filtering by "low_quota" produces only accounts with quota < 20
+        #[test]
+        fn prop_filter_low_quota_threshold(accounts in accounts_strategy()) {
+            let filtered = filter_accounts_pure(&accounts, "low_quota");
+            for account in &filtered {
+                prop_assert!(account.quota_percentage < 20,
+                    "Account with quota {} should not pass 'low_quota' filter (must be < 20)",
+                    account.quota_percentage);
+            }
+        }
+
+        /// Property: Filter "all" returns the same count as input
+        #[test]
+        fn prop_filter_all_returns_same_count(accounts in accounts_strategy()) {
+            let filtered = filter_accounts_pure(&accounts, "all");
+            prop_assert_eq!(filtered.len(), accounts.len(),
+                "Filter 'all' should return same count as input");
+        }
+
+        /// Property: Filter "all" returns exactly the input accounts
+        #[test]
+        fn prop_filter_all_returns_same_accounts(accounts in accounts_strategy()) {
+            let filtered = filter_accounts_pure(&accounts, "all");
+            prop_assert_eq!(filtered, accounts,
+                "Filter 'all' should return identical accounts");
+        }
+
+        /// Property: Filtering is idempotent (applying same filter twice gives same result)
+        #[test]
+        fn prop_filter_idempotent(
+            accounts in accounts_strategy(),
+            filter in prop_oneof![
+                Just("all"),
+                Just("available"),
+                Just("low_quota"),
+                Just("pro"),
+                Just("ultra"),
+                Just("free"),
+            ]
+        ) {
+            let first_pass = filter_accounts_pure(&accounts, filter);
+            let second_pass = filter_accounts_pure(&first_pass, filter);
+            prop_assert_eq!(first_pass, second_pass,
+                "Applying filter '{}' twice should yield same result", filter);
+        }
+
+        /// Property: Unknown filter behaves like "all"
+        #[test]
+        fn prop_unknown_filter_returns_all(accounts in accounts_strategy()) {
+            let unknown_filtered = filter_accounts_pure(&accounts, "unknown_filter_xyz");
+            let all_filtered = filter_accounts_pure(&accounts, "all");
+            prop_assert_eq!(unknown_filtered, all_filtered,
+                "Unknown filter should behave like 'all'");
+        }
+
+        /// Property: Filtered result is always a subset of input
+        #[test]
+        fn prop_filtered_is_subset(
+            accounts in accounts_strategy(),
+            filter in prop_oneof![
+                Just("all"),
+                Just("available"),
+                Just("low_quota"),
+                Just("pro"),
+                Just("ultra"),
+                Just("free"),
+            ]
+        ) {
+            let filtered = filter_accounts_pure(&accounts, filter);
+            for account in &filtered {
+                prop_assert!(accounts.contains(account),
+                    "Filtered account must exist in original set");
+            }
+        }
+
+        /// Property: Filtering preserves account data integrity
+        #[test]
+        fn prop_filter_preserves_account_data(accounts in accounts_strategy()) {
+            let filtered = filter_accounts_pure(&accounts, "pro");
+            for filtered_account in &filtered {
+                let original = accounts.iter().find(|a| a.id == filtered_account.id);
+                prop_assert!(original.is_some(), "Filtered account must have matching original");
+                prop_assert_eq!(filtered_account, original.unwrap(),
+                    "Filtered account data must match original");
+            }
+        }
+
+        /// Property: Tier filters are mutually exclusive (a PRO account won't appear in ULTRA results)
+        #[test]
+        fn prop_tier_filters_mutually_exclusive(accounts in accounts_strategy()) {
+            let pro = filter_accounts_pure(&accounts, "pro");
+            let ultra = filter_accounts_pure(&accounts, "ultra");
+
+            for pro_acc in &pro {
+                prop_assert!(!ultra.iter().any(|u| u.id == pro_acc.id),
+                    "PRO account should not appear in ULTRA filtered results");
+            }
+        }
+
+        /// Property: Combined count of tier filters equals expected
+        /// (accounts are partitioned by tier into PRO, ULTRA, FREE categories)
+        #[test]
+        fn prop_tier_filter_completeness(accounts in accounts_strategy()) {
+            let pro_count = filter_accounts_pure(&accounts, "pro").len();
+            let ultra_count = filter_accounts_pure(&accounts, "ultra").len();
+            let free_count = filter_accounts_pure(&accounts, "free").len();
+
+            // Every account should be in exactly one tier category
+            let total_categorized = pro_count + ultra_count + free_count;
+            prop_assert_eq!(total_categorized, accounts.len(),
+                "All accounts should be categorized into exactly one tier");
+        }
+    }
+
+    // Unit tests for edge cases
+    #[test]
+    fn test_empty_accounts_list() {
+        let accounts: Vec<TestAccount> = vec![];
+        assert_eq!(filter_accounts_pure(&accounts, "all").len(), 0);
+        assert_eq!(filter_accounts_pure(&accounts, "pro").len(), 0);
+        assert_eq!(filter_accounts_pure(&accounts, "available").len(), 0);
+    }
+
+    #[test]
+    fn test_available_filter_boundary_quota() {
+        let accounts = vec![
+            TestAccount {
+                id: "1".to_string(),
+                email: "test1@example.com".to_string(),
+                tier: "PRO".to_string(),
+                quota_percentage: 10, // Exactly at threshold (should NOT pass)
+                enabled: true,
+                is_forbidden: false,
+            },
+            TestAccount {
+                id: "2".to_string(),
+                email: "test2@example.com".to_string(),
+                tier: "PRO".to_string(),
+                quota_percentage: 11, // Just above threshold (should pass)
+                enabled: true,
+                is_forbidden: false,
+            },
+        ];
+
+        let filtered = filter_accounts_pure(&accounts, "available");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, "2");
+    }
+
+    #[test]
+    fn test_low_quota_filter_boundary() {
+        let accounts = vec![
+            TestAccount {
+                id: "1".to_string(),
+                email: "test1@example.com".to_string(),
+                tier: "FREE".to_string(),
+                quota_percentage: 19, // Just below threshold (should pass)
+                enabled: true,
+                is_forbidden: false,
+            },
+            TestAccount {
+                id: "2".to_string(),
+                email: "test2@example.com".to_string(),
+                tier: "FREE".to_string(),
+                quota_percentage: 20, // Exactly at threshold (should NOT pass)
+                enabled: true,
+                is_forbidden: false,
+            },
+        ];
+
+        let filtered = filter_accounts_pure(&accounts, "low_quota");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, "1");
+    }
+
+    #[test]
+    fn test_tier_case_insensitivity() {
+        let accounts = vec![
+            TestAccount {
+                id: "1".to_string(),
+                email: "a@b.com".to_string(),
+                tier: "pro".to_string(), // lowercase
+                quota_percentage: 50,
+                enabled: true,
+                is_forbidden: false,
+            },
+            TestAccount {
+                id: "2".to_string(),
+                email: "b@b.com".to_string(),
+                tier: "Pro".to_string(), // mixed case
+                quota_percentage: 50,
+                enabled: true,
+                is_forbidden: false,
+            },
+            TestAccount {
+                id: "3".to_string(),
+                email: "c@b.com".to_string(),
+                tier: "PRO".to_string(), // uppercase
+                quota_percentage: 50,
+                enabled: true,
+                is_forbidden: false,
+            },
+        ];
+
+        let filtered = filter_accounts_pure(&accounts, "pro");
+        assert_eq!(filtered.len(), 3);
+    }
 }

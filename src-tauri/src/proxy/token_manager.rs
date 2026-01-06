@@ -388,7 +388,7 @@ impl TokenManager {
 
         
             // 3. 检查 token 是否过期（提前5分钟刷新）
-            let now = chrono::Utc::now().timestamp();
+            let now = time::OffsetDateTime::now_utc().unix_timestamp();
             if now >= token.timestamp - 300 {
                 tracing::debug!("账号 {} 的 token 即将过期，正在刷新...", token.email);
 
@@ -493,7 +493,7 @@ impl TokenManager {
         )
         .map_err(|e| format!("解析 JSON 失败: {e}"))?;
 
-        let now = chrono::Utc::now().timestamp();
+        let now = time::OffsetDateTime::now_utc().unix_timestamp();
         content["disabled"] = serde_json::Value::Bool(true);
         content["disabled_at"] = serde_json::Value::Number(now.into());
         content["disabled_reason"] = serde_json::Value::String(truncate_reason(reason, 800));
@@ -540,7 +540,7 @@ impl TokenManager {
             &tokio::fs::read_to_string(path).await.map_err(|e| format!("读取文件失败: {e}"))?
         ).map_err(|e| format!("解析 JSON 失败: {e}"))?;
 
-        let now = chrono::Utc::now().timestamp();
+        let now = time::OffsetDateTime::now_utc().unix_timestamp();
 
         content["token"]["access_token"] = serde_json::Value::String(token_response.access_token.clone());
         content["token"]["expires_in"] = serde_json::Value::Number(token_response.expires_in.into());

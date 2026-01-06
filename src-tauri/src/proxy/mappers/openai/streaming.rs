@@ -22,7 +22,7 @@
 
 use base64::Engine as _;
 use bytes::{Bytes, BytesMut};
-use chrono::Utc;
+use time::OffsetDateTime;
 use futures::{Stream, StreamExt};
 use memchr::memchr;
 use rand::Rng;
@@ -226,7 +226,7 @@ pub fn create_openai_sse_stream(
                                     let openai_chunk = json!({
                                         "id": format!("chatcmpl-{}", Uuid::new_v4()),
                                         "object": "chat.completion.chunk",
-                                        "created": Utc::now().timestamp(),
+                                        "created": OffsetDateTime::now_utc().unix_timestamp(),
                                         "model": model,
                                         "choices": [
                                             {
@@ -301,7 +301,7 @@ pub fn create_legacy_sse_stream(
         })
         .collect();
     let stream_id = format!("cmpl-{random_str}");
-    let created_ts = Utc::now().timestamp(); 
+    let created_ts = OffsetDateTime::now_utc().unix_timestamp(); 
     
     let stream = async_stream::stream! {
         while let Some(item) = gemini_stream.next().await {

@@ -178,7 +178,9 @@ pub async fn get_user_info(access_token: &str) -> Result<UserInfo, String> {
 pub async fn ensure_fresh_token(
     current_token: &crate::models::TokenData,
 ) -> Result<crate::models::TokenData, String> {
-    let now = chrono::Local::now().timestamp();
+    let now = time::OffsetDateTime::now_local()
+        .unwrap_or_else(|_| time::OffsetDateTime::now_utc())
+        .unix_timestamp();
     
     // 如果没有过期时间，或者还有超过 5 分钟有效期，直接返回
     if current_token.expiry_timestamp > now + 300 {

@@ -715,7 +715,7 @@ pub async fn toggle_proxy_status(
         account_json["proxy_disabled_at"] = serde_json::Value::Null;
     } else {
         // 禁用反代
-        let now = chrono::Utc::now().timestamp();
+        let now = time::OffsetDateTime::now_utc().unix_timestamp();
         account_json["proxy_disabled"] = serde_json::Value::Bool(true);
         account_json["proxy_disabled_at"] = serde_json::Value::Number(now.into());
         account_json["proxy_disabled_reason"] = serde_json::Value::String(

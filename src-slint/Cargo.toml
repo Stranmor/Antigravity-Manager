@@ -24,7 +24,7 @@ gtk = "0.18"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-chrono = { version = "0.4", features = ["serde"] }
+time = { version = "0.3", features = ["serde", "formatting", "parsing", "local-offset", "macros"] }
 
 dirs = "5"
 
@@ -39,6 +39,9 @@ antigravity_tools_lib = { path = "../src-tauri", package = "antigravity_tools", 
 
 [build-dependencies]
 slint-build = "1.9"
+
+[dev-dependencies]
+proptest = "1.6"
 
 [profile.release]
 opt-level = "z"

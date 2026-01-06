@@ -9,8 +9,14 @@ struct LocalTimer;
 
 impl tracing_subscriber::fmt::time::FormatTime for LocalTimer {
     fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
-        let now = chrono::Local::now();
-        write!(w, "{}", now.to_rfc3339())
+        let now = time::OffsetDateTime::now_local()
+            .unwrap_or_else(|_| time::OffsetDateTime::now_utc());
+        let format = time::format_description::well_known::Rfc3339;
+        if let Ok(formatted) = now.format(&format) {
+            write!(w, "{}", formatted)
+        } else {
+            write!(w, "{}", now)
+        }
     }
 }
 

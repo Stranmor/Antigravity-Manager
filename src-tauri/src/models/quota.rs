@@ -24,7 +24,7 @@ impl QuotaData {
     pub fn new() -> Self {
         Self {
             models: Vec::new(),
-            last_updated: chrono::Utc::now().timestamp(),
+            last_updated: time::OffsetDateTime::now_utc().unix_timestamp(),
             is_forbidden: false,
             subscription_tier: None,
         }

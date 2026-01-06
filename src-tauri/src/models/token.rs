@@ -24,7 +24,7 @@ impl TokenData {
         project_id: Option<String>,
         session_id: Option<String>,
     ) -> Self {
-        let expiry_timestamp = chrono::Utc::now().timestamp() + expires_in;
+        let expiry_timestamp = time::OffsetDateTime::now_utc().unix_timestamp() + expires_in;
         Self {
             access_token,
             refresh_token,

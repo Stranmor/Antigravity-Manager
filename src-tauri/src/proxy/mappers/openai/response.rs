@@ -136,7 +136,7 @@ pub fn transform_openai_response(gemini_response: &Value) -> OpenAIResponse {
             .unwrap_or("resp_unknown")
             .to_string(),
         object: "chat.completion".to_string(),
-        created: chrono::Utc::now().timestamp() as u64,
+        created: time::OffsetDateTime::now_utc().unix_timestamp() as u64,
         model: raw
             .get("modelVersion")
             .and_then(|v| v.as_str())

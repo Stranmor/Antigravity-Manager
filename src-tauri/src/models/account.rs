@@ -33,7 +33,7 @@ pub struct Account {
 
 impl Account {
     pub fn new(id: String, email: String, token: TokenData) -> Self {
-        let now = chrono::Utc::now().timestamp();
+        let now = time::OffsetDateTime::now_utc().unix_timestamp();
         Self {
             id,
             email,
@@ -52,7 +52,7 @@ impl Account {
     }
 
     pub fn update_last_used(&mut self) {
-        self.last_used = chrono::Utc::now().timestamp();
+        self.last_used = time::OffsetDateTime::now_utc().unix_timestamp();
     }
 
     pub fn update_quota(&mut self, quota: QuotaData) {
