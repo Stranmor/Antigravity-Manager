@@ -178,12 +178,14 @@ pub fn transform_claude_request_in(
     let mut is_thinking_enabled = claude_req
         .thinking
         .as_ref()
-        .map(|t| t.type_ == "enabled")
-        .unwrap_or_else(|| {
-            // [Claude Code v2.0.67+] Default thinking enabled for Opus 4.5
-            // If no thinking config is provided, enable by default for Opus models
-            should_enable_thinking_by_default(&claude_req.model)
-        });
+        .map_or_else(
+            || {
+                // [Claude Code v2.0.67+] Default thinking enabled for Opus 4.5
+                // If no thinking config is provided, enable by default for Opus models
+                should_enable_thinking_by_default(&claude_req.model)
+            },
+            |t| t.type_ == "enabled",
+        );
 
     // [NEW FIX] Check if target model supports thinking
     // Only models with "-thinking" suffix or Claude models support thinking
@@ -415,6 +417,7 @@ const MIN_SIGNATURE_LENGTH: usize = 10;
 
 /// [FIX #295] Check if we have any valid signature available for function calls
 /// This prevents Gemini 3 Pro from rejecting requests due to missing thought_signature
+#[allow(clippy::ref_option)]
 fn has_valid_signature_for_function_calls(
     messages: &[Message],
     global_sig: &Option<String>,
@@ -448,6 +451,7 @@ fn has_valid_signature_for_function_calls(
 }
 
 /// 构建 System Instruction (支持动态身份映射与 Prompt 隔离)
+#[allow(clippy::ref_option, clippy::unnecessary_wraps)]
 fn build_system_instruction(system: &Option<SystemPrompt>, model_name: &str) -> Option<Value> {
     let mut parts = Vec::new();
 
@@ -484,6 +488,7 @@ fn build_system_instruction(system: &Option<SystemPrompt>, model_name: &str) -> 
 }
 
 /// 构建 Contents (Messages)
+#[allow(clippy::unnecessary_wraps)]
 fn build_contents(
     messages: &[Message],
     tool_id_to_name: &mut HashMap<String, String>,
@@ -617,9 +622,9 @@ fn build_contents(
                                 .cloned()
                                 .or_else(|| {
                                     let global_sig = get_thought_signature();
-                                    if global_sig.is_some() {
-                                        tracing::info!("[Claude-Request] Using global thought_signature fallback (length: {})", 
-                                            global_sig.as_ref().unwrap().len());
+                                    if let Some(ref sig) = global_sig {
+                                        tracing::info!("[Claude-Request] Using global thought_signature fallback (length: {})",
+                                            sig.len());
                                     }
                                     global_sig
                                 });
@@ -682,7 +687,7 @@ fn build_contents(
                         ContentBlock::ServerToolUse { .. }
                         | ContentBlock::WebSearchToolResult { .. } => {
                             // 搜索结果 block 不应由客户端发回给上游 (已由 tool_result 替代)
-                            continue;
+                            // Just skip - no action needed
                         }
                         ContentBlock::RedactedThinking { data } => {
                             // [FIX] 将 RedactedThinking 作为普通文本处理
@@ -769,6 +774,7 @@ fn build_contents(
 }
 
 /// 构建 Tools
+#[allow(clippy::ref_option, clippy::unnecessary_wraps)]
 fn build_tools(tools: &Option<Vec<Tool>>, has_web_search: bool) -> Result<Option<Value>, String> {
     if let Some(tools_list) = tools {
         let mut function_declarations: Vec<Value> = Vec::new();
@@ -889,7 +895,6 @@ fn build_generation_config(
     if let Some(output_config) = &claude_req.output_config {
         if let Some(effort) = &output_config.effort {
             let thinking_level = match effort.to_lowercase().as_str() {
-                "high" => "high",
                 "medium" => "medium",
                 "low" => "low",
                 _ => "high", // Default to high for unknown values

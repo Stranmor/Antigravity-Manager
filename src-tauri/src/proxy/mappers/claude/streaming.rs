@@ -87,6 +87,12 @@ pub struct SignatureManager {
     pending: Option<String>,
 }
 
+impl Default for SignatureManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SignatureManager {
     pub fn new() -> Self {
         Self { pending: None }
@@ -127,6 +133,12 @@ pub struct StreamingState {
     metrics: Option<StreamMetrics>,
     stream_start: Instant,
     last_activity: Instant,
+}
+
+impl Default for StreamingState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StreamingState {
@@ -533,6 +545,7 @@ impl StreamingState {
 
     /// Update last activity timestamp.
     #[inline]
+    #[allow(clippy::unused_self)]
     fn touch(&self) {
         // Note: This is a no-op for the Instant field since we can't mutate &self
         // Real activity tracking happens through metrics if enabled
@@ -617,7 +630,7 @@ impl StreamingState {
 
     /// Get total bytes sent (if metrics enabled).
     pub fn total_bytes_sent(&self) -> u64 {
-        self.metrics.as_ref().map_or(0, |m| m.total_bytes_sent())
+        self.metrics.as_ref().map_or(0, super::super::stream_resilience::StreamMetrics::total_bytes_sent)
     }
 
     /// Perform cleanup on stream end.

@@ -20,12 +20,14 @@
 // - Premature disconnections
 // - Partial chunk recovery events
 
+use base64::Engine as _;
 use bytes::{Bytes, BytesMut};
 use chrono::Utc;
 use futures::{Stream, StreamExt};
 use memchr::memchr;
 use rand::Rng;
 use serde_json::{json, Value};
+use std::hash::{Hash, Hasher};
 use std::pin::Pin;
 use std::sync::{Mutex, OnceLock};
 use tracing::{debug, warn};
@@ -43,13 +45,11 @@ const CONTENT_BUFFER_CAPACITY: usize = 1024;      // Content accumulator pre-all
 
 /// Map Gemini finish reason to OpenAI format (inlined for performance)
 #[allow(dead_code)]  // Reserved for streaming optimization refactor
-#[inline(always)]
 fn map_finish_reason(reason: &str) -> &'static str {
     match reason {
-        "STOP" => "stop",
         "MAX_TOKENS" => "length",
         "SAFETY" => "content_filter",
-        _ => "stop", // Default to "stop" for unknown finish reasons
+        _ => "stop", // Default to "stop" for unknown finish reasons including "STOP"
     }
 }
 
@@ -94,6 +94,7 @@ pub fn get_thought_signature() -> Option<String> {
     }
 }
 
+#[allow(clippy::items_after_statements)]
 pub fn create_openai_sse_stream(
     mut gemini_stream: Pin<Box<dyn Stream<Item = Result<Bytes, reqwest::Error>> + Send>>,
     model: String,
@@ -172,7 +173,8 @@ pub fn create_openai_sse_stream(
                                                 let mime_type = img.get("mimeType").and_then(|v| v.as_str()).unwrap_or("image/png");
                                                 let data = img.get("data").and_then(|v| v.as_str()).unwrap_or("");
                                                 if !data.is_empty() {
-                                                    content_out.push_str(&format!("![image](data:{mime_type};base64,{data})"));
+                                                    use std::fmt::Write as _;
+                                                    let _ = write!(content_out, "![image](data:{mime_type};base64,{data})");
                                                 }
                                             }
                                         }
@@ -487,7 +489,6 @@ pub fn create_codex_sse_stream(
                                                                                 let _args = func_call.get("args").unwrap_or(&json!({})).to_string();                                                        
                                                         // Stable ID generation based on hashed content to be consistent
                                                         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                                                        use std::hash::{Hash, Hasher};
                                                         serde_json::to_string(func_call).unwrap_or_default().hash(&mut hasher);
                                                         let call_id = format!("call_{:x}", hasher.finish());
                                                         
@@ -772,7 +773,6 @@ pub fn create_codex_sse_stream(
             if let Some(cmd_val) = detected_cmd_val {
                 if detected_cmd_type == "shell" {
                      let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                     use std::hash::{Hash, Hasher};
                      "ssop_shell_call".hash(&mut hasher); // Unique seed
                      serde_json::to_string(&cmd_val).unwrap_or_default().hash(&mut hasher);
                      let call_id = format!("call_{:x}", hasher.finish());
@@ -805,7 +805,6 @@ pub fn create_codex_sse_stream(
                         for c in utf16 {
                             bytes.extend_from_slice(&c.to_le_bytes());
                         }
-                        use base64::Engine as _;
                         let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
                         
                         vec!["powershell".to_string(), "-EncodedCommand".to_string(), b64]

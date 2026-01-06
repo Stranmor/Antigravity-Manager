@@ -68,7 +68,8 @@ pub fn transform_openai_response(gemini_response: &Value) -> OpenAIResponse {
                     .unwrap_or("image/png");
                 let data = img.get("data").and_then(|v| v.as_str()).unwrap_or("");
                 if !data.is_empty() {
-                    content_out.push_str(&format!("![image](data:{mime_type};base64,{data})"));
+                    use std::fmt::Write as _;
+                    let _ = write!(content_out, "![image](data:{mime_type};base64,{data})");
                 }
             }
         }
@@ -123,10 +124,8 @@ pub fn transform_openai_response(gemini_response: &Value) -> OpenAIResponse {
         .and_then(|cand| cand.get("finishReason"))
         .and_then(|f| f.as_str())
         .map_or("stop", |f| match f {
-            "STOP" => "stop",
             "MAX_TOKENS" => "length",
-            "SAFETY" => "content_filter",
-            "RECITATION" => "content_filter",
+            "SAFETY" | "RECITATION" => "content_filter",
             _ => "stop",
         });
 

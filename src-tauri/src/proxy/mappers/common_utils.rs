@@ -87,7 +87,7 @@ pub fn resolve_request_config(
 /// Returns (image_config, clean_model_name)
 fn parse_image_config(model_name: &str) -> (Value, String) {
     let mut aspect_ratio = "1:1";
-    let _image_size = "1024x1024"; // Default, not explicitly sent unless 4k/hd
+    // image_size is reserved for future use (e.g., 4k/hd mode)
 
     if model_name.contains("-21x9") || model_name.contains("-21-9") { aspect_ratio = "21:9"; }
     else if model_name.contains("-16x9") || model_name.contains("-16-9") { aspect_ratio = "16:9"; }

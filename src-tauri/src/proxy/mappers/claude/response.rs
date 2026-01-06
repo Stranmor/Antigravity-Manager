@@ -51,6 +51,12 @@ pub struct NonStreamingProcessor {
     has_tool_call: bool,
 }
 
+impl Default for NonStreamingProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NonStreamingProcessor {
     pub fn new() -> Self {
         Self {

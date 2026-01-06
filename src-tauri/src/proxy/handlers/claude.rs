@@ -200,7 +200,7 @@ pub async fn handle_messages(
     let mut request: crate::proxy::mappers::claude::models::ClaudeRequest = match serde_json::from_value(body) {
         Ok(r) => r,
         Err(e) => {
-            return ProxyError::invalid_request(format!("Invalid request body: {}", e))
+            return ProxyError::invalid_request(format!("Invalid request body: {e}"))
                 .with_request_id(request_id)
                 .into_response();
         }
@@ -214,8 +214,8 @@ pub async fn handle_messages(
         let new_body = match serde_json::to_value(&request) {
             Ok(v) => v,
             Err(e) => {
-                tracing::error!("Failed to serialize fixed request for z.ai: {}", e);
-                return ProxyError::internal_error(format!("Failed to serialize request: {}", e))
+                tracing::error!("Failed to serialize fixed request for z.ai: {e}");
+                return ProxyError::internal_error(format!("Failed to serialize request: {e}"))
                     .with_request_id(request_id)
                     .into_response();
             }
@@ -272,12 +272,13 @@ pub async fn handle_messages(
 
     // 如果经过过滤还是找不到（例如纯工具调用），则回退到最后一条消息的原始展示
     let latest_msg = meaningful_msg.unwrap_or_else(|| {
-        request.messages.last().map(|m| {
-            match &m.content {
+        request.messages.last().map_or_else(
+            || "[No Messages]".to_string(),
+            |m| match &m.content {
                 crate::proxy::mappers::claude::models::MessageContent::String(s) => s.clone(),
                 crate::proxy::mappers::claude::models::MessageContent::Array(_) => "[Complex/Tool Message]".to_string()
-            }
-        }).unwrap_or_else(|| "[No Messages]".to_string())
+            },
+        )
     });
     
     
@@ -324,7 +325,7 @@ pub async fn handle_messages(
     debug!("========== [{}] CLAUDE REQUEST DEBUG END ==========", trace_id);
 
     // 1. 获取 会话 ID (已废弃基于内容的哈希，改用 TokenManager 内部的时间窗口锁定)
-    let _session_id: Option<&str> = None;
+    // session_id is reserved for potential future sticky session features
 
     // 2. 获取 UpstreamClient
     let upstream = state.upstream.clone();
@@ -402,7 +403,7 @@ pub async fn handle_messages(
                 } else {
                     e
                 };
-                return ProxyError::token_error(format!("No available accounts: {}", safe_message))
+                return ProxyError::token_error(format!("No available accounts: {safe_message}"))
                     .with_request_id(request_id.clone())
                     .into_response();
             }
@@ -483,7 +484,7 @@ pub async fn handle_messages(
                 b
             },
             Err(e) => {
-                return ProxyError::TransformError(format!("Transform error: {}", e), Some(request_id.clone()))
+                return ProxyError::TransformError(format!("Transform error: {e}"), Some(request_id.clone()))
                     .into_response();
             }
         };
