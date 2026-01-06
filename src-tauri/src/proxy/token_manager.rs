@@ -221,8 +221,8 @@ impl TokenManager {
                 
                 // 1. 检查会话是否已绑定账号
                 if let Some(bound_id) = self.session_accounts.get(sid).map(|v| v.clone()) {
-                    // 2. 检查绑定的账号是否限流 (使用精准的剩余时间接口)
-                    let reset_sec = self.rate_limit_tracker.get_remaining_wait(&bound_id);
+                    // 2. 检查绑定的账号是否限流 (使用 per-model 限流检查)
+                    let reset_sec = self.rate_limit_tracker.get_remaining_wait_for_group(&bound_id, Some(quota_group));
                     if reset_sec > 0 {
                         if scheduling.mode == SchedulingMode::CacheFirst && reset_sec <= scheduling.max_wait_seconds {
                             // 缓存优先模式：限流时间短，执行精准精准避让等待
@@ -273,8 +273,8 @@ impl TokenManager {
                             continue;
                         }
 
-                        // 【新增】主动避开限流或 5xx 锁定的账号 (来自 PR #28 的高可用思路)
-                        if self.is_rate_limited(&candidate.account_id) {
+                        // 主动避开限流账号 (per-model check)
+                        if self.rate_limit_tracker.is_rate_limited_for_group(&candidate.account_id, Some(quota_group)) {
                             continue;
                         }
 
@@ -301,8 +301,7 @@ impl TokenManager {
                         continue;
                     }
 
-                    // 【新增】主动避开限流或 5xx 锁定的账号
-                    if self.is_rate_limited(&candidate.account_id) {
+                    if self.rate_limit_tracker.is_rate_limited_for_group(&candidate.account_id, Some(quota_group)) {
                         continue;
                     }
 
