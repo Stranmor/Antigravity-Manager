@@ -4,9 +4,9 @@
 Optimize the Antigravity Manager codebase for 2026 standards, starting with style consistency and clippy compliance.
 
 ## CURRENT ACTIVE BATCH (Phase 5 - Hardening)
-- [x] Add circuit breaker for upstream API calls `[MODE: B]` ✓ Already implemented in upstream/client.rs
+- [x] Add circuit breaker for upstream API calls `[MODE: B]` ✓ c03994b (full implementation)
 - [x] Implement connection pooling for reqwest client `[MODE: B]` ✓ Already configured (pool_max_idle_per_host=16)
-- [ ] Add graceful shutdown handling for proxy server `[MODE: B]` (in progress)
+- [x] Add graceful shutdown handling for proxy server `[MODE: B]` ✓ c03994b (ConnectionTracker + 30s drain timeout)
 - [ ] Research OpenTelemetry integration (distributed tracing) `[MODE: R]` (in progress)
 - [ ] Add account usage analytics dashboard in Slint UI `[MODE: B]`
 - [ ] Optimize SSE memory allocation (reduce Box<dyn> overhead) `[MODE: B]`
@@ -148,7 +148,7 @@ cargo test --features headless -p antigravity_tools_lib
 - [x] Fix clippy nursery lints in account modules `[MODE: B]` (b842aec) ✓ Complete
 
 ## TRACING SPANS IMPLEMENTATION (2026-01-06)
-**Status: ✓ IMPLEMENTED**
+**Status: IMPLEMENTED**
 
 **3 Observability Phases Added:**
 1. **account_selection** - Request type, force_rotate, attempt count
@@ -164,8 +164,82 @@ cargo test --features headless -p antigravity_tools_lib
 INFO upstream_call{provider="gemini" model="gemini-2.5-pro" account_id="abc" latency_ms="1234"}: Upstream call completed
 ```
 
+## GRACEFUL SHUTDOWN IMPLEMENTATION (2026-01-06)
+**Status: IMPLEMENTED (c03994b)**
+
+**Features:**
+1. **Signal Handling** - Catches SIGTERM and SIGINT (Ctrl+C)
+2. **Connection Tracking** - Atomic counter tracks active connections
+3. **Drain Timeout** - 30 second timeout for in-flight requests to complete
+4. **Broadcast Shutdown** - Uses `tokio::sync::broadcast` for multi-receiver shutdown signaling
+
+**Components:**
+- `ConnectionTracker` - Thread-safe connection counter with drain notification
+- `AxumServer::stop_gracefully()` - Async method that waits for connections to drain
+- `AxumServer::stop()` - Sync method for backward compatibility (immediate shutdown)
+- `AxumServer::active_connections()` - Query current active connection count
+
+**Shutdown Flow:**
+```
+SIGTERM/SIGINT received
+    → Signal broadcast to accept loop
+    → Stop accepting new connections
+    → Wait for active connections (up to 30s)
+    → Log drain status
+    → Exit cleanly
+```
+
+**Verification:**
+```bash
+# Test graceful shutdown
+kill -15 <pid>  # SIGTERM
+# or
+kill -2 <pid>   # SIGINT (Ctrl+C)
+```
+
+**Log Output:**
+```
+INFO Received SIGTERM
+INFO Initiating graceful shutdown...
+INFO Waiting for 3 active connection(s) to complete (timeout: 30s)
+INFO All connections drained successfully
+INFO Graceful shutdown completed successfully
+```
+
+## CIRCUIT BREAKER IMPLEMENTATION (2026-01-06)
+**Status: IMPLEMENTED (c03994b)**
+
+**Features:**
+1. **Per-Account Circuit Breaking** - Each account has independent circuit state
+2. **Three States** - Closed (normal), Open (failing), Half-Open (testing recovery)
+3. **Configurable Thresholds** - failure_threshold=5, open_duration=60s, success_threshold=2
+4. **Fast-Fail Behavior** - Requests fail immediately when circuit is open
+
+**Code Location:** `src/proxy/common/circuit_breaker.rs` (353 lines)
+
+**Integration Points:**
+- `src/proxy/handlers/claude.rs` - `should_allow()` check before upstream call
+- `src/proxy/handlers/openai.rs` - Same pattern for OpenAI handler
+- `src/proxy/server.rs` - CircuitBreakerManager in AppState
+
+**API:**
+```rust
+// Check if request should proceed
+if let Err(retry_after) = state.circuit_breaker.should_allow(&account_id) {
+    return Err(429 with retry_after header);
+}
+
+// Record outcomes
+state.circuit_breaker.record_success(&account_id);
+state.circuit_breaker.record_failure(&account_id, "error reason");
+
+// Query state
+let state = circuit_breaker.get_state(&account_id);
+let summary = circuit_breaker.get_summary();
+```
+
 ## WEBSOCKET VS SSE RESEARCH (2026-01-06)
-**Status: ✓ RESEARCH COMPLETE - SSE PREFERRED**
+**Status: RESEARCH COMPLETE - SSE PREFERRED**
 
 **Summary:** SSE (Server-Sent Events) is the industry standard for LLM streaming and is the correct choice for Antigravity Manager.
 
