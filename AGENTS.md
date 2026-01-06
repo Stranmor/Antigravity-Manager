@@ -34,9 +34,9 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Fix database health check query bug `[MODE: B]` ✓ 7ab0c751 (query_row vs execute)
 - [x] Apply clippy auto-fixes `[MODE: B]` ✓ 28086f66 (format strings, From conversions)
 - [x] Research and implement request caching for repeated queries `[MODE: R]` ✓ Research complete
-- [ ] Deploy Grafana Tempo on VPS for distributed tracing `[MODE: B]`
+- [x] Deploy Grafana Tempo on VPS for distributed tracing `[MODE: B]` ✓ Deployed and running (2026-01-07)
 - [x] Implement automatic VPS binary update script `[MODE: B]` ✓ Created scripts/deploy-vps.sh (2026-01-07)
-- [ ] Add Prometheus metrics for log rotation (files rotated, disk usage) `[MODE: B]`
+- [x] Add Prometheus metrics for log rotation (files rotated, disk usage) `[MODE: B]` ✓ 3a7d20c9
 
 ## AUTOMATIC VPS DEPLOYMENT (2026-01-07)
 **Status: ✓ IMPLEMENTED**
@@ -1061,6 +1061,33 @@ curl -s http://localhost:9101/api/health/detailed | jq
 **Code Locations:**
 - `src-slint/ui/main.slint` - UsageBar, TopAccountCard components
 - `src-slint/src/main.rs` - refresh_analytics() function (lines 923-1103)
+
+## LOG ROTATION PROMETHEUS METRICS (2026-01-07)
+**Status: ✓ IMPLEMENTED (3a7d20c9)**
+
+**New Metrics:**
+| Metric | Type | Description |
+|--------|------|-------------|
+| `antigravity_log_files_total` | Gauge | Total log files in logs directory |
+| `antigravity_log_disk_bytes` | Gauge | Total disk usage by log files |
+| `antigravity_log_rotations_total` | Counter | Cumulative log rotation events |
+| `antigravity_log_cleanup_removed_total` | Counter | Files removed by cleanup |
+
+**Files Modified:**
+- `src-tauri/src/proxy/prometheus.rs` - Added metric definitions and update functions
+- `src-tauri/src/proxy/server_logger.rs` - Integrated cleanup metrics recording
+- `src-tauri/src/bin/server.rs` - Added log gauges update to /metrics handler
+
+**Usage:**
+```bash
+# Query log metrics from Prometheus
+curl http://localhost:9101/metrics | grep antigravity_log
+
+# Example output:
+# antigravity_log_files_total 3
+# antigravity_log_disk_bytes 1048576
+# antigravity_log_cleanup_removed_total 0
+```
 
 ## CODE QUALITY AUDIT (2026-01-07)
 **Status: ANALYSIS COMPLETE**
