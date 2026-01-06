@@ -3,58 +3,22 @@ use axum::{extract::Json, extract::State, response::{IntoResponse, Response}, Ex
 use base64::Engine as _;
 use serde_json::{json, Value};
 use tokio::time::{sleep, Duration};
-use tracing::{debug, error, info}; // Import Engine trait for encode method
+use tracing::{debug, error, info};
 
 use crate::proxy::mappers::openai::{
     transform_openai_request, transform_openai_response, OpenAIRequest,
 };
-// use crate::proxy::upstream::client::UpstreamClient; // 通过 state 获取
 use crate::proxy::server::AppState;
 use crate::proxy::handlers::common::WithResolvedModel;
 use crate::proxy::error::ProxyError;
 use crate::proxy::middleware::request_id::RequestId;
 use crate::proxy::common::perf::{time_request_transform, time_response_transform, time_upstream_call};
-
-const MAX_RETRY_ATTEMPTS: usize = 3;
-
-// ===== 529 Overloaded Retry Configuration =====
-// 529 errors indicate server overload - NOT account-specific limits
-// We should retry aggressively with the SAME account until success
-const MAX_OVERLOAD_RETRIES: usize = 30;      // Max retries for 529 errors (independent of account pool)
-const OVERLOAD_BASE_DELAY_MS: u64 = 2000;    // Base delay: 2 seconds
-const OVERLOAD_MAX_DELAY_MS: u64 = 60000;    // Max delay cap: 60 seconds
-
-// ===== Jitter Configuration =====
-// Jitter helps prevent thundering herd problem in retry scenarios
-const JITTER_FACTOR: f64 = 0.2;  // ±20% jitter
-
-/// Apply jitter to a delay value to prevent thundering herd
-/// Returns delay ± JITTER_FACTOR (e.g., 1000ms ± 20% = 800-1200ms)
-fn apply_jitter(delay_ms: u64) -> u64 {
-    use rand::Rng;
-    let jitter_range = (delay_ms as f64 * JITTER_FACTOR) as i64;
-    let jitter: i64 = rand::thread_rng().gen_range(-jitter_range..=jitter_range);
-    ((delay_ms as i64) + jitter).max(1) as u64
-}
-
+use crate::proxy::common::retry::{
+    apply_jitter, MAX_RETRY_ATTEMPTS, MAX_OVERLOAD_RETRIES, OVERLOAD_BASE_DELAY_MS, OVERLOAD_MAX_DELAY_MS,
+};
+use crate::proxy::common::sse::build_sse_response;
+use crate::proxy::common::background_task;
 use crate::proxy::session_manager::SessionManager;
-
-/// Build an SSE response with proper error handling.
-/// This helper avoids panics from Response::builder().body().expect()
-fn build_sse_response(body: axum::body::Body, resolved_model: &str) -> Response {
-    Response::builder()
-        .header("Content-Type", "text/event-stream")
-        .header("Cache-Control", "no-cache")
-        .header("Connection", "keep-alive")
-        .header(crate::proxy::middleware::monitor::X_RESOLVED_MODEL_HEADER, resolved_model)
-        .body(body)
-        .unwrap_or_else(|e| {
-            // This should never happen with valid static headers, but handle gracefully
-            tracing::error!("Failed to build SSE response: {}", e);
-            ProxyError::response_build_error(format!("SSE response build failed: {e}"))
-                .into_response()
-        })
-}
 
 pub async fn handle_chat_completions(
     State(state): State<AppState>,
@@ -85,6 +49,19 @@ pub async fn handle_chat_completions(
     }
 
     debug!("Received OpenAI request for model: {}", openai_req.model);
+
+    // [Background Task Detection] Check if this is a background task and downgrade model if needed
+    let background_task_type = extract_text_from_openai_request(&openai_req)
+        .and_then(|text| background_task::detect_from_text(&text));
+    
+    if let Some(task_type) = background_task_type {
+        let downgraded_model = background_task::select_model(task_type);
+        debug!(
+            "[OpenAI] Background task detected: {:?}, downgrading model from '{}' to '{}'",
+            task_type, openai_req.model, downgraded_model
+        );
+        openai_req.model = downgraded_model.to_string();
+    }
 
     // 1. 获取 UpstreamClient (Clone handle)
     let upstream = state.upstream.clone();
@@ -1391,4 +1368,33 @@ pub async fn handle_images_edits(
     });
 
     Json(openai_response).into_response()
+}
+
+fn extract_text_from_openai_request(request: &OpenAIRequest) -> Option<String> {
+    use crate::proxy::mappers::openai::{OpenAIContent, OpenAIContentBlock};
+    
+    let mut text_parts = Vec::new();
+    
+    for message in &request.messages {
+        if let Some(content) = &message.content {
+            match content {
+                OpenAIContent::String(s) => {
+                    text_parts.push(s.clone());
+                }
+                OpenAIContent::Array(blocks) => {
+                    for block in blocks {
+                        if let OpenAIContentBlock::Text { text } = block {
+                            text_parts.push(text.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    if text_parts.is_empty() {
+        None
+    } else {
+        Some(text_parts.join("\n"))
+    }
 }
