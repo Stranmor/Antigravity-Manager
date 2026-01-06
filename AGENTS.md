@@ -106,9 +106,31 @@ cargo build --profile release-fast # Testing (fast, still optimized)
 - [x] Research structured logging with request correlation IDs `[MODE: R]` ✓ See findings below
 - [x] Benchmark and optimize hot paths in token rotation `[MODE: R]` ✓ See findings below
 - [x] Fix remaining clippy warnings in server.rs `[MODE: B]` (e8f2b9a)
-- [ ] Implement structured JSON logging for files `[MODE: B]`
+- [x] Implement structured JSON logging for files `[MODE: B]` ✓ See JSON Logging section below
 - [ ] Add integration tests for proxy handlers `[MODE: C]`
 - [ ] Implement DashMap for rate limiting (performance) `[MODE: B]`
+
+## JSON FILE LOGGING (2026-01-06)
+**Status: ✓ IMPLEMENTED**
+
+**Changes:**
+- File logging now uses structured JSON format via `tracing_subscriber::fmt::json()`
+- Console logging remains human-readable with local timezone
+- Added `json` feature to `tracing-subscriber` dependency
+
+**JSON Output Fields:**
+- `timestamp`: ISO8601/RFC3339 format
+- `level`: Log level (INFO, WARN, ERROR, DEBUG, TRACE)
+- `target`: Module path (e.g., `antigravity_tools::proxy::handlers`)
+- `message`: Log message
+- `spans`: Span hierarchy with all fields (includes `request_id`)
+
+**Example JSON Log Entry:**
+```json
+{"timestamp":"2026-01-06T12:34:56.789Z","level":"INFO","target":"antigravity_tools::proxy","spans":[{"request_id":"abc-123"}],"message":"Request processed"}
+```
+
+**Code Location:** `src-tauri/src/modules/logger.rs`
 
 ## JIFF CRATE EVALUATION (2026-01-06)
 **Status: ✓ RESEARCH COMPLETE - WAIT FOR 1.0**
