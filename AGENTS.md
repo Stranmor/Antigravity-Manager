@@ -28,7 +28,7 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Implement log rotation for proxy logs `[MODE: B]` ✓ 46fb7a67 (logroller crate)
 - [x] Add health check endpoint with detailed component status `[MODE: B]` ✓ 7fcd5932 (/api/health/detailed)
 
-## CURRENT ACTIVE BATCH (Phase 8 - Deployment & Infrastructure)
+## COMPLETED: Phase 8 - Deployment & Infrastructure (2026-01-07)
 - [x] Sync VPS with Phase 7 commits (log rotation, health check, analytics) `[MODE: B]` ✓ Deployed 2026-01-07
 - [x] Add Docker/Podman health check to Containerfile `[MODE: B]` ✓ 91f24d87 (uses /api/health/detailed)
 - [x] Fix database health check query bug `[MODE: B]` ✓ 7ab0c751 (query_row vs execute)
@@ -37,6 +37,27 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Deploy Grafana Tempo on VPS for distributed tracing `[MODE: B]` ✓ Deployed and running (2026-01-07)
 - [x] Implement automatic VPS binary update script `[MODE: B]` ✓ Created scripts/deploy-vps.sh (2026-01-07)
 - [x] Add Prometheus metrics for log rotation (files rotated, disk usage) `[MODE: B]` ✓ 3a7d20c9
+- [x] Deploy binary with log rotation metrics to VPS `[MODE: B]` ✓ Verified 2026-01-07
+
+## CURRENT ACTIVE BATCH (Phase 9 - Reliability & Performance)
+**Focus: Tail latency reduction, deadline enforcement, and operational excellence**
+
+### Priority 1: CRITICAL RELIABILITY
+- [x] Implement deadline propagation for upstream calls `[MODE: B]` ✓ ad6cc861 (tokio::time::timeout wrapping)
+- [x] Add structured error taxonomy `[MODE: B]` ✓ ad6cc861 (ErrorCode enum AG-001 to AG-008)
+- [x] Optimize Prometheus latency histogram buckets `[MODE: B]` ✓ ad6cc861 (LLM-optimized buckets)
+- [ ] Add request hedging (speculative retry) `[MODE: B]` - Fire backup request after 2s deadline
+- [ ] Add connection pool warming `[MODE: B]` - Periodic health pings to keep pools warm
+
+### Priority 2: OBSERVABILITY ENHANCEMENT
+- [ ] Add semantic request logging with sampling `[MODE: B]` - Log 1% of request/response bodies
+
+### Priority 3: DEVELOPER EXPERIENCE
+- [ ] Extend live config reload via Admin API `[MODE: B]` - Hot-reload all config, not just accounts
+
+### Priority 4: RESEARCH
+- [ ] Research request coalescing/deduplication `[MODE: R]` - SHA256 hash-based duplicate detection
+- [ ] Research priority queue implementation `[MODE: R]` - Request classification by x-priority header
 
 ## AUTOMATIC VPS DEPLOYMENT (2026-01-07)
 **Status: ✓ IMPLEMENTED**
