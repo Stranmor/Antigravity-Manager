@@ -1004,6 +1004,228 @@ pub fn compute_account_stats_from_logs(account_id: &str) -> Result<AccountAnalyt
     })
 }
 
+// ============================================================================
+// Backup & Restore Operations
+// ============================================================================
+
+/// Backup metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackupMetadata {
+    pub version: String,
+    pub schema_version: i32,
+    pub created_at: i64,
+    pub accounts_count: usize,
+    pub logs_count: usize,
+}
+
+/// Full database backup structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatabaseBackup {
+    pub metadata: BackupMetadata,
+    pub adaptive_limits: Vec<PersistedAdaptiveLimit>,
+    pub daily_stats: Vec<DailyAccountStats>,
+    pub circuit_breaker_events: Vec<CircuitBreakerEvent>,
+    pub rate_limit_events: Vec<RateLimitEvent>,
+    pub global_stats: std::collections::HashMap<String, i64>,
+}
+
+/// Create a full database backup as JSON
+pub fn create_backup() -> Result<DatabaseBackup, String> {
+    let db_path = get_proxy_db_path()?;
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+
+    // Get schema version
+    let schema_version: i32 = conn
+        .query_row("SELECT COALESCE(MAX(version), 0) FROM schema_version", [], |row| row.get(0))
+        .unwrap_or(0);
+
+    // Load all adaptive limits
+    let adaptive_limits = load_adaptive_limits()?;
+
+    // Load all daily stats (last 90 days)
+    let daily_stats = get_historical_analytics(90)?.daily_stats;
+
+    // Load circuit breaker events (last 1000)
+    let mut cb_events = Vec::new();
+    let mut stmt = conn.prepare(
+        "SELECT id, account_id, timestamp, previous_state, new_state, reason, failure_count
+         FROM circuit_breaker_events ORDER BY timestamp DESC LIMIT 1000"
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |row| {
+        Ok(CircuitBreakerEvent {
+            id: row.get(0)?,
+            account_id: row.get(1)?,
+            timestamp: row.get(2)?,
+            previous_state: row.get(3)?,
+            new_state: row.get(4)?,
+            reason: row.get(5)?,
+            failure_count: row.get(6)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    for row in rows {
+        cb_events.push(row.map_err(|e| e.to_string())?);
+    }
+
+    // Load rate limit events (last 1000)
+    let mut rl_events = Vec::new();
+    let mut stmt = conn.prepare(
+        "SELECT id, account_id, timestamp, reset_at, quota_group, retry_after_seconds
+         FROM rate_limit_events ORDER BY timestamp DESC LIMIT 1000"
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |row| {
+        Ok(RateLimitEvent {
+            id: row.get(0)?,
+            account_id: row.get(1)?,
+            timestamp: row.get(2)?,
+            reset_at: row.get(3)?,
+            quota_group: row.get(4)?,
+            retry_after_seconds: row.get(5)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    for row in rows {
+        rl_events.push(row.map_err(|e| e.to_string())?);
+    }
+
+    // Load global stats
+    let global_stats = get_global_stats()?;
+
+    // Count logs
+    let logs_count: usize = conn
+        .query_row("SELECT COUNT(*) FROM request_logs", [], |row| row.get(0))
+        .unwrap_or(0);
+
+    let metadata = BackupMetadata {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        schema_version,
+        created_at: time::OffsetDateTime::now_utc().unix_timestamp(),
+        accounts_count: adaptive_limits.len(),
+        logs_count,
+    };
+
+    Ok(DatabaseBackup {
+        metadata,
+        adaptive_limits,
+        daily_stats,
+        circuit_breaker_events: cb_events,
+        rate_limit_events: rl_events,
+        global_stats,
+    })
+}
+
+/// Export backup to JSON file
+pub fn export_backup_to_file(path: &std::path::Path) -> Result<BackupMetadata, String> {
+    let backup = create_backup()?;
+    let json = serde_json::to_string_pretty(&backup)
+        .map_err(|e| format!("Failed to serialize backup: {}", e))?;
+    std::fs::write(path, json)
+        .map_err(|e| format!("Failed to write backup file: {}", e))?;
+    Ok(backup.metadata)
+}
+
+/// Restore database from backup
+pub fn restore_from_backup(backup: &DatabaseBackup) -> Result<(), String> {
+    let db_path = get_proxy_db_path()?;
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+
+    // Restore adaptive limits
+    for limit in &backup.adaptive_limits {
+        conn.execute(
+            "INSERT INTO adaptive_limits (account_id, confirmed_limit, ceiling, last_calibration, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?4)
+             ON CONFLICT(account_id) DO UPDATE SET
+                 confirmed_limit = ?2,
+                 ceiling = ?3,
+                 last_calibration = ?4,
+                 updated_at = ?4",
+            params![
+                limit.account_id,
+                i64::try_from(limit.confirmed_limit).unwrap_or(i64::MAX),
+                i64::try_from(limit.ceiling).unwrap_or(i64::MAX),
+                limit.last_calibration
+            ],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    // Restore daily stats
+    for stat in &backup.daily_stats {
+        let now = time::OffsetDateTime::now_utc().unix_timestamp();
+        conn.execute(
+            "INSERT INTO daily_account_stats
+                (account_id, date, request_count, success_count, error_count,
+                 input_tokens, output_tokens, total_duration_ms, rate_limit_hits, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(account_id, date) DO UPDATE SET
+                 request_count = ?3,
+                 success_count = ?4,
+                 error_count = ?5,
+                 input_tokens = ?6,
+                 output_tokens = ?7,
+                 total_duration_ms = ?8,
+                 rate_limit_hits = ?9,
+                 updated_at = ?10",
+            params![
+                stat.account_id,
+                stat.date,
+                stat.request_count,
+                stat.success_count,
+                stat.error_count,
+                stat.input_tokens,
+                stat.output_tokens,
+                stat.total_duration_ms,
+                stat.rate_limit_hits,
+                now
+            ],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    // Restore global stats
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+    for (key, value) in &backup.global_stats {
+        conn.execute(
+            "INSERT INTO global_stats (key, value, updated_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(key) DO UPDATE SET value = ?2, updated_at = ?3",
+            params![key, value, now],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    tracing::info!(
+        "Restored backup: {} adaptive limits, {} daily stats, {} global stats",
+        backup.adaptive_limits.len(),
+        backup.daily_stats.len(),
+        backup.global_stats.len()
+    );
+
+    Ok(())
+}
+
+/// Import backup from JSON file
+pub fn import_backup_from_file(path: &std::path::Path) -> Result<BackupMetadata, String> {
+    let json = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read backup file: {}", e))?;
+    let backup: DatabaseBackup = serde_json::from_str(&json)
+        .map_err(|e| format!("Failed to parse backup: {}", e))?;
+    let metadata = backup.metadata.clone();
+    restore_from_backup(&backup)?;
+    Ok(metadata)
+}
+
+/// Get database file size in bytes
+pub fn get_database_size() -> Result<u64, String> {
+    let db_path = get_proxy_db_path()?;
+    let metadata = std::fs::metadata(&db_path)
+        .map_err(|e| format!("Failed to get database metadata: {}", e))?;
+    Ok(metadata.len())
+}
+
+/// Vacuum database to reclaim space
+pub fn vacuum_database() -> Result<(), String> {
+    let db_path = get_proxy_db_path()?;
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    conn.execute("VACUUM", []).map_err(|e| e.to_string())?;
+    tracing::info!("Database vacuumed successfully");
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
