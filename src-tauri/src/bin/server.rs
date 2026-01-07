@@ -82,7 +82,7 @@ use clap::{Parser, Subcommand};
 // Re-use the existing proxy module from the library
 use antigravity_tools_lib::models::{Account, TokenData};
 use antigravity_tools_lib::proxy::{
-    config::ProxyConfig, monitor::ProxyMonitor, prometheus, server::AxumServer,
+    config::{ProxyAuthMode, ProxyConfig}, monitor::ProxyMonitor, prometheus, server::AxumServer,
     telemetry, ProxySecurityConfig, TokenManager,
     init_server_logger, start_log_cleanup_task, LogGuards,
 };
@@ -1566,6 +1566,11 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(api_key) = &server_config.api_key {
         proxy_config.api_key.clone_from(api_key);
+        // If API key is set via env but auth_mode is still Off, enable auth
+        if matches!(proxy_config.auth_mode, ProxyAuthMode::Off) {
+            proxy_config.auth_mode = ProxyAuthMode::AllExceptHealth;
+            info!("API key set via env, enabling auth_mode=AllExceptHealth");
+        }
     }
 
     // Initialize token manager and load accounts
