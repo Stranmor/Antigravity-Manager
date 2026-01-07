@@ -3,7 +3,12 @@
 // This module handles OpenAI API requests, transforming them to Gemini API format
 // and managing account selection, rate limiting, and error handling.
 
-use axum::{extract::Json, extract::State, response::{IntoResponse, Response}, Extension};
+use axum::{
+    extract::Json, extract::State,
+    http::HeaderMap,
+    response::{IntoResponse, Response},
+    Extension
+};
 use base64::Engine as _;
 use serde_json::{json, Value};
 use tracing::{debug, error, info, info_span};
@@ -214,6 +219,7 @@ fn handle_openai_rate_limit(
 pub async fn handle_chat_completions(
     State(state): State<AppState>,
     Extension(request_id): Extension<RequestId>,
+    headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Response {
     let mut openai_req: OpenAIRequest = match serde_json::from_value(body) {
@@ -291,6 +297,13 @@ pub async fn handle_chat_completions(
 
         // Resolve model route and config
         let (mapped_model, config) = resolve_openai_model(&state, &openai_req).await;
+
+        // [SCHEDULING] Classify request priority (observability only when scheduler enabled)
+        if state.scheduler.is_enabled() {
+            let x_priority = headers.get("x-priority").and_then(|h| h.to_str().ok());
+            let priority = state.scheduler.classify_priority(x_priority, None, Some(&mapped_model));
+            debug!("[{}] Request classified as priority: {}", trace_id, priority);
+        }
 
         // Extract session ID for sticky scheduling
         let session_id = SessionManager::extract_openai_session_id(&openai_req);
@@ -505,6 +518,7 @@ pub async fn handle_chat_completions(
 pub async fn handle_completions(
     State(state): State<AppState>,
     Extension(request_id): Extension<RequestId>,
+    headers: HeaderMap,
     Json(mut body): Json<Value>,
 ) -> Response {
     info!("Received /v1/completions or /v1/responses payload: {:?}", body);
@@ -572,6 +586,13 @@ pub async fn handle_completions(
         }
 
         let (mapped_model, config) = resolve_openai_model(&state, &openai_req).await;
+
+        // [SCHEDULING] Classify request priority
+        if state.scheduler.is_enabled() {
+            let x_priority = headers.get("x-priority").and_then(|h| h.to_str().ok());
+            let priority = state.scheduler.classify_priority(x_priority, None, Some(&mapped_model));
+            debug!("[{}] Request classified as priority: {}", trace_id, priority);
+        }
 
         let account_selection_span = info_span!(
             "account_selection",

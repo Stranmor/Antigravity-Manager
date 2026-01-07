@@ -536,6 +536,13 @@ pub async fn handle_messages(
         // Resolve model route and config
         let (mut mapped_model, config) = resolve_model_config(&state, &request_for_body).await;
 
+        // [SCHEDULING] Classify request priority (observability only when scheduler enabled)
+        if state.scheduler.is_enabled() {
+            let x_priority = headers.get("x-priority").and_then(|h| h.to_str().ok());
+            let priority = state.scheduler.classify_priority(x_priority, None, Some(&mapped_model));
+            debug!("[{}] Request classified as priority: {}", trace_id, priority);
+        }
+
         // Extract session ID for sticky scheduling
         let session_id_str = crate::proxy::session_manager::SessionManager::extract_session_id(&request_for_body);
         let session_id = Some(session_id_str.as_str());

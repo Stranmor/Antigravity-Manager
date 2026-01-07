@@ -79,6 +79,271 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Research WebAssembly for portable Slint UI `[MODE: R]` ✓ Research complete (2026-01-07) - Not recommended for this app
 - [x] Research gRPC support for high-throughput clients `[MODE: R]` ✓ Research complete (2026-01-07)
 
+---
+
+## ADAPTIVE RATE LIMIT SYSTEM ARCHITECTURE (2026-01-07)
+**Status:** ✓ IMPLEMENTED (03b288a2)
+**Priority:** HIGH - Eliminates 429 latency completely
+
+### Problem Statement
+Current rate limit handling is REACTIVE:
+1. Send request → Get 429 → Mark account limited → Retry on another
+2. This causes 200-500ms latency per 429 hit
+3. User wants ZERO latency from rate limiting
+
+**Goal:** Predict and avoid 429 BEFORE it happens. Zero additional latency.
+
+### Solution Overview
+Combine three techniques from distributed systems:
+1. **AIMD Controller** (from TCP Congestion Control) - Adaptive limit discovery
+2. **Speculative Hedging** (from Google Spanner) - Parallel probing for calibration
+3. **Cheap Probing** - Low-cost limit verification
+
+### Core Components
+
+#### 1. AdaptiveLimitTracker (per account)
+```rust
+struct AdaptiveLimitTracker {
+    // Limits
+    confirmed_limit: AtomicU64,     // Last confirmed via 429
+    working_threshold: AtomicU64,   // 85% of confirmed (safety margin)
+    ceiling: AtomicU64,             // Historical maximum observed
+    
+    // Counters
+    requests_this_minute: AtomicU64,
+    minute_started_at: RwLock<Instant>,
+    
+    // Calibration
+    last_calibration: RwLock<Instant>,
+    
+    // AIMD parameters
+    additive_increase: f64,      // +5% on success
+    multiplicative_decrease: f64, // ×0.7 on 429
+}
+```
+
+#### 2. AIMD Controller
+```rust
+impl AIMDController {
+    /// Success above threshold → limit is higher than expected
+    fn reward(&self, current: u64) -> u64 {
+        // Additive increase: +5%
+        (current as f64 * 1.05) as u64
+    }
+    
+    /// 429 received → limit confirmed, reduce aggressively
+    fn penalize(&self, current: u64) -> u64 {
+        // Multiplicative decrease: ×0.7
+        (current as f64 * 0.7) as u64
+    }
+}
+```
+
+#### 3. Probe Strategy Selector
+```rust
+fn probe_strategy(usage_ratio: f64) -> ProbeStrategy {
+    match usage_ratio {
+        r if r < 0.70 => ProbeStrategy::None,           // Safe zone
+        r if r < 0.85 => ProbeStrategy::CheapProbe,     // Background probe
+        r if r < 0.95 => ProbeStrategy::DelayedHedge,   // Hedge after P95
+        _ => ProbeStrategy::ImmediateHedge,             // Critical zone
+    }
+}
+```
+
+#### 4. Cheap Probe Request
+```rust
+/// Minimal request to test rate limit (1 token cost)
+fn make_cheap_probe(original: &Request) -> Request {
+    Request {
+        model: original.model.clone(),
+        messages: vec![Message {
+            role: "user".into(),
+            content: ".".into(),
+        }],
+        max_tokens: Some(1),
+        stream: false,
+        ..Default::default()
+    }
+}
+```
+
+#### 5. Speculative Hedger
+```rust
+struct SpeculativeHedger {
+    p95_latency: Duration,  // ~2-3 seconds for LLM
+    jitter_percent: f64,    // ±20%
+}
+
+impl SpeculativeHedger {
+    /// Launch secondary request after P95 delay
+    /// If primary succeeds before delay → cancel secondary
+    /// If primary slow/429 → secondary already running
+    async fn hedge_with_delay(&self, secondary_fn: F) -> JoinHandle<...>
+}
+```
+
+### Algorithm Flow
+
+```
+Request arrives
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│ 1. Get usage_ratio for selected account │
+│    usage = requests_this_minute          │
+│    ratio = usage / working_threshold     │
+└─────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│ 2. Select probe strategy                │
+│    < 70%  → None (safe)                 │
+│    70-85% → CheapProbe (background)     │
+│    85-95% → DelayedHedge (P95 wait)     │
+│    > 95%  → ImmediateHedge              │
+└─────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│ 3. Execute based on strategy            │
+│                                         │
+│ None:                                   │
+│   → Single request                      │
+│                                         │
+│ CheapProbe:                             │
+│   → Single request                      │
+│   → Fire-and-forget cheap probe         │
+│   → If probe succeeds → AIMD reward     │
+│                                         │
+│ DelayedHedge:                           │
+│   → Primary request immediately         │
+│   → After P95 delay → secondary request │
+│   → First to complete wins              │
+│   → Fire-and-forget calibration         │
+│                                         │
+│ ImmediateHedge:                         │
+│   → Both requests immediately           │
+│   → First to complete wins              │
+└─────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│ 4. Handle result                        │
+│                                         │
+│ Success:                                │
+│   → Increment requests_this_minute      │
+│   → If was probing: AIMD reward         │
+│                                         │
+│ 429:                                    │
+│   → AIMD penalize                       │
+│   → Update confirmed_limit = current    │
+│   → Recalculate working_threshold       │
+│   → If hedging: return other response   │
+└─────────────────────────────────────────┘
+```
+
+### Persistence
+
+```rust
+#[derive(Serialize, Deserialize)]
+struct PersistedLimit {
+    confirmed_limit: u64,
+    ceiling: u64,
+    last_calibration: i64,  // Unix timestamp
+}
+
+// On load: apply decay based on age
+fn load(stored: PersistedLimit) -> AdaptiveLimitTracker {
+    let age_hours = (now() - stored.last_calibration) / 3600;
+    
+    let confidence = match age_hours {
+        0..=1   => 1.0,   // Fresh
+        2..=6   => 0.9,   // Few hours
+        7..=24  => 0.7,   // Day old
+        _       => 0.5,   // Stale
+    };
+    
+    let effective = (stored.confirmed_limit as f64 * confidence) as u64;
+    // ... build tracker with decayed values
+}
+```
+
+### Edge Cases
+
+| Case | Handling |
+|------|----------|
+| First request (no calibration) | Use conservative default (15 RPM) |
+| All accounts at limit | Return error immediately (fail-fast) |
+| Limit increased overnight | Probe detects → AIMD expands |
+| Limit decreased | 429 → AIMD contracts immediately |
+| Stale persisted data | Decay by age, recalibrate quickly |
+| Hedging both 429 | Both penalized, return error |
+
+### Key Metrics
+
+```rust
+// Prometheus metrics to add
+antigravity_adaptive_probes_total{strategy}     // Count by strategy
+antigravity_aimd_rewards_total                   // Limit expansions
+antigravity_aimd_penalties_total                 // Limit contractions  
+antigravity_hedge_wins_total{winner}            // primary vs secondary
+antigravity_predicted_limit_gauge{account}      // Current working_threshold
+```
+
+### Configuration
+
+```rust
+pub struct AdaptiveRateLimitConfig {
+    pub enabled: bool,                    // Feature flag
+    pub safety_margin: f64,               // 0.85 = 15% buffer
+    pub aimd_increase: f64,               // 0.05 = +5%
+    pub aimd_decrease: f64,               // 0.7 = -30%
+    pub probe_threshold_low: f64,         // 0.70
+    pub probe_threshold_high: f64,        // 0.85
+    pub hedge_threshold: f64,             // 0.95
+    pub p95_latency_ms: u64,              // 2500ms for LLM
+    pub persistence_decay_hours: u64,     // 6 hours
+    pub min_limit: u64,                   // 10 RPM floor
+    pub max_limit: u64,                   // 1000 RPM ceiling
+}
+```
+
+### Files to Create/Modify
+
+| File | Action |
+|------|--------|
+| `src/proxy/adaptive_limit.rs` | NEW: Core AdaptiveLimitTracker |
+| `src/proxy/aimd.rs` | NEW: AIMD Controller |
+| `src/proxy/smart_prober.rs` | NEW: Probe strategy + hedging |
+| `src/proxy/config.rs` | ADD: AdaptiveRateLimitConfig |
+| `src/proxy/token_manager.rs` | MODIFY: Integrate adaptive limits |
+| `src/proxy/handlers/*.rs` | MODIFY: Use SmartProber |
+| `src/proxy/db.rs` | ADD: Persist/load limits |
+| `src/proxy/prometheus.rs` | ADD: New metrics |
+
+### Implementation Order
+
+1. `AdaptiveLimitTracker` + `AIMDController` (core logic)
+2. Persistence (load/save to DB)
+3. `SmartProber` with strategy selection
+4. Cheap probe implementation
+5. Delayed hedging
+6. Integration with handlers
+7. Prometheus metrics
+8. Configuration hot-reload
+9. Tests
+
+### Success Criteria
+
+- [ ] Zero 429-induced latency after calibration
+- [ ] <10% quota overhead from probing
+- [ ] Limits adapt within 1 minute of change
+- [ ] Persisted limits survive restart with decay
+- [ ] All metrics exposed to Prometheus
+
+---
+
 ## PRIORITY QUEUE RESEARCH (2026-01-07)
 
 ### Recommended Approach

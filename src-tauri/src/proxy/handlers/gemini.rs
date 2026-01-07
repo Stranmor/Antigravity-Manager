@@ -1,5 +1,5 @@
 // Gemini Handler
-use axum::{extract::State, extract::{Json, Path}, response::IntoResponse, Extension};
+use axum::{extract::State, extract::{Json, Path}, response::IntoResponse, Extension, http::HeaderMap};
 use serde_json::{json, Value};
 use tracing::{debug, error, info};
 
@@ -17,6 +17,7 @@ use crate::proxy::common::coalescing::{calculate_gemini_fingerprint, CoalesceRes
 pub async fn handle_generate(
     State(state): State<AppState>,
     Extension(request_id): Extension<RequestId>,
+    headers: HeaderMap,
     Path(model_action): Path<String>,
     Json(body): Json<Value>
 ) -> Result<impl IntoResponse, ProxyError> {
@@ -76,6 +77,14 @@ pub async fn handle_generate(
             &*state.anthropic_mapping.read().await,
             false,  // Gemini 请求不应用 Claude 家族映射
         );
+
+        // [SCHEDULING] Classify request priority (observability only when scheduler enabled)
+        if state.scheduler.is_enabled() {
+            let x_priority = headers.get("x-priority").and_then(|h| h.to_str().ok());
+            let priority = state.scheduler.classify_priority(x_priority, None, Some(&mapped_model));
+            debug!("[{}] Request classified as priority: {}", request_id.as_str(), priority);
+        }
+
         // 提取 tools 列表以进行联网探测 (Gemini 风格可能是嵌套的)
         let tools_val: Option<Vec<Value>> = body.get("tools").and_then(|t| t.as_array()).map(|arr| {
             let mut flattened = Vec::new();
