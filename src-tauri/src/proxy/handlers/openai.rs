@@ -233,7 +233,7 @@ pub async fn handle_chat_completions(
                 match r.recv().await {
                     Ok(shared_response) => {
                         info!("[{}] Received coalesced result from primary OpenAI request", request_id.as_str());
-                        return Json(shared_response).into_response();
+                        return Json((*shared_response).clone()).into_response();
                     }
                     Err(e) => {
                         tracing::warn!("[{}] Coalesced OpenAI request failed ({e}), falling back to individual execution", request_id.as_str());
@@ -531,7 +531,7 @@ pub async fn handle_completions(
                 match r.recv().await {
                     Ok(shared_response) => {
                         info!("[{}] Received coalesced result from primary legacy completion request", request_id.as_str());
-                        return Json(shared_response).into_response();
+                        return Json((*shared_response).clone()).into_response();
                     }
                     Err(e) => {
                         tracing::warn!("[{}] Coalesced legacy completion request failed ({e}), falling back to individual execution", request_id.as_str());

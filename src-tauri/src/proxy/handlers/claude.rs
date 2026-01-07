@@ -465,7 +465,7 @@ pub async fn handle_messages(
                 match r.recv().await {
                     Ok(shared_response) => {
                         info!("[{trace_id}] Received coalesced result from primary Claude request");
-                        return Json(shared_response).into_response();
+                        return Json((*shared_response).clone()).into_response();
                     }
                     Err(e) => {
                         tracing::warn!("[{trace_id}] Coalesced Claude request failed ({e}), falling back to individual execution");

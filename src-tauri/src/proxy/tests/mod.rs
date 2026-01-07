@@ -9,6 +9,8 @@
 //! - Proxy handler request/response transformations
 //! - SSE streaming response handling
 //! - Error handling for rate limits, server errors, and auth errors
+//! - Mock HTTP server integration tests (wiremock)
 
 mod handler_tests;
 mod integration_tests;
+mod mock_http_tests;

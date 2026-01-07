@@ -46,7 +46,7 @@ pub async fn handle_generate(
                 match r.recv().await {
                     Ok(shared_response) => {
                         info!("[{}] Received coalesced result from primary Gemini request", request_id.as_str());
-                        return Ok(Json(shared_response).into_response());
+                        return Ok(Json((*shared_response).clone()).into_response());
                     }
                     Err(e) => {
                         tracing::warn!("[{}] Coalesced Gemini request failed ({e}), falling back to individual execution", request_id.as_str());
