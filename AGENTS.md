@@ -97,6 +97,7 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Wire SmartProber to all handlers (claude, openai, gemini) `[MODE: B]` ✓ helpers.rs record_success/record_429
 - [x] Add persistence for learned limits to DB `[MODE: B]` ✓ AdaptiveLimitTracker.to_persisted/from_persisted
 - [x] **Wire proactive 429 prevention into handlers** `[MODE: B]` ✓ b6c451ce (should_skip_account_adaptive check, load/save on startup/shutdown)
+- [x] **Integrate cheap probe execution in all handlers** `[MODE: B]` ✓ 320237a1 (maybe_fire_cheap_probe + record_success_with_probe)
 
 ### Priority 3: OBSERVABILITY
 - [x] Add Prometheus metrics for adaptive probing `[MODE: B]` ✓ antigravity_adaptive_probes_total
