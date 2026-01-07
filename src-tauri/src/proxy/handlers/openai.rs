@@ -109,12 +109,18 @@ async fn handle_openai_non_streaming(
     account_id: &str,
     mapped_model: &str,
     openai_req: &OpenAIRequest,
+    coalesce_sender: Option<crate::proxy::common::coalescing::CoalesceSender<Value>>,
 ) -> Response {
     let gemini_resp: Value = match response.json().await {
         Ok(v) => v,
-        Err(e) => return ProxyError::parse_error(format!("Parse error: {e}"))
-            .with_request_id(request_id.clone())
-            .into_response(),
+        Err(e) => {
+            if let Some(sender) = coalesce_sender {
+                sender.fail();
+            }
+            return ProxyError::parse_error(format!("Parse error: {e}"))
+                .with_request_id(request_id.clone())
+                .into_response();
+        }
     };
 
     let response_transform_span = info_span!(
@@ -134,6 +140,15 @@ async fn handle_openai_non_streaming(
         info!(latency_ms = %latency_ms, "Response transformation completed");
         resp
     };
+
+    // [COALESCING] Broadcast successful response
+    if let Some(sender) = coalesce_sender {
+        if let Ok(response_value) = serde_json::to_value(&openai_response) {
+            sender.send(response_value);
+        } else {
+            sender.fail();
+        }
+    }
 
     // Sampled logging
     if state.sampler.should_sample() {
@@ -206,6 +221,29 @@ pub async fn handle_chat_completions(
         Err(e) => return ProxyError::invalid_request(format!("Invalid request: {e}"))
             .with_request_id(request_id)
             .into_response(),
+    };
+
+    // [COALESCING] Try to deduplicate identical concurrent requests
+    let coalesce_sender = if !openai_req.stream && state.coalescer.is_enabled() {
+        let fingerprint = crate::proxy::common::coalescing::calculate_openai_fingerprint(&openai_req);
+        match state.coalescer.get_or_create(fingerprint) {
+            crate::proxy::common::coalescing::CoalesceResult::Primary(s) => Some(s),
+            crate::proxy::common::coalescing::CoalesceResult::Coalesced(r) => {
+                debug!("[{}] Identical OpenAI request in-flight, waiting for coalesced result...", request_id.as_str());
+                match r.recv().await {
+                    Ok(shared_response) => {
+                        info!("[{}] Received coalesced result from primary OpenAI request", request_id.as_str());
+                        return Json(shared_response).into_response();
+                    }
+                    Err(e) => {
+                        tracing::warn!("[{}] Coalesced OpenAI request failed ({e}), falling back to individual execution", request_id.as_str());
+                        None
+                    }
+                }
+            }
+        }
+    } else {
+        None
     };
 
     // Safety: Ensure messages is not empty
@@ -346,6 +384,9 @@ pub async fn handle_chat_completions(
             record_success(&state, &account_id);
 
             if is_stream {
+                if let Some(sender) = coalesce_sender {
+                    sender.fail();
+                }
                 return handle_openai_streaming(response, openai_req.model.clone(), &mapped_model);
             }
 
@@ -357,6 +398,7 @@ pub async fn handle_chat_completions(
                 &account_id,
                 &mapped_model,
                 &openai_req,
+                coalesce_sender,
             ).await;
         }
 
@@ -438,9 +480,16 @@ pub async fn handle_chat_completions(
             "[{}] OpenAI Upstream non-retryable error {} on account {}: {}",
             trace_id, status_code, email, error_text
         );
+        if let Some(sender) = coalesce_sender {
+            sender.fail();
+        }
         return ProxyError::upstream_error(status_code, error_text)
             .with_request_id(request_id)
             .into_response();
+    }
+
+    if let Some(sender) = coalesce_sender {
+        sender.fail();
     }
 
     ProxyError::Overloaded(
@@ -470,6 +519,29 @@ pub async fn handle_completions(
         Err(e) => return ProxyError::invalid_request(format!("Invalid request: {e}"))
             .with_request_id(request_id)
             .into_response(),
+    };
+
+    // [COALESCING] Try to deduplicate identical concurrent requests
+    let coalesce_sender = if !openai_req.stream && state.coalescer.is_enabled() {
+        let fingerprint = crate::proxy::common::coalescing::calculate_openai_fingerprint(&openai_req);
+        match state.coalescer.get_or_create(fingerprint) {
+            crate::proxy::common::coalescing::CoalesceResult::Primary(s) => Some(s),
+            crate::proxy::common::coalescing::CoalesceResult::Coalesced(r) => {
+                debug!("[{}] Identical legacy completion request in-flight, waiting for coalesced result...", request_id.as_str());
+                match r.recv().await {
+                    Ok(shared_response) => {
+                        info!("[{}] Received coalesced result from primary legacy completion request", request_id.as_str());
+                        return Json(shared_response).into_response();
+                    }
+                    Err(e) => {
+                        tracing::warn!("[{}] Coalesced legacy completion request failed ({e}), falling back to individual execution", request_id.as_str());
+                        None
+                    }
+                }
+            }
+        }
+    } else {
+        None
     };
 
     // Safety: Inject empty message if needed
@@ -517,6 +589,9 @@ pub async fn handle_completions(
                 },
                 Err(e) => {
                     error!(error = %e, "Account selection failed");
+                    if let Some(sender) = coalesce_sender {
+                        sender.fail();
+                    }
                     return ProxyError::token_error(format!("Token error: {e}"))
                         .with_request_id(request_id)
                         .into_response();
@@ -569,6 +644,9 @@ pub async fn handle_completions(
 
         if status.is_success() {
             if is_stream {
+                if let Some(sender) = coalesce_sender {
+                    sender.fail();
+                }
                 return handle_legacy_streaming(response, openai_req.model.clone(), &mapped_model, is_codex_style);
             }
 
@@ -579,6 +657,7 @@ pub async fn handle_completions(
                 trace_id,
                 &account_id,
                 &mapped_model,
+                coalesce_sender,
             ).await;
         }
 
@@ -613,9 +692,16 @@ pub async fn handle_completions(
             continue;
         }
 
+        if let Some(sender) = coalesce_sender {
+            sender.fail();
+        }
         return ProxyError::upstream_error(status_code, error_text)
             .with_request_id(request_id)
             .into_response();
+    }
+
+    if let Some(sender) = coalesce_sender {
+        sender.fail();
     }
 
     ProxyError::Overloaded(
@@ -658,12 +744,18 @@ async fn handle_legacy_non_streaming(
     trace_id: &str,
     account_id: &str,
     mapped_model: &str,
+    coalesce_sender: Option<crate::proxy::common::coalescing::CoalesceSender<Value>>,
 ) -> Response {
     let gemini_resp: Value = match response.json().await {
         Ok(v) => v,
-        Err(e) => return ProxyError::parse_error(format!("Parse error: {e}"))
-            .with_request_id(request_id.clone())
-            .into_response(),
+        Err(e) => {
+            if let Some(sender) = coalesce_sender {
+                sender.fail();
+            }
+            return ProxyError::parse_error(format!("Parse error: {e}"))
+                .with_request_id(request_id.clone())
+                .into_response();
+        }
     };
 
     let response_transform_span = info_span!(
@@ -703,6 +795,11 @@ async fn handle_legacy_non_streaming(
         "model": chat_resp.model,
         "choices": choices
     });
+
+    // [COALESCING] Broadcast successful response
+    if let Some(sender) = coalesce_sender {
+        sender.send(legacy_resp.clone());
+    }
 
     // Sampled logging
     if state.sampler.should_sample() {

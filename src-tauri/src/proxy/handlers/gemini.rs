@@ -10,6 +10,7 @@ use crate::proxy::handlers::common::WithResolvedModel;
 use crate::proxy::error::ProxyError;
 use crate::proxy::middleware::request_id::RequestId;
 use crate::proxy::common::retry::MAX_RETRY_ATTEMPTS;
+use crate::proxy::common::coalescing::{calculate_gemini_fingerprint, CoalesceResult};
  
 /// 处理 generateContent 和 streamGenerateContent
 /// 路径参数: model_name, method (e.g. "gemini-pro", "generateContent")
@@ -34,6 +35,29 @@ pub async fn handle_generate(
             .with_request_id(request_id));
     }
     let is_stream = method == "streamGenerateContent";
+
+    // [COALESCING] Try to deduplicate identical concurrent non-streaming requests
+    let coalesce_sender = if !is_stream && state.coalescer.is_enabled() {
+        let fingerprint = calculate_gemini_fingerprint(&body);
+        match state.coalescer.get_or_create(fingerprint) {
+            CoalesceResult::Primary(s) => Some(s),
+            CoalesceResult::Coalesced(r) => {
+                debug!("[{}] Identical Gemini request in-flight, waiting for coalesced result...", request_id.as_str());
+                match r.recv().await {
+                    Ok(shared_response) => {
+                        info!("[{}] Received coalesced result from primary Gemini request", request_id.as_str());
+                        return Ok(Json(shared_response).into_response());
+                    }
+                    Err(e) => {
+                        tracing::warn!("[{}] Coalesced Gemini request failed ({e}), falling back to individual execution", request_id.as_str());
+                        None
+                    }
+                }
+            }
+        }
+    } else {
+        None
+    };
 
     // 2. 获取 UpstreamClient 和 TokenManager
     let upstream = state.upstream.clone();
@@ -75,6 +99,9 @@ pub async fn handle_generate(
         let (access_token, project_id, email, account_id) = match token_manager.get_token(&config.request_type, attempt > 0, Some(&session_id)).await {
             Ok(t) => t,
             Err(e) => {
+                if let Some(sender) = coalesce_sender {
+                    sender.fail();
+                }
                 return Err(ProxyError::token_error(format!("Token error: {e}"))
                     .with_request_id(request_id));
             }
@@ -182,15 +209,30 @@ pub async fn handle_generate(
                         ProxyError::response_build_error(format!("SSE response build failed: {e}"))
                             .with_request_id(request_id.clone())
                     })?;
+
+                if let Some(sender) = coalesce_sender {
+                    sender.fail();
+                }
                 return Ok(sse_response.into_response());
             }
 
-            let gemini_resp: Value = response
-                .json()
-                .await
-                .map_err(|e| ProxyError::parse_error(format!("Parse error: {e}")).with_request_id(request_id.clone()))?;
+            let gemini_resp: Value = match response.json().await {
+                Ok(v) => v,
+                Err(e) => {
+                    if let Some(sender) = coalesce_sender {
+                        sender.fail();
+                    }
+                    return Err(ProxyError::parse_error(format!("Parse error: {e}")).with_request_id(request_id.clone()));
+                }
+            };
 
             let unwrapped = unwrap_response(&gemini_resp);
+
+            // [COALESCING] Broadcast successful response
+            if let Some(sender) = coalesce_sender {
+                sender.send(unwrapped.clone());
+            }
+
             return Ok(Json(unwrapped).with_resolved_model(&mapped_model));
         }
 
@@ -233,6 +275,9 @@ pub async fn handle_generate(
             // 只有明确包含 "QUOTA_EXHAUSTED" 才停止，避免误判上游的频率限制提示 (如 "check quota")
             if status_code == 429 && error_text.contains("QUOTA_EXHAUSTED") {
                 error!("Gemini Quota exhausted (429) on account {} attempt {}/{}, stopping to protect pool.", email, attempt + 1, max_attempts);
+                if let Some(sender) = coalesce_sender {
+                    sender.fail();
+                }
                 return Err(ProxyError::RateLimited(error_text, Some(request_id)));
             }
 
@@ -242,7 +287,14 @@ pub async fn handle_generate(
  
         // 404 等由于模型配置或路径错误的 HTTP 异常，直接报错，不进行无效轮换
         error!("Gemini Upstream non-retryable error {}: {}", status_code, error_text);
+        if let Some(sender) = coalesce_sender {
+            sender.fail();
+        }
         return Err(ProxyError::upstream_error(status_code, error_text).with_request_id(request_id));
+    }
+
+    if let Some(sender) = coalesce_sender {
+        sender.fail();
     }
 
     Err(ProxyError::Overloaded(

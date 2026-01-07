@@ -31,6 +31,7 @@ use crate::proxy::common::retry::{
     determine_retry_strategy, execute_retry_strategy, should_rotate_account,
     MAX_RETRY_ATTEMPTS,
 };
+use crate::proxy::common::coalescing::CoalesceSender;
 use crate::proxy::common::sse::build_sse_response;
 use crate::proxy::common::background_task::{self, BackgroundTaskType};
 use axum::http::HeaderMap;
@@ -454,19 +455,45 @@ pub async fn handle_messages(
     // Filter and fix Thinking block signatures
     filter_invalid_thinking_blocks(&mut request.messages);
 
+    // [COALESCING] Try to deduplicate identical concurrent requests
+    let coalesce_sender = if !request.stream && state.coalescer.is_enabled() {
+        let fingerprint = crate::proxy::common::coalescing::calculate_claude_fingerprint(&request);
+        match state.coalescer.get_or_create(fingerprint) {
+            crate::proxy::common::coalescing::CoalesceResult::Primary(s) => Some(s),
+            crate::proxy::common::coalescing::CoalesceResult::Coalesced(r) => {
+                debug!("[{trace_id}] Identical Claude request in-flight, waiting for coalesced result...");
+                match r.recv().await {
+                    Ok(shared_response) => {
+                        info!("[{trace_id}] Received coalesced result from primary Claude request");
+                        return Json(shared_response).into_response();
+                    }
+                    Err(e) => {
+                        tracing::warn!("[{trace_id}] Coalesced Claude request failed ({e}), falling back to individual execution");
+                        None
+                    }
+                }
+            }
+        }
+    } else {
+        None
+    };
+
     // Check z.ai dispatch
     if should_use_zai(&state).await {
         let new_body = match serde_json::to_value(&request) {
             Ok(v) => v,
             Err(e) => {
                 tracing::error!("Failed to serialize fixed request for z.ai: {e}");
+                if let Some(sender) = coalesce_sender {
+                    sender.fail();
+                }
                 return ProxyError::internal_error(format!("Failed to serialize request: {e}"))
                     .with_request_id(request_id)
                     .into_response();
             }
         };
 
-        return crate::proxy::providers::zai_anthropic::forward_anthropic_json(
+        let res = crate::proxy::providers::zai_anthropic::forward_anthropic_json(
             &state,
             axum::http::Method::POST,
             "/v1/messages",
@@ -474,6 +501,14 @@ pub async fn handle_messages(
             new_body,
         )
         .await;
+
+        // [COALESCING] For z.ai, we don't easily get the response back here to broadcast
+        // so we fail the coalescing and let other requests go through normally
+        if let Some(sender) = coalesce_sender {
+            sender.fail();
+        }
+
+        return res;
     }
 
     // Extract meaningful message and log request
@@ -484,29 +519,6 @@ pub async fn handle_messages(
     let upstream = state.upstream.clone();
     let mut request_for_body = request.clone();
     let token_manager = state.token_manager.clone();
-
-    // [COALESCING] Try to deduplicate identical concurrent requests
-    let _coalesce_sender = if !request.stream && state.coalescer.is_enabled() {
-        let fingerprint = crate::proxy::common::coalescing::calculate_claude_fingerprint(&request_for_body);
-        match state.coalescer.get_or_create(fingerprint) {
-            crate::proxy::common::coalescing::CoalesceResult::Primary(s) => Some(s),
-            crate::proxy::common::coalescing::CoalesceResult::Coalesced(r) => {
-                debug!("[{trace_id}] Identical request in-flight, waiting for coalesced result...");
-                match r.recv().await {
-                    Ok(shared_response) => {
-                        info!("[{trace_id}] Received coalesced result from primary request");
-                        return Json(shared_response).into_response();
-                    }
-                    Err(e) => {
-                        tracing::warn!("[{trace_id}] Coalesced request failed ({e}), falling back to individual execution");
-                        None
-                    }
-                }
-            }
-        }
-    } else {
-        None
-    };
 
     let pool_size = token_manager.len();
     let max_attempts = MAX_RETRY_ATTEMPTS.min(pool_size).max(1);
@@ -553,6 +565,9 @@ pub async fn handle_messages(
                         e
                     };
                     error!(error = %safe_message, "Account selection failed");
+                    if let Some(sender) = coalesce_sender {
+                        sender.fail();
+                    }
                     return ProxyError::token_error(format!("No available accounts: {safe_message}"))
                         .with_request_id(request_id.clone())
                         .into_response();
@@ -596,6 +611,9 @@ pub async fn handle_messages(
                 b
             },
             Err(e) => {
+                if let Some(sender) = coalesce_sender {
+                    sender.fail();
+                }
                 return ProxyError::TransformError(format!("Transform error: {e}"), Some(request_id.clone()))
                     .into_response();
             }
@@ -662,6 +680,7 @@ pub async fn handle_messages(
                 &resolved_model_for_log,
                 &request_for_body,
                 &request_with_mapped,
+                coalesce_sender,
             ).await;
         }
 
@@ -722,9 +741,16 @@ pub async fn handle_messages(
 
         // Non-retryable error
         error!("[{}] Non-retryable error {}: {}", trace_id, status_code, error_text);
+        if let Some(sender) = coalesce_sender {
+            sender.fail();
+        }
         return ProxyError::upstream_error(status_code, error_text)
             .with_request_id(request_id)
             .into_response();
+    }
+
+    if let Some(sender) = coalesce_sender {
+        sender.fail();
     }
 
     ProxyError::Overloaded(
@@ -767,10 +793,16 @@ async fn handle_non_streaming_response(
     resolved_model: &str,
     original_request: &ClaudeRequest,
     mapped_request: &ClaudeRequest,
+    coalesce_sender: Option<CoalesceSender<Value>>,
 ) -> Response {
     let bytes = match response.bytes().await {
         Ok(b) => b,
-        Err(e) => return ProxyError::NetworkError(format!("Failed to read body: {e}"), Some(request_id.clone())).into_response(),
+        Err(e) => {
+            if let Some(sender) = coalesce_sender {
+                sender.fail();
+            }
+            return ProxyError::NetworkError(format!("Failed to read body: {e}"), Some(request_id.clone())).into_response();
+        }
     };
 
     if let Ok(text) = String::from_utf8(bytes.to_vec()) {
@@ -779,14 +811,24 @@ async fn handle_non_streaming_response(
 
     let gemini_resp: Value = match serde_json::from_slice(&bytes) {
         Ok(v) => v,
-        Err(e) => return ProxyError::parse_error(format!("Parse error: {e}")).with_request_id(request_id.clone()).into_response(),
+        Err(e) => {
+            if let Some(sender) = coalesce_sender {
+                sender.fail();
+            }
+            return ProxyError::parse_error(format!("Parse error: {e}")).with_request_id(request_id.clone()).into_response();
+        }
     };
 
     let raw = gemini_resp.get("response").unwrap_or(&gemini_resp);
 
     let gemini_response: crate::proxy::mappers::claude::models::GeminiResponse = match serde_json::from_value(raw.clone()) {
         Ok(r) => r,
-        Err(e) => return ProxyError::parse_error(format!("Convert error: {e}")).with_request_id(request_id.clone()).into_response(),
+        Err(e) => {
+            if let Some(sender) = coalesce_sender {
+                sender.fail();
+            }
+            return ProxyError::parse_error(format!("Convert error: {e}")).with_request_id(request_id.clone()).into_response();
+        }
     };
 
     let response_transform_span = info_span!(
@@ -815,6 +857,9 @@ async fn handle_non_streaming_response(
             },
             Err(e) => {
                 error!(error = %e, "Response transformation failed");
+                if let Some(sender) = coalesce_sender {
+                    sender.fail();
+                }
                 return ProxyError::TransformError(format!("Transform error: {e}"), Some(request_id.clone())).into_response();
             }
         }
@@ -834,6 +879,15 @@ async fn handle_non_streaming_response(
         claude_response.usage.output_tokens,
         cache_info
     );
+
+    // [COALESCING] Broadcast successful response to other waiting requests
+    if let Some(sender) = coalesce_sender {
+        if let Ok(response_value) = serde_json::to_value(&claude_response) {
+            sender.send(response_value);
+        } else {
+            sender.fail();
+        }
+    }
 
     // Sampled logging
     if state.sampler.should_sample() {

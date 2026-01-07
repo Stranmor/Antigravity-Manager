@@ -102,6 +102,9 @@ smallvec = { version = "1.13", features = ["union", "const_generics"] }
 # Low-overhead random sampling (for semantic request logging)
 fastrand = "2.3"
 
+# Fast non-cryptographic hashing for request coalescing
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+
 # OpenTelemetry distributed tracing (optional, behind 'otel' feature)
 opentelemetry = { version = "0.27", optional = true }
 opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"], optional = true }

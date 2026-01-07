@@ -477,6 +477,45 @@ pub fn calculate_claude_fingerprint(request: &crate::proxy::mappers::claude::Cla
     )
 }
 
+/// Calculate fingerprint specifically for OpenAI requests
+pub fn calculate_openai_fingerprint(request: &crate::proxy::mappers::openai::OpenAIRequest) -> u64 {
+    calculate_fingerprint(
+        &request.model,
+        &request.messages,
+        None::<&String>, // OpenAI doesn't have a top-level system prompt field in the same way, it's in messages
+        request.tools.as_ref(),
+        request.temperature,
+        request.top_p,
+        request.max_tokens,
+    )
+}
+
+/// Calculate fingerprint specifically for Gemini requests
+pub fn calculate_gemini_fingerprint(body: &serde_json::Value) -> u64 {
+    let model = body.get("model").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let contents = body.get("contents");
+    let generation_config = body.get("generationConfig");
+
+    let mut hasher = Xxh3::new();
+    hasher.update(model.as_bytes());
+    hasher.update(b"\x00");
+
+    if let Some(c) = contents {
+        if let Ok(json) = serde_json::to_string(c) {
+            hasher.update(json.as_bytes());
+        }
+    }
+    hasher.update(b"\x00");
+
+    if let Some(gc) = generation_config {
+        if let Ok(json) = serde_json::to_string(gc) {
+            hasher.update(json.as_bytes());
+        }
+    }
+
+    hasher.digest()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
