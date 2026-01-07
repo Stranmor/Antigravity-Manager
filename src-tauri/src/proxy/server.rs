@@ -118,6 +118,8 @@ pub struct AppState {
     pub circuit_breaker: Arc<crate::proxy::common::circuit_breaker::CircuitBreakerManager>,
     /// Semantic request sampler for debugging (1% of requests by default)
     pub sampler: Arc<crate::proxy::common::sampling::RequestSampler>,
+    /// Request hedger for speculative retry (tail latency optimization)
+    pub hedger: Arc<crate::proxy::common::hedging::RequestHedger>,
 }
 
 /// Axum 服务器实例
@@ -217,6 +219,15 @@ impl AxumServer {
             )
         );
 
+        // Initialize request hedger with default config (disabled by default)
+        let hedger = Arc::new(
+            crate::proxy::common::hedging::RequestHedger::new(
+                crate::proxy::config::HedgingConfig::default()
+            )
+        );
+        // Initialize hedging metrics
+        crate::proxy::common::hedging::init_hedging_metrics();
+
 	        let state = AppState {
 	            token_manager: token_manager.clone(),
 	            anthropic_mapping: mapping_state.clone(),
@@ -237,6 +248,7 @@ impl AxumServer {
             health_monitor,
             circuit_breaker,
             sampler,
+            hedger,
         };
 
 

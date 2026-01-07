@@ -241,6 +241,10 @@ pub struct ProxyConfig {
     /// Semantic request logging with sampling
     #[serde(default)]
     pub sampling: SamplingConfig,
+
+    /// Request hedging configuration (speculative retry)
+    #[serde(default)]
+    pub hedging: HedgingConfig,
 }
 
 /// 上游代理配置
@@ -308,6 +312,48 @@ impl Default for SamplingConfig {
     }
 }
 
+/// Request hedging (speculative retry) configuration
+///
+/// Hedging improves tail latency by firing a backup request if the primary
+/// takes too long. When the winner completes, the loser is cancelled.
+///
+/// IMPORTANT: Only applies to non-streaming requests (streaming uses SSE which
+/// is harder to hedge without duplicating data).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HedgingConfig {
+    /// Enable request hedging (default: false)
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Delay in milliseconds before firing the hedge request (default: 2000ms)
+    /// If the primary request doesn't respond within this time, a backup is sent.
+    #[serde(default = "default_hedge_delay_ms")]
+    pub hedge_delay_ms: u64,
+
+    /// Maximum number of concurrent hedged requests (default: 1)
+    /// Setting to 0 effectively disables hedging.
+    #[serde(default = "default_max_hedged_requests")]
+    pub max_hedged_requests: usize,
+}
+
+fn default_hedge_delay_ms() -> u64 {
+    2000 // 2 seconds
+}
+
+fn default_max_hedged_requests() -> usize {
+    1
+}
+
+impl Default for HedgingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            hedge_delay_ms: default_hedge_delay_ms(),
+            max_hedged_requests: default_max_hedged_requests(),
+        }
+    }
+}
+
 fn default_pool_warming_enabled() -> bool {
     true
 }
@@ -353,6 +399,7 @@ impl Default for ProxyConfig {
             log_rotation: LogRotationConfig::default(),
             pool_warming: PoolWarmingConfig::default(),
             sampling: SamplingConfig::default(),
+            hedging: HedgingConfig::default(),
         }
     }
 }

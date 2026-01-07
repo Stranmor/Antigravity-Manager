@@ -34,6 +34,7 @@ pub use config::ZaiDispatchMode;
 pub use config::LogRotationConfig;
 pub use config::PoolWarmingConfig;
 pub use config::SamplingConfig;
+pub use config::HedgingConfig;
 pub use token_manager::TokenManager;
 pub use server::AxumServer;
 pub use security::ProxySecurityConfig;

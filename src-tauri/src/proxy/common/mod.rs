@@ -7,3 +7,4 @@ pub mod sse;
 pub mod background_task;
 pub mod circuit_breaker;
 pub mod sampling;
+pub mod hedging;
