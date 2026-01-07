@@ -245,6 +245,10 @@ pub struct ProxyConfig {
     /// Request hedging configuration (speculative retry)
     #[serde(default)]
     pub hedging: HedgingConfig,
+
+    /// Request coalescing/deduplication configuration
+    #[serde(default)]
+    pub coalescing: CoalescingConfig,
 }
 
 /// 上游代理配置
@@ -312,6 +316,14 @@ impl Default for SamplingConfig {
     }
 }
 
+fn default_pool_warming_enabled() -> bool {
+    true
+}
+
+fn default_pool_warming_interval() -> u64 {
+    30
+}
+
 /// Request hedging (speculative retry) configuration
 ///
 /// Hedging improves tail latency by firing a backup request if the primary
@@ -354,12 +366,66 @@ impl Default for HedgingConfig {
     }
 }
 
-fn default_pool_warming_enabled() -> bool {
-    true
+/// Request coalescing/deduplication configuration
+///
+/// Coalescing merges identical concurrent requests (same fingerprint) into a single
+/// upstream call. All coalesced clients receive the same response via broadcast.
+///
+/// ## How it works:
+/// 1. Request fingerprint is computed using xxHash3 over: model, messages, system, tools, temperature, top_p, max_tokens
+/// 2. If an in-flight request with the same fingerprint exists, the new request subscribes to it
+/// 3. The upstream response is broadcast to all subscribers
+/// 4. Fingerprints expire after `window_ms` milliseconds
+///
+/// ## Benefits:
+/// - Reduces API costs by deduplicating identical prompts
+/// - Improves latency for duplicate requests (no upstream wait)
+/// - Protects against accidental double-sends
+///
+/// ## Limitations:
+/// - Only works for non-streaming requests (SSE streams are not coalesced)
+/// - All coalesced requests share the same response (same account attribution)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoalescingConfig {
+    /// Enable request coalescing (default: false)
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Time window in milliseconds for coalescing identical requests (default: 500ms)
+    /// Requests with the same fingerprint within this window will share the response
+    #[serde(default = "default_coalescing_window_ms")]
+    pub window_ms: u64,
+
+    /// Maximum number of in-flight requests to coalesce (default: 1000)
+    #[serde(default = "default_coalescing_max_pending")]
+    pub max_pending: usize,
+
+    /// Capacity of the broadcast channel (default: 64)
+    #[serde(default = "default_coalescing_channel_capacity")]
+    pub channel_capacity: usize,
 }
 
-fn default_pool_warming_interval() -> u64 {
-    30
+fn default_coalescing_window_ms() -> u64 {
+    500 // 500ms default coalescing window
+}
+
+fn default_coalescing_max_pending() -> usize {
+    1000 // 1k concurrent entries max
+}
+
+fn default_coalescing_channel_capacity() -> usize {
+    64 // 64 subscribers per request max
+}
+
+impl Default for CoalescingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            window_ms: default_coalescing_window_ms(),
+            max_pending: default_coalescing_max_pending(),
+            channel_capacity: default_coalescing_channel_capacity(),
+        }
+    }
 }
 
 impl Default for PoolWarmingConfig {
@@ -400,6 +466,7 @@ impl Default for ProxyConfig {
             pool_warming: PoolWarmingConfig::default(),
             sampling: SamplingConfig::default(),
             hedging: HedgingConfig::default(),
+            coalescing: CoalescingConfig::default(),
         }
     }
 }

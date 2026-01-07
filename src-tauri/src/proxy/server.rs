@@ -120,6 +120,8 @@ pub struct AppState {
     pub sampler: Arc<crate::proxy::common::sampling::RequestSampler>,
     /// Request hedger for speculative retry (tail latency optimization)
     pub hedger: Arc<crate::proxy::common::hedging::RequestHedger>,
+    /// Request coalescer for deduplicating identical concurrent requests
+    pub coalescer: Arc<crate::proxy::common::coalescing::CoalesceManager<serde_json::Value>>,
 }
 
 /// Axum 服务器实例
@@ -228,6 +230,15 @@ impl AxumServer {
         // Initialize hedging metrics
         crate::proxy::common::hedging::init_hedging_metrics();
 
+        // Initialize request coalescer with default config (disabled by default)
+        let coalescer = Arc::new(
+            crate::proxy::common::coalescing::CoalesceManager::new(
+                crate::proxy::config::CoalescingConfig::default()
+            )
+        );
+        // Initialize coalescing metrics
+        crate::proxy::common::coalescing::init_coalescing_metrics();
+
 	        let state = AppState {
 	            token_manager: token_manager.clone(),
 	            anthropic_mapping: mapping_state.clone(),
@@ -249,6 +260,7 @@ impl AxumServer {
             circuit_breaker,
             sampler,
             hedger,
+            coalescer,
         };
 
 
