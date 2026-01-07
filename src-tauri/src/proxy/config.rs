@@ -702,14 +702,82 @@ fn default_zai_haiku_model() -> String {
 }
 
 impl ProxyConfig {
-    /// 获取实际的监听地址
-    /// - allow_lan_access = false: 返回 "127.0.0.1"（默认，隐私优先）
-    /// - allow_lan_access = true: 返回 "0.0.0.0"（允许局域网访问）
     pub fn get_bind_address(&self) -> &str {
         if self.allow_lan_access {
             "0.0.0.0"
         } else {
             "127.0.0.1"
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), Vec<String>> {
+        let mut errors = Vec::new();
+
+        if self.port == 0 {
+            errors.push("Port cannot be 0 (must be 1-65535)".to_string());
+        }
+
+        if self.request_timeout == 0 {
+            errors.push("request_timeout must be greater than 0".to_string());
+        }
+
+        if self.request_timeout > 600 {
+            errors.push(format!("request_timeout {} is very high (max recommended: 600s)", self.request_timeout));
+        }
+
+        let valid_strategies = ["daily", "hourly", "size"];
+        if !valid_strategies.contains(&self.log_rotation.strategy.as_str()) {
+            errors.push(format!(
+                "Invalid log_rotation.strategy: '{}' (valid: daily, hourly, size)",
+                self.log_rotation.strategy
+            ));
+        }
+
+        if self.log_rotation.max_files == 0 {
+            errors.push("log_rotation.max_files must be greater than 0".to_string());
+        }
+
+        if self.sampling.sample_rate < 0.0 || self.sampling.sample_rate > 1.0 {
+            errors.push(format!(
+                "Invalid sampling.sample_rate: {} (must be 0.0-1.0)",
+                self.sampling.sample_rate
+            ));
+        }
+
+        if self.adaptive_rate_limit.safety_margin <= 0.0 || self.adaptive_rate_limit.safety_margin > 1.0 {
+            errors.push(format!(
+                "Invalid adaptive_rate_limit.safety_margin: {} (must be 0.0-1.0)",
+                self.adaptive_rate_limit.safety_margin
+            ));
+        }
+
+        if self.adaptive_rate_limit.aimd_decrease <= 0.0 || self.adaptive_rate_limit.aimd_decrease >= 1.0 {
+            errors.push(format!(
+                "Invalid adaptive_rate_limit.aimd_decrease: {} (must be 0.0-1.0)",
+                self.adaptive_rate_limit.aimd_decrease
+            ));
+        }
+
+        if self.adaptive_rate_limit.min_limit >= self.adaptive_rate_limit.max_limit {
+            errors.push(format!(
+                "adaptive_rate_limit.min_limit ({}) must be less than max_limit ({})",
+                self.adaptive_rate_limit.min_limit,
+                self.adaptive_rate_limit.max_limit
+            ));
+        }
+
+        if self.hedging.hedge_delay_ms == 0 {
+            errors.push("hedging.hedge_delay_ms must be greater than 0".to_string());
+        }
+
+        if self.coalescing.window_ms == 0 {
+            errors.push("coalescing.window_ms must be greater than 0".to_string());
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
         }
     }
 }

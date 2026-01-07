@@ -491,6 +491,13 @@ async fn load_proxy_config(data_dir: &std::path::Path) -> ProxyConfig {
                             match serde_json::from_value::<ProxyConfig>(proxy.clone()) {
                                 Ok(config) => {
                                     info!("Loaded proxy config from {:?}", config_path);
+                                    
+                                    if let Err(errors) = config.validate() {
+                                        for error in &errors {
+                                            warn!("Config validation warning: {}", error);
+                                        }
+                                    }
+                                    
                                     return config;
                                 }
                                 Err(e) => warn!("Failed to parse proxy config: {}", e),
