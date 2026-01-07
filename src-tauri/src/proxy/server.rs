@@ -142,6 +142,8 @@ pub struct AxumServer {
     zai_state: Arc<RwLock<crate::proxy::ZaiConfig>>,
     /// Connection tracker for graceful shutdown
     connection_tracker: Arc<ConnectionTracker>,
+    /// Adaptive limits manager for persistence on shutdown
+    adaptive_limits: Arc<crate::proxy::adaptive_limit::AdaptiveLimitManager>,
 }
 
 impl AxumServer {
@@ -269,6 +271,30 @@ impl AxumServer {
             )
         );
 
+        // Load persisted adaptive limits from database (with age-based decay)
+        match crate::proxy::db::load_adaptive_limits() {
+            Ok(persisted) => {
+                let now = time::OffsetDateTime::now_utc().unix_timestamp();
+                let mut loaded_count = 0;
+                for limit in persisted {
+                    let age_seconds = (now - limit.last_calibration).max(0) as u64;
+                    adaptive_limits.load_persisted(
+                        &limit.account_id,
+                        limit.confirmed_limit,
+                        limit.ceiling,
+                        age_seconds,
+                    );
+                    loaded_count += 1;
+                }
+                if loaded_count > 0 {
+                    info!("📊 Loaded {} persisted adaptive limits from database", loaded_count);
+                }
+            }
+            Err(e) => {
+                warn!("Failed to load persisted adaptive limits: {} (starting fresh)", e);
+            }
+        }
+
         // Initialize smart prober for speculative hedging
         let prober_config = crate::proxy::smart_prober::SmartProberConfig {
             p95_latency: std::time::Duration::from_millis(adaptive_config.p95_latency_ms),
@@ -303,7 +329,7 @@ impl AxumServer {
             hedger,
             coalescer,
             scheduler,
-            adaptive_limits,
+            adaptive_limits: adaptive_limits.clone(),
             smart_prober,
         };
 
@@ -409,6 +435,7 @@ impl AxumServer {
             security_state,
             zai_state,
             connection_tracker,
+            adaptive_limits: adaptive_limits.clone(),
         };
 
         // 在新任务中启动服务器
@@ -484,6 +511,20 @@ impl AxumServer {
         // Wait for active connections to drain
         let timeout = Duration::from_secs(GRACEFUL_SHUTDOWN_TIMEOUT_SECS);
         let drained = self.connection_tracker.wait_for_drain(timeout).await;
+
+        // Persist adaptive limits to database before shutdown
+        let limits_to_save: Vec<_> = self.adaptive_limits
+            .all_for_persistence()
+            .into_iter()
+            .map(|(id, confirmed, ceiling, _age)| (id, confirmed, ceiling))
+            .collect();
+        
+        if !limits_to_save.is_empty() {
+            match crate::proxy::db::save_adaptive_limits_batch(&limits_to_save) {
+                Ok(()) => info!("💾 Saved {} adaptive limits to database", limits_to_save.len()),
+                Err(e) => warn!("Failed to save adaptive limits: {}", e),
+            }
+        }
 
         if drained {
             info!("Graceful shutdown completed successfully");

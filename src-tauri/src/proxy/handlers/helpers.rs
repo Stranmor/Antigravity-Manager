@@ -9,10 +9,11 @@ use crate::proxy::error::ProxyError;
 use crate::proxy::middleware::request_id::RequestId;
 use crate::proxy::server::AppState;
 use crate::proxy::token_manager::TokenManager;
+use crate::proxy::adaptive_limit::ProbeStrategy;
 use axum::response::Response;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
-use tracing::{error, info, info_span, warn};
+use tracing::{debug, error, info, info_span, warn};
 
 /// Result of account selection
 #[derive(Clone)]
@@ -233,6 +234,47 @@ use axum::response::IntoResponse;
 pub async fn record_auth_error(state: &AppState, account_id: &str, status_code: u16, error_text: &str) {
     if status_code == 403 || status_code == 401 {
         state.health_monitor.record_error(account_id, status_code, error_text).await;
+    }
+}
+
+/// Check if account should be allowed based on adaptive rate limiting
+/// Returns true if request should proceed, false if account is at/near limit
+pub fn check_adaptive_limit(state: &AppState, account_id: &str) -> bool {
+    state.smart_prober.should_allow(account_id)
+}
+
+/// Get the current probe strategy for an account based on usage ratio
+pub fn get_probe_strategy(state: &AppState, account_id: &str) -> ProbeStrategy {
+    state.smart_prober.strategy_for(account_id)
+}
+
+/// Get usage ratio for an account (0.0 = no usage, 1.0 = at limit)
+pub fn get_usage_ratio(state: &AppState, account_id: &str) -> f64 {
+    state.adaptive_limits.usage_ratio(account_id)
+}
+
+/// Log adaptive limit status for debugging
+pub fn log_adaptive_status(state: &AppState, account_id: &str, trace_id: &str) {
+    let ratio = state.adaptive_limits.usage_ratio(account_id);
+    let strategy = state.smart_prober.strategy_for(account_id);
+    
+    if ratio > 0.5 {
+        debug!(
+            "[{}] Adaptive limit status for {}: usage={:.1}%, strategy={:?}",
+            trace_id, account_id, ratio * 100.0, strategy
+        );
+    }
+}
+
+/// Determine if we should skip this account and try another based on adaptive limits
+/// Returns Some(reason) if should skip, None if should proceed
+pub fn should_skip_account_adaptive(state: &AppState, account_id: &str) -> Option<String> {
+    let ratio = state.adaptive_limits.usage_ratio(account_id);
+    
+    if ratio >= 1.0 {
+        Some(format!("at adaptive limit (usage={:.0}%)", ratio * 100.0))
+    } else {
+        None
     }
 }
 

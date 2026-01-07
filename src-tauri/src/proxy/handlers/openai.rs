@@ -346,6 +346,18 @@ pub async fn handle_chat_completions(
             continue;
         }
 
+        // Adaptive rate limit check
+        if let Some(skip_reason) = crate::proxy::handlers::helpers::should_skip_account_adaptive(&state, &account_id) {
+            tracing::debug!(
+                "[{}] Skipping account {} due to adaptive limit: {}",
+                trace_id, email, skip_reason
+            );
+            attempt += 1;
+            last_error = format!("Account {email} {skip_reason}");
+            continue;
+        }
+        crate::proxy::handlers::helpers::log_adaptive_status(&state, &account_id, trace_id);
+
         // Transform request
         let _transform_timer = time_request_transform("openai", &mapped_model);
         let gemini_body = transform_openai_request(&openai_req, &project_id, &mapped_model);

@@ -597,6 +597,18 @@ pub async fn handle_messages(
             continue;
         }
 
+        // Adaptive rate limit check - skip account if at/near limit
+        if let Some(skip_reason) = crate::proxy::handlers::helpers::should_skip_account_adaptive(&state, &account_id) {
+            tracing::debug!(
+                "[{}] Skipping account {} due to adaptive limit: {}",
+                trace_id, email, skip_reason
+            );
+            attempt += 1;
+            last_error = format!("Account {email} {skip_reason}");
+            continue;
+        }
+        crate::proxy::handlers::helpers::log_adaptive_status(&state, &account_id, trace_id);
+
         // Background task detection and request preparation
         let background_task_type = detect_background_task_type(&request_for_body);
         let mut request_with_mapped = request_for_body.clone();

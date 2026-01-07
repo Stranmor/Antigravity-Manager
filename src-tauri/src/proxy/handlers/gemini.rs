@@ -62,7 +62,7 @@ pub async fn handle_generate(
 
     // 2. 获取 UpstreamClient 和 TokenManager
     let upstream = state.upstream.clone();
-    let token_manager = state.token_manager;
+    let token_manager = state.token_manager.clone();
     let pool_size = token_manager.len();
     let max_attempts = MAX_RETRY_ATTEMPTS.min(pool_size).max(1);
     
@@ -118,6 +118,17 @@ pub async fn handle_generate(
 
         info!("✓ Using account: {} (type: {})", email, config.request_type);
 
+        // Adaptive rate limit check
+        if let Some(skip_reason) = crate::proxy::handlers::helpers::should_skip_account_adaptive(&state, &account_id) {
+            tracing::debug!(
+                "[{}] Skipping account {} due to adaptive limit: {}",
+                request_id.as_str(), email, skip_reason
+            );
+            last_error = format!("Account {email} {skip_reason}");
+            continue;
+        }
+        crate::proxy::handlers::helpers::log_adaptive_status(&state, &account_id, request_id.as_str());
+
         // 5. 包装请求 (project injection)
         let wrapped_body = wrap_request(&body, &project_id, &mapped_model);
 
@@ -138,8 +149,9 @@ pub async fn handle_generate(
 
         let status = response.status();
         if status.is_success() {
-            // Record success in health monitor
             state.health_monitor.record_success(&account_id);
+            state.circuit_breaker.record_success(&account_id);
+            state.smart_prober.record_success(&account_id);
 
             // 6. 响应处理
             if is_stream {
@@ -256,6 +268,14 @@ pub async fn handle_generate(
             // Record error in health monitor for 403/401 (may auto-disable account)
             if status_code == 403 || status_code == 401 {
                 state.health_monitor.record_error(&account_id, status_code, &error_text).await;
+            }
+
+            // Record 429 in adaptive rate limiter
+            if status_code == 429 {
+                state.smart_prober.record_429(&account_id);
+            }
+            if status_code != 529 && status_code >= 400 {
+                state.circuit_breaker.record_failure(&account_id, &error_text);
             }
 
             // 记录限流信息并自动解绑会话 (使用 account_id 而非 email)
