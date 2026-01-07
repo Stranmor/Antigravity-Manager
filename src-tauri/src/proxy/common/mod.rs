@@ -9,3 +9,4 @@ pub mod circuit_breaker;
 pub mod sampling;
 pub mod hedging;
 pub mod coalescing;
+pub mod scheduler;

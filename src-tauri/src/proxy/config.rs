@@ -249,6 +249,10 @@ pub struct ProxyConfig {
     /// Request coalescing/deduplication configuration
     #[serde(default)]
     pub coalescing: CoalescingConfig,
+
+    /// Priority queue scheduler configuration
+    #[serde(default)]
+    pub scheduler: SchedulerConfig,
 }
 
 /// 上游代理配置
@@ -428,6 +432,83 @@ impl Default for CoalescingConfig {
     }
 }
 
+/// Priority queue scheduler configuration
+///
+/// Implements Multi-Level Queue (MLQ) with Deficit Round Robin (DRR) for fair
+/// request scheduling across priority levels.
+///
+/// ## Priority Classification
+/// Priority is determined by (in order of precedence):
+/// 1. Explicit `x-priority` header (0=High, 1=Normal, 2=Low)
+/// 2. Account tier: ULTRA → High, PRO → Normal, FREE → Low
+/// 3. Model type: Fast models (haiku, 4o-mini) → High, Large (opus, gpt-4) → Normal
+/// 4. Default: Normal
+///
+/// ## Fairness Mechanism
+/// - Weighted Fair Queuing: High=5, Normal=2, Low=1
+/// - Aging: Priority boosted if wait time exceeds threshold
+/// - Backpressure: 429 when queue depth exceeds limit
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchedulerConfig {
+    /// Enable priority queue scheduling (default: false)
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Maximum queue depth before returning 429 (default: 1000)
+    #[serde(default = "default_scheduler_max_queue_depth")]
+    pub max_queue_depth: usize,
+
+    /// Aging threshold in milliseconds (default: 500)
+    /// Requests waiting longer than this get priority boost
+    #[serde(default = "default_scheduler_aging_threshold_ms")]
+    pub aging_threshold_ms: u64,
+
+    /// Weight for High priority requests (default: 5)
+    #[serde(default = "default_scheduler_high_weight")]
+    pub high_weight: u32,
+
+    /// Weight for Normal priority requests (default: 2)
+    #[serde(default = "default_scheduler_normal_weight")]
+    pub normal_weight: u32,
+
+    /// Weight for Low priority requests (default: 1)
+    #[serde(default = "default_scheduler_low_weight")]
+    pub low_weight: u32,
+}
+
+fn default_scheduler_max_queue_depth() -> usize {
+    1000
+}
+
+fn default_scheduler_aging_threshold_ms() -> u64 {
+    500
+}
+
+fn default_scheduler_high_weight() -> u32 {
+    5
+}
+
+fn default_scheduler_normal_weight() -> u32 {
+    2
+}
+
+fn default_scheduler_low_weight() -> u32 {
+    1
+}
+
+impl Default for SchedulerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_queue_depth: default_scheduler_max_queue_depth(),
+            aging_threshold_ms: default_scheduler_aging_threshold_ms(),
+            high_weight: default_scheduler_high_weight(),
+            normal_weight: default_scheduler_normal_weight(),
+            low_weight: default_scheduler_low_weight(),
+        }
+    }
+}
+
 impl Default for PoolWarmingConfig {
     fn default() -> Self {
         Self {
@@ -467,6 +548,7 @@ impl Default for ProxyConfig {
             sampling: SamplingConfig::default(),
             hedging: HedgingConfig::default(),
             coalescing: CoalescingConfig::default(),
+            scheduler: SchedulerConfig::default(),
         }
     }
 }

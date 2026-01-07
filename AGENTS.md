@@ -64,7 +64,7 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 
 ### Priority 1: IMPLEMENTATION (From Research)
 - [x] Implement request coalescing/deduplication `[MODE: B]` ✓ a9a05729 (xxHash3 fingerprinting, broadcast channels, all handlers integrated)
-- [ ] Implement priority queue scheduling `[MODE: B]` - MLQ with DRR
+- [x] Implement priority queue scheduling `[MODE: B]` ✓ (scheduler.rs module, MLQ with DRR)
 
 ### Priority 2: CODE QUALITY
 - [x] Refactor long handler functions (claude.rs 688+ lines) `[MODE: B]` ✓ fadbd2a5 (helpers.rs module, claude.rs 688→279, openai.rs 438→253)
