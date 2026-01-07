@@ -39,7 +39,7 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Add Prometheus metrics for log rotation (files rotated, disk usage) `[MODE: B]` ✓ 3a7d20c9
 - [x] Deploy binary with log rotation metrics to VPS `[MODE: B]` ✓ Verified 2026-01-07
 
-## CURRENT ACTIVE BATCH (Phase 9 - Reliability & Performance)
+## COMPLETED: Phase 9 - Reliability & Performance (2026-01-07)
 **Focus: Tail latency reduction, deadline enforcement, and operational excellence**
 
 ### Priority 1: CRITICAL RELIABILITY
@@ -47,7 +47,7 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Add structured error taxonomy `[MODE: B]` ✓ ad6cc861 (ErrorCode enum AG-001 to AG-008)
 - [x] Optimize Prometheus latency histogram buckets `[MODE: B]` ✓ ad6cc861 (LLM-optimized buckets)
 - [x] Add connection pool warming `[MODE: B]` ✓ 34eb775d (PoolWarmingConfig + periodic HEAD pings)
-- [x] Add request hedging (speculative retry) `[MODE: B]` ✓ (HedgingConfig + RequestHedger module)
+- [x] Add request hedging (speculative retry) `[MODE: B]` ✓ 3b0f4da7 (HedgingConfig + RequestHedger module)
 
 ### Priority 2: OBSERVABILITY ENHANCEMENT
 - [x] Add semantic request logging with sampling `[MODE: B]` ✓ 34eb775d (fastrand O(1) sampling, 1% default)
@@ -58,6 +58,26 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 ### Priority 4: RESEARCH
 - [x] Research request coalescing/deduplication `[MODE: R]` ✓ Research complete (2026-01-07) - xxHash3 recommended
 - [x] Research priority queue implementation `[MODE: R]` ✓ Research complete (2026-01-07)
+
+## CURRENT ACTIVE BATCH (Phase 10 - Scale & Advanced Features)
+**Focus: Implement researched features and improve code quality**
+
+### Priority 1: IMPLEMENTATION (From Research)
+- [ ] Implement request coalescing/deduplication `[MODE: B]` - xxHash3 fingerprinting
+- [ ] Implement priority queue scheduling `[MODE: B]` - MLQ with DRR
+
+### Priority 2: CODE QUALITY
+- [ ] Refactor long handler functions (claude.rs 688+ lines) `[MODE: B]` - Extract helper functions
+- [ ] Add integration tests with mock HTTP server `[MODE: C]` - Improve test coverage
+- [ ] Eliminate remaining unwrap() calls in production code `[MODE: B]`
+
+### Priority 3: PERFORMANCE
+- [ ] Implement zero-copy parsing for JSON `[MODE: B]` - Research serde_json alternatives
+- [ ] Profile and optimize token rotation hot paths `[MODE: B]` - Based on benchmarks
+
+### Priority 4: RESEARCH
+- [ ] Research WebAssembly for portable Slint UI `[MODE: R]`
+- [ ] Research gRPC support for high-throughput clients `[MODE: R]`
 
 ## PRIORITY QUEUE RESEARCH (2026-01-07)
 
@@ -388,12 +408,10 @@ curl -s "http://localhost:3200/api/search?service.name=antigravity-proxy&limit=1
 ssh vps-production "journalctl -u antigravity-server | grep -i otel"
 ```
 
-**Next Steps:**
-1. [ ] Deploy Grafana Tempo on VPS (Option A recommended)
-2. [ ] Configure OTEL_ENABLED=true in /etc/antigravity/env
-3. [ ] Restart antigravity-server container
-4. [ ] Verify traces are being exported
-5. [ ] (Optional) Add Grafana UI for trace visualization
+**Status:** ✓ All OTEL infrastructure deployed (2026-01-07)
+- Grafana Tempo running on VPS
+- OTEL feature compiled in binary
+- Ready for production tracing
 
 ## COMPLETED: Phase 4 - VPS Deployment (2026-01-06)
 - [x] Create headless server binary `antigravity-server` for VPS deployment `[MODE: B]`
@@ -942,11 +960,11 @@ ssh vps-production "curl -s http://localhost:9101/api/health | jq"
   - `/etc/containers/systemd` - Quadlet definitions (already existed)
 - API Key generated: `9fcfab1e0aa...` (store in `/etc/antigravity/config.toml`)
 
-**Next Steps:**
-- [ ] Build container image locally
-- [ ] Transfer image to VPS via `podman save | ssh ... podman load`
-- [ ] Create Quadlet file and start service
-- [ ] Configure firewall rules for ports 8045 and 9101
+**Status:** ✓ VPS deployment complete (2026-01-06)
+- Container running on vps-production
+- Admin API on port 9101
+- Proxy API on port 8045
+- Automatic deployment via scripts/deploy-vps.sh
 
 ## VPS DEPLOYMENT STRATEGY (NEW)
 **Goal:** Deploy Antigravity proxy on VPS with remote API management
