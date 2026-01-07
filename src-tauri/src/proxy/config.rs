@@ -237,6 +237,10 @@ pub struct ProxyConfig {
     /// Connection pool warming configuration
     #[serde(default)]
     pub pool_warming: PoolWarmingConfig,
+
+    /// Semantic request logging with sampling
+    #[serde(default)]
+    pub sampling: SamplingConfig,
 }
 
 /// 上游代理配置
@@ -258,6 +262,50 @@ pub struct PoolWarmingConfig {
     /// Interval between warming pings in seconds (default: 30)
     #[serde(default = "default_pool_warming_interval")]
     pub interval_secs: u64,
+}
+
+/// Semantic request logging with sampling configuration
+///
+/// This feature logs a percentage of request/response bodies for debugging
+/// and observability purposes without impacting performance significantly.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SamplingConfig {
+    /// Enable semantic request sampling (default: false)
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Percentage of requests to sample (0.0 - 1.0, default: 0.01 = 1%)
+    #[serde(default = "default_sample_rate")]
+    pub sample_rate: f64,
+
+    /// Maximum body size to log in bytes (default: 4096)
+    /// Bodies exceeding this limit will be truncated
+    #[serde(default = "default_max_body_size")]
+    pub max_body_size: usize,
+
+    /// Include headers in sampled logs (default: false)
+    /// Sensitive headers (Authorization, X-API-Key) are always sanitized
+    #[serde(default)]
+    pub include_headers: bool,
+}
+
+fn default_sample_rate() -> f64 {
+    0.01 // 1% sampling by default
+}
+
+fn default_max_body_size() -> usize {
+    4096 // 4KB default
+}
+
+impl Default for SamplingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            sample_rate: default_sample_rate(),
+            max_body_size: default_max_body_size(),
+            include_headers: false,
+        }
+    }
 }
 
 fn default_pool_warming_enabled() -> bool {
@@ -304,6 +352,7 @@ impl Default for ProxyConfig {
             scheduling: crate::proxy::sticky_config::StickySessionConfig::default(),
             log_rotation: LogRotationConfig::default(),
             pool_warming: PoolWarmingConfig::default(),
+            sampling: SamplingConfig::default(),
         }
     }
 }

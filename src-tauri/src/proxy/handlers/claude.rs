@@ -664,6 +664,33 @@ pub async fn handle_messages(
                 cache_info
             );
 
+            // [SAMPLING] Log sampled request/response for debugging (1% default)
+            if state.sampler.should_sample() {
+                use crate::proxy::common::sampling::SampledRequestBuilder;
+
+                // Truncate request body for logging
+                let request_json = serde_json::to_string(&request_for_body).unwrap_or_default();
+                let (req_excerpt, req_truncated) = state.sampler.truncate_body(&request_json);
+
+                // Truncate response body for logging
+                let response_json = serde_json::to_string(&claude_response).unwrap_or_default();
+                let (resp_excerpt, resp_truncated) = state.sampler.truncate_body(&response_json);
+
+                let sampled = SampledRequestBuilder::new(trace_id, "POST", "/v1/messages")
+                    .model(&resolved_model_for_log)
+                    .account_id(&account_id)
+                    .request_body(req_excerpt, req_truncated)
+                    .response_body(resp_excerpt, resp_truncated)
+                    .status_code(200)
+                    .tokens(
+                        Some(claude_response.usage.input_tokens as u64),
+                        Some(claude_response.usage.output_tokens as u64),
+                    )
+                    .build();
+
+                state.sampler.log_sampled_request(&sampled);
+            }
+
             return Json(claude_response).with_resolved_model(&resolved_model_for_log);
         }
         

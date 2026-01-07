@@ -266,6 +266,30 @@ pub async fn handle_chat_completions(
                 resp
             };
             // response_timer is dropped here, recording the duration
+
+            // [SAMPLING] Log sampled request/response for debugging (1% default)
+            if state.sampler.should_sample() {
+                use crate::proxy::common::sampling::SampledRequestBuilder;
+
+                // Truncate request body for logging (use openai_req since body was moved)
+                let request_json = serde_json::to_string(&openai_req).unwrap_or_default();
+                let (req_excerpt, req_truncated) = state.sampler.truncate_body(&request_json);
+
+                // Truncate response body for logging
+                let response_json = serde_json::to_string(&openai_response).unwrap_or_default();
+                let (resp_excerpt, resp_truncated) = state.sampler.truncate_body(&response_json);
+
+                let sampled = SampledRequestBuilder::new(trace_id, "POST", "/v1/chat/completions")
+                    .model(&mapped_model)
+                    .account_id(&account_id)
+                    .request_body(req_excerpt, req_truncated)
+                    .response_body(resp_excerpt, resp_truncated)
+                    .status_code(200)
+                    .build();
+
+                state.sampler.log_sampled_request(&sampled);
+            }
+
             return Json(openai_response).with_resolved_model(&mapped_model);
         }
 
@@ -899,6 +923,29 @@ pub async fn handle_completions(
                 "model": chat_resp.model,
                 "choices": choices
             });
+
+            // [SAMPLING] Log sampled request/response for debugging (1% default)
+            if state.sampler.should_sample() {
+                use crate::proxy::common::sampling::SampledRequestBuilder;
+
+                // Truncate request body for logging (just log the model name for legacy completions)
+                let request_json = format!("{{\"model\": \"{}\"}}", mapped_model);
+                let (req_excerpt, req_truncated) = state.sampler.truncate_body(&request_json);
+
+                // Truncate response body for logging
+                let response_json = serde_json::to_string(&legacy_resp).unwrap_or_default();
+                let (resp_excerpt, resp_truncated) = state.sampler.truncate_body(&response_json);
+
+                let sampled = SampledRequestBuilder::new(trace_id, "POST", "/v1/completions")
+                    .model(&mapped_model)
+                    .account_id(&account_id)
+                    .request_body(req_excerpt, req_truncated)
+                    .response_body(resp_excerpt, resp_truncated)
+                    .status_code(200)
+                    .build();
+
+                state.sampler.log_sampled_request(&sampled);
+            }
 
             return axum::Json(legacy_resp).with_resolved_model(&mapped_model);
         }

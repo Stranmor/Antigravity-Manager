@@ -116,6 +116,8 @@ pub struct AppState {
     pub health_monitor: Arc<crate::proxy::health::HealthMonitor>,
     /// Account-level circuit breaker for fast-fail behavior
     pub circuit_breaker: Arc<crate::proxy::common::circuit_breaker::CircuitBreakerManager>,
+    /// Semantic request sampler for debugging (1% of requests by default)
+    pub sampler: Arc<crate::proxy::common::sampling::RequestSampler>,
 }
 
 /// Axum 服务器实例
@@ -208,6 +210,13 @@ impl AxumServer {
             crate::proxy::common::circuit_breaker::CircuitBreakerManager::new(circuit_breaker_config)
         );
 
+        // Initialize request sampler with default config (disabled by default)
+        let sampler = Arc::new(
+            crate::proxy::common::sampling::RequestSampler::new(
+                crate::proxy::config::SamplingConfig::default()
+            )
+        );
+
 	        let state = AppState {
 	            token_manager: token_manager.clone(),
 	            anthropic_mapping: mapping_state.clone(),
@@ -227,6 +236,7 @@ impl AxumServer {
             monitor: monitor.clone(),
             health_monitor,
             circuit_breaker,
+            sampler,
         };
 
 

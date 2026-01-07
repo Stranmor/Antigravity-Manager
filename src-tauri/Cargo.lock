@@ -140,6 +140,7 @@ dependencies = [
  "dashmap",
  "dirs 5.0.1",
  "eventsource-stream",
+ "fastrand",
  "futures",
  "hyper",
  "hyper-util",
