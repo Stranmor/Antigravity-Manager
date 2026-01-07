@@ -340,6 +340,15 @@ struct ReloadResponse {
     accounts_loaded: usize,
 }
 
+/// Response for config reload endpoint
+#[derive(Debug, Serialize)]
+struct ConfigReloadResponse {
+    success: bool,
+    reloaded_fields: Vec<&'static str>,
+    skipped_fields: Vec<&'static str>,
+    message: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 struct ErrorResponse {
     error: String,
@@ -769,6 +778,137 @@ async fn update_config_handler(
 async fn get_stats_handler(State(state): State<Arc<AdminState>>) -> impl IntoResponse {
     let stats = state.monitor.get_stats().await;
     Json(stats)
+}
+
+/// POST /api/config/reload - Hot-reload configuration from disk
+///
+/// Re-reads `gui_config.json` from disk and hot-reloads all configuration fields
+/// that can be safely updated at runtime. Fields that require a restart (port,
+/// allow_lan_access, auth_mode) are skipped.
+///
+/// Returns which fields were reloaded and which were skipped.
+async fn reload_config_handler(State(state): State<Arc<AdminState>>) -> impl IntoResponse {
+    // Fields that CAN be hot-reloaded
+    let reloaded_fields: Vec<&'static str> = vec![
+        "request_timeout",
+        "anthropic_mapping",
+        "openai_mapping",
+        "custom_mapping",
+        "sampling",
+        "pool_warming",
+        "log_rotation",
+        "upstream_proxy",
+        "zai",
+        "scheduling",
+        "enable_logging",
+    ];
+
+    // Fields that CANNOT be hot-reloaded (require server restart)
+    let skipped_fields: Vec<&'static str> = vec![
+        "port",
+        "allow_lan_access",
+        "auth_mode",
+        "enabled",
+        "auto_start",
+    ];
+
+    // Read fresh config from disk
+    let new_config = load_proxy_config(&state.data_dir).await;
+
+    // Get current config to compare
+    let old_config = state.proxy_config.read().await.clone();
+
+    // Update in-memory config (preserving non-hot-reloadable fields)
+    {
+        let mut config = state.proxy_config.write().await;
+        // Preserve fields that cannot be hot-reloaded
+        let preserved_port = config.port;
+        let preserved_allow_lan = config.allow_lan_access;
+        let preserved_auth_mode = config.auth_mode.clone();
+        let preserved_enabled = config.enabled;
+        let preserved_auto_start = config.auto_start;
+        let preserved_api_key = config.api_key.clone();
+
+        // Update with new config
+        *config = new_config.clone();
+
+        // Restore preserved fields
+        config.port = preserved_port;
+        config.allow_lan_access = preserved_allow_lan;
+        config.auth_mode = preserved_auth_mode;
+        config.enabled = preserved_enabled;
+        config.auto_start = preserved_auto_start;
+        config.api_key = preserved_api_key;
+    }
+
+    // Hot reload running proxy server if present
+    let proxy_lock = state.proxy_server.read().await;
+    if let Some(instance) = proxy_lock.as_ref() {
+        instance.server.update_mapping(&new_config).await;
+        instance.server.update_security(&new_config).await;
+        instance.server.update_zai(&new_config).await;
+        instance
+            .server
+            .update_proxy(new_config.upstream_proxy.clone())
+            .await;
+        info!("Hot reloaded proxy configuration from disk");
+    }
+
+    // Update token manager scheduling config
+    state
+        .token_manager
+        .update_sticky_config(new_config.scheduling.clone())
+        .await;
+
+    // Update monitor logging state
+    state.monitor.set_enabled(new_config.enable_logging);
+
+    // Log changes for debugging
+    let mut changes = Vec::new();
+    if old_config.request_timeout != new_config.request_timeout {
+        changes.push(format!(
+            "request_timeout: {} -> {}",
+            old_config.request_timeout, new_config.request_timeout
+        ));
+    }
+    if old_config.anthropic_mapping != new_config.anthropic_mapping {
+        changes.push("anthropic_mapping: updated".to_string());
+    }
+    if old_config.openai_mapping != new_config.openai_mapping {
+        changes.push("openai_mapping: updated".to_string());
+    }
+    if old_config.custom_mapping != new_config.custom_mapping {
+        changes.push("custom_mapping: updated".to_string());
+    }
+    if old_config.sampling.enabled != new_config.sampling.enabled
+        || old_config.sampling.sample_rate != new_config.sampling.sample_rate
+    {
+        changes.push(format!(
+            "sampling: enabled={}, rate={}",
+            new_config.sampling.enabled, new_config.sampling.sample_rate
+        ));
+    }
+    if old_config.enable_logging != new_config.enable_logging {
+        changes.push(format!(
+            "enable_logging: {} -> {}",
+            old_config.enable_logging, new_config.enable_logging
+        ));
+    }
+
+    let message = if changes.is_empty() {
+        None
+    } else {
+        Some(format!("Changes: {}", changes.join(", ")))
+    };
+
+    info!("Configuration reloaded from disk. Changes: {:?}", changes);
+
+    Json(ConfigReloadResponse {
+        success: true,
+        reloaded_fields,
+        skipped_fields,
+        message,
+    })
 }
 
 /// GET /metrics - Prometheus metrics endpoint (public, no auth required)
@@ -1521,6 +1661,7 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
             "/api/config",
             get(get_config_handler).put(update_config_handler),
         )
+        .route("/api/config/reload", post(reload_config_handler))
         .route("/api/stats", get(get_stats_handler))
         .layer(middleware::from_fn_with_state(
             admin_state.clone(),
@@ -1582,6 +1723,7 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     info!("  POST   /api/accounts/{{id}}/enable - Force re-enable disabled account (auth required)");
     info!("  GET    /api/config              - Get current config (auth required)");
     info!("  PUT    /api/config              - Update config (auth required)");
+    info!("  POST   /api/config/reload       - Hot-reload config from disk (auth required)");
     info!("  GET    /api/stats               - Get proxy stats (auth required)");
     info!("");
     info!("Authentication: Use 'Authorization: Bearer <API_KEY>' or 'X-API-Key: <API_KEY>' header");

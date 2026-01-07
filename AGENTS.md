@@ -47,17 +47,157 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Add structured error taxonomy `[MODE: B]` ✓ ad6cc861 (ErrorCode enum AG-001 to AG-008)
 - [x] Optimize Prometheus latency histogram buckets `[MODE: B]` ✓ ad6cc861 (LLM-optimized buckets)
 - [x] Add connection pool warming `[MODE: B]` ✓ 34eb775d (PoolWarmingConfig + periodic HEAD pings)
-- [ ] Add request hedging (speculative retry) `[MODE: B]` - Fire backup request after 2s deadline
+- [x] Add request hedging (speculative retry) `[MODE: B]` ✓ (HedgingConfig + RequestHedger module)
 
 ### Priority 2: OBSERVABILITY ENHANCEMENT
 - [x] Add semantic request logging with sampling `[MODE: B]` ✓ 34eb775d (fastrand O(1) sampling, 1% default)
 
 ### Priority 3: DEVELOPER EXPERIENCE
-- [ ] Extend live config reload via Admin API `[MODE: B]` - Hot-reload all config, not just accounts
+- [x] Extend live config reload via Admin API `[MODE: B]` ✓ POST /api/config/reload endpoint
 
 ### Priority 4: RESEARCH
 - [ ] Research request coalescing/deduplication `[MODE: R]` - SHA256 hash-based duplicate detection
-- [ ] Research priority queue implementation `[MODE: R]` - Request classification by x-priority header
+- [x] Research priority queue implementation `[MODE: R]` ✓ Research complete (2026-01-07)
+
+## PRIORITY QUEUE RESEARCH (2026-01-07)
+
+### Recommended Approach
+Implement a **Multi-Level Queue (MLQ) with Deficit Round Robin (DRR)** for scheduling. This provides strict priority for interactive tasks while ensuring guaranteed bandwidth for batch tasks.
+
+### Queue Data Structures
+- **Global Priority Map**: `DashMap<AccountId, PriorityLevel>` for cached lookups.
+- **Priority Queues**: `ArrayDeque` per priority level (3 levels: High, Normal, Low).
+- **Request Metadata**: `struct QueuedRequest { id: RequestId, deadline: Instant, weight: u32, stream: bool }`.
+
+### Priority Classification Logic
+1. **Explicit**: `x-priority` header (0-2).
+2. **Account Tier**: ULTRA -> High, PRO -> Normal, FREE -> Low.
+3. **Model**: Large models (e.g., opus, gpt-4) -> Normal, Small/Fast models (e.g., haiku, 4o-mini) -> High.
+4. **Default**: Normal.
+
+### Fairness Mechanism
+- **Weighted Fair Queuing (WFQ)**: Assign weights (High: 5, Normal: 2, Low: 1).
+- **Aging**: Increment priority if wait time exceeds 500ms to prevent starvation.
+- **Backpressure**: Return 429 (Too Many Requests) with `Retry-After` header when queue depth > 1000.
+
+### Metrics to Expose
+- `antigravity_queue_depth{priority}`: Current requests waiting.
+- `antigravity_queue_wait_seconds_bucket`: Histogram of time spent in queue.
+- `antigravity_queue_dropped_total{priority}`: Count of requests rejected due to depth limits.
+- `antigravity_queue_starvation_boosts_total`: Count of aging-based priority increases.
+
+
+## LIVE CONFIG RELOAD (2026-01-07)
+**Status: IMPLEMENTED**
+
+**Endpoint:** `POST /api/config/reload`
+
+**Purpose:** Hot-reload all configuration from `gui_config.json` without server restart.
+
+**Hot-Reloadable Fields:**
+- `request_timeout` - API request timeout
+- `anthropic_mapping` - Claude model mappings
+- `openai_mapping` - OpenAI model mappings
+- `custom_mapping` - Custom model mappings
+- `sampling` - Request sampling config
+- `pool_warming` - Connection pool warming
+- `log_rotation` - Log rotation settings
+- `upstream_proxy` - Upstream proxy config
+- `zai` - z.ai provider config
+- `scheduling` - Account scheduling config
+- `enable_logging` - Request logging toggle
+
+**Non-Reloadable Fields (require restart):**
+- `port` - Bound at startup
+- `allow_lan_access` - Bound at startup
+- `auth_mode` - Affects middleware chain
+- `enabled` - Server state
+- `auto_start` - Startup behavior
+
+**Response Format:**
+```json
+{
+  "success": true,
+  "reloaded_fields": ["request_timeout", "anthropic_mapping", ...],
+  "skipped_fields": ["port", "allow_lan_access", ...],
+  "message": "Changes: request_timeout: 60 -> 120, anthropic_mapping: updated"
+}
+```
+
+**Usage:**
+```bash
+# Reload config from disk
+curl -X POST http://localhost:9101/api/config/reload \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+## REQUEST HEDGING (2026-01-07)
+**Status: IMPLEMENTED**
+
+**Purpose:** Reduce tail latency by firing a backup request if the primary takes too long.
+
+**How it Works:**
+1. Primary request starts immediately
+2. If no response within `hedge_delay_ms` (default: 2000ms), fire a backup request using a different account
+3. First response to complete wins; the other is cancelled via `tokio::select!`
+4. Only non-streaming requests are hedged (SSE streaming is not supported)
+
+**Configuration (`ProxyConfig.hedging`):**
+```rust
+pub struct HedgingConfig {
+    pub enabled: bool,           // Enable hedging (default: false)
+    pub hedge_delay_ms: u64,     // Delay before firing hedge (default: 2000)
+    pub max_hedged_requests: usize, // Max concurrent hedges (default: 1)
+}
+```
+
+**Prometheus Metrics:**
+| Metric | Type | Description |
+|--------|------|-------------|
+| `antigravity_hedged_requests_total` | Counter | Total hedge requests fired |
+| `antigravity_hedge_wins_total` | Counter | Hedges that completed before primary |
+| `antigravity_primary_wins_total` | Counter | Primaries that won after hedge fired |
+| `antigravity_hedge_win_rate` | Gauge | Ratio of hedge wins (0.0-1.0) |
+
+**Code Location:**
+- `src-tauri/src/proxy/config.rs` - HedgingConfig struct
+- `src-tauri/src/proxy/common/hedging.rs` - RequestHedger implementation (330 lines)
+- `src-tauri/src/proxy/server.rs` - Hedger integration in AppState
+
+**API Usage:**
+```rust
+// Check if request should be hedged
+if state.hedger.should_hedge(is_streaming) {
+    let result = state.hedger.execute_with_hedging(
+        || primary_request(),
+        || hedge_request_with_different_account(),
+        trace_id,
+    ).await;
+
+    match result {
+        Ok(HedgeResult::PrimaryWon(resp)) => // Primary completed first
+        Ok(HedgeResult::HedgeWon(resp)) => // Hedge completed first
+        Ok(HedgeResult::NoHedge(resp)) => // Completed before hedge delay
+        Err(e) => // Error from winning request
+    }
+}
+```
+
+**Testing:**
+```bash
+# Run hedging unit tests
+cargo test --features headless hedging
+
+# All 8 tests pass:
+# - test_hedging_disabled
+# - test_hedging_enabled_non_streaming
+# - test_primary_wins_before_delay
+# - test_hedge_fires_after_delay
+# - test_primary_wins_race_after_hedge_fired
+# - test_maybe_hedge_skips_streaming
+# - test_error_propagation
+# - test_hedge_result_into_inner
+```
 
 ## AUTOMATIC VPS DEPLOYMENT (2026-01-07)
 **Status: ✓ IMPLEMENTED**
