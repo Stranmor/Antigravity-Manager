@@ -6,4 +6,5 @@ pub mod openai;
 pub mod gemini;
 pub mod mcp;
 pub mod common;
+pub mod helpers;
 
