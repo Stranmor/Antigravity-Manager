@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
-// use std::path::PathBuf;
 use std::collections::HashMap;
+
+pub use crate::proxy::alerting::AlertingConfig;
 
 /// Log rotation configuration for the headless server
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -257,6 +258,10 @@ pub struct ProxyConfig {
     /// Adaptive rate limiting configuration (AIMD-based predictive limits)
     #[serde(default)]
     pub adaptive_rate_limit: AdaptiveRateLimitConfig,
+
+    /// Automated health monitoring and alerting configuration
+    #[serde(default)]
+    pub alerting: AlertingConfig,
 }
 
 /// 上游代理配置
@@ -657,7 +662,7 @@ impl Default for ProxyConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            allow_lan_access: false, // 默认仅本机访问，隐私优先
+            allow_lan_access: false,
             auth_mode: ProxyAuthMode::default(),
             port: default_proxy_port(),
             api_key: format!("sk-{}", uuid::Uuid::new_v4().simple()),
@@ -666,7 +671,7 @@ impl Default for ProxyConfig {
             openai_mapping: std::collections::HashMap::new(),
             custom_mapping: std::collections::HashMap::new(),
             request_timeout: default_request_timeout(),
-            enable_logging: false, // 默认关闭，节省性能
+            enable_logging: false,
             upstream_proxy: UpstreamProxyConfig::default(),
             zai: ZaiConfig::default(),
             scheduling: crate::proxy::sticky_config::StickySessionConfig::default(),
@@ -677,6 +682,7 @@ impl Default for ProxyConfig {
             coalescing: CoalescingConfig::default(),
             scheduler: SchedulerConfig::default(),
             adaptive_rate_limit: AdaptiveRateLimitConfig::default(),
+            alerting: AlertingConfig::default(),
         }
     }
 }

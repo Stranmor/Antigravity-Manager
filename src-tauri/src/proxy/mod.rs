@@ -6,6 +6,7 @@ pub mod security;
 pub mod error;
 pub mod db;
 pub mod server_logger;
+pub mod alerting;
 
 pub mod mappers;
 pub mod handlers;
@@ -38,6 +39,7 @@ pub use config::PoolWarmingConfig;
 pub use config::SamplingConfig;
 pub use config::HedgingConfig;
 pub use config::AdaptiveRateLimitConfig;
+pub use config::AlertingConfig;
 pub use token_manager::TokenManager;
 pub use server::AxumServer;
 pub use security::ProxySecurityConfig;
@@ -45,3 +47,5 @@ pub use server_logger::{init_server_logger, cleanup_old_logs, start_log_cleanup_
 pub use common::sampling::{RequestSampler, SampledRequest, SampledRequestBuilder, get_sampling_stats};
 pub use adaptive_limit::{AdaptiveLimitManager, AdaptiveLimitTracker, AIMDController, ProbeStrategy};
 pub use smart_prober::{SmartProber, SmartProberConfig, HedgeResult};
+pub use alerting::{AlertManager, Alert, AlertSeverity};
+

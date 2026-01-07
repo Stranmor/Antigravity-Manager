@@ -179,10 +179,9 @@ struct AdminState {
     token_manager: Arc<TokenManager>,
     monitor: Arc<ProxyMonitor>,
     proxy_server: RwLock<Option<ProxyServerHandle>>,
-    /// API key for admin authentication (None = auth disabled)
     api_key: Option<String>,
-    /// Health monitor for account health tracking
     health_monitor: Arc<antigravity_tools_lib::proxy::health::HealthMonitor>,
+    alert_manager: Arc<antigravity_tools_lib::proxy::alerting::AlertManager>,
 }
 
 struct ProxyServerHandle {
@@ -2057,10 +2056,18 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize health monitor with default configuration
     let health_config = antigravity_tools_lib::proxy::health::HealthConfig::default();
     let health_monitor = antigravity_tools_lib::proxy::health::HealthMonitor::new(health_config);
-    // Start the recovery background task
     let _health_recovery_handle = health_monitor.start_recovery_task();
 
-    // Create admin state
+    let alert_manager = Arc::new(antigravity_tools_lib::proxy::alerting::AlertManager::new(
+        proxy_config.alerting.clone(),
+        format!("http://{}:{}", bind_addr, server_config.admin_port),
+    ));
+
+    if proxy_config.alerting.enabled {
+        info!("Starting automated health monitoring and alerting");
+        alert_manager.clone().start_monitoring();
+    }
+
     let admin_state = Arc::new(AdminState {
         data_dir: server_config.data_dir.clone(),
         proxy_config: RwLock::new(proxy_config.clone()),
@@ -2069,6 +2076,7 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
         proxy_server: RwLock::new(Some(ProxyServerHandle { server, handle })),
         api_key: server_config.api_key.clone(),
         health_monitor,
+        alert_manager,
     });
 
     // Admin API Rate Limiting: 60 requests per minute per IP
