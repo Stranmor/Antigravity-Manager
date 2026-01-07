@@ -46,11 +46,11 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Implement deadline propagation for upstream calls `[MODE: B]` ✓ ad6cc861 (tokio::time::timeout wrapping)
 - [x] Add structured error taxonomy `[MODE: B]` ✓ ad6cc861 (ErrorCode enum AG-001 to AG-008)
 - [x] Optimize Prometheus latency histogram buckets `[MODE: B]` ✓ ad6cc861 (LLM-optimized buckets)
+- [x] Add connection pool warming `[MODE: B]` ✓ 34eb775d (PoolWarmingConfig + periodic HEAD pings)
 - [ ] Add request hedging (speculative retry) `[MODE: B]` - Fire backup request after 2s deadline
-- [ ] Add connection pool warming `[MODE: B]` - Periodic health pings to keep pools warm
 
 ### Priority 2: OBSERVABILITY ENHANCEMENT
-- [ ] Add semantic request logging with sampling `[MODE: B]` - Log 1% of request/response bodies
+- [x] Add semantic request logging with sampling `[MODE: B]` ✓ 34eb775d (fastrand O(1) sampling, 1% default)
 
 ### Priority 3: DEVELOPER EXPERIENCE
 - [ ] Extend live config reload via Admin API `[MODE: B]` - Hot-reload all config, not just accounts
@@ -1130,4 +1130,63 @@ curl http://localhost:9101/metrics | grep antigravity_log
 - Low priority - most are in error paths or tests
 
 **Recommendation:** Handler refactoring is optional - current code is functional and well-tested.
+
+## SEMANTIC REQUEST SAMPLING (2026-01-07)
+**Status: ✓ IMPLEMENTED (34eb775d)**
+
+**Features:**
+- O(1) random sampling using `fastrand` crate with thread-local RNG
+- Configurable sample rate (default: 1%)
+- Request/response body truncation with configurable max size (default: 4KB)
+- Sensitive header sanitization (Authorization, X-API-Key, etc.)
+- Structured logging with `tracing` integration
+
+**Configuration (`ProxyConfig.sampling`):**
+```rust
+pub struct SamplingConfig {
+    pub enabled: bool,           // Enable sampling (default: false)
+    pub sample_rate: f64,        // 0.0-1.0, 0.01 = 1% (default: 0.01)
+    pub max_body_size: usize,    // Max body bytes to log (default: 4096)
+    pub include_headers: bool,   // Log headers (default: false)
+}
+```
+
+**Log Output Example:**
+```json
+{
+  "timestamp": "2026-01-07T12:00:00Z",
+  "level": "INFO",
+  "target": "antigravity_tools::proxy::common::sampling",
+  "message": "Sampled request",
+  "request_id": "abc-123",
+  "method": "POST",
+  "path": "/v1/messages",
+  "model": "claude-sonnet-4",
+  "status_code": 200,
+  "body_truncated": false,
+  "input_tokens": 1234,
+  "output_tokens": 567,
+  "sampled": true
+}
+```
+
+**Code Location:** `src-tauri/src/proxy/common/sampling.rs` (507 lines)
+
+## CONNECTION POOL WARMING (2026-01-07)
+**Status: ✓ IMPLEMENTED (34eb775d)**
+
+**Features:**
+- Periodic HEAD requests to upstream endpoints to keep HTTP/2 connections alive
+- Prevents connection pool cold starts on first real request
+- Configurable interval (default: 30 seconds)
+
+**Configuration (`ProxyConfig.pool_warming`):**
+```rust
+pub struct PoolWarmingConfig {
+    pub enabled: bool,       // Enable warming (default: true)
+    pub interval_secs: u64,  // Ping interval (default: 30)
+}
+```
+
+**Code Location:** `src-tauri/src/proxy/config.rs`
 
