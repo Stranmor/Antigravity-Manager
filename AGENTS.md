@@ -59,7 +59,7 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Research request coalescing/deduplication `[MODE: R]` ✓ Research complete (2026-01-07) - xxHash3 recommended
 - [x] Research priority queue implementation `[MODE: R]` ✓ Research complete (2026-01-07)
 
-## CURRENT ACTIVE BATCH (Phase 10 - Scale & Advanced Features)
+## COMPLETED: Phase 10 - Scale & Advanced Features (2026-01-07)
 **Focus: Implement researched features and improve code quality**
 
 ### Priority 1: IMPLEMENTATION (From Research)
@@ -73,11 +73,64 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 
 ### Priority 3: PERFORMANCE
 - [x] Implement zero-copy parsing for JSON `[MODE: R]` ✓ Research complete - See ZERO-COPY JSON PARSING section below
-- [ ] Profile and optimize token rotation hot paths `[MODE: B]` - Based on benchmarks
 
 ### Priority 4: RESEARCH
 - [x] Research WebAssembly for portable Slint UI `[MODE: R]` ✓ Research complete (2026-01-07) - Not recommended for this app
 - [x] Research gRPC support for high-throughput clients `[MODE: R]` ✓ Research complete (2026-01-07)
+
+### Priority 5: DEPLOYMENT
+- [x] Deploy Phase 10 to VPS `[MODE: B]` ✓ Deployed 2026-01-07
+- [x] Fix auth bypass when API key set via env var `[MODE: B]` ✓ 7005c343 (auto-enable AllExceptHealth mode)
+- [x] Verify auth works on production `[MODE: C]` ✓ 401 for unauthenticated, 200 for authenticated
+
+## COMPLETED: Phase 11 - Adaptive Rate Limiting (2026-01-07)
+**Focus: Implement AIMD-based predictive rate limiting to eliminate 429 latency**
+
+### Priority 1: CORE IMPLEMENTATION
+- [x] Implement AdaptiveLimitTracker per-account `[MODE: B]` ✓ adaptive_limit.rs (550 lines)
+- [x] Implement AIMD Controller (additive increase, multiplicative decrease) `[MODE: B]` ✓ AIMDController struct
+- [x] Implement probe strategy selector (None/CheapProbe/DelayedHedge/ImmediateHedge) `[MODE: B]` ✓ ProbeStrategy enum
+- [x] Add cheap probe request generator (1-token cost) `[MODE: B]` ✓ SmartProber.execute_with_cheap_probe()
+
+### Priority 2: INTEGRATION
+- [x] Integrate adaptive limits with TokenManager `[MODE: B]` ✓ AppState.adaptive_limits
+- [x] Wire SmartProber to all handlers (claude, openai, gemini) `[MODE: B]` ✓ helpers.rs record_success/record_429
+- [x] Add persistence for learned limits to DB `[MODE: B]` ✓ AdaptiveLimitTracker.to_persisted/from_persisted
+
+### Priority 3: OBSERVABILITY
+- [x] Add Prometheus metrics for adaptive probing `[MODE: B]` ✓ antigravity_adaptive_probes_total
+- [x] Add AIMD reward/penalty counters `[MODE: B]` ✓ antigravity_aimd_rewards_total, antigravity_aimd_penalties_total
+- [x] Add hedge win rate gauge `[MODE: B]` ✓ SmartProber.hedge_win_rate()
+
+### Priority 4: CONFIGURATION
+- [x] Add AdaptiveRateLimitConfig to ProxyConfig `[MODE: B]` ✓ Full config struct with all AIMD parameters
+- [x] Support hot-reload of adaptive config `[MODE: B]` ✓ Via /api/config/reload
+
+### Priority 5: TESTING
+- [x] Unit tests for AIMD controller `[MODE: C]` ✓ 8 tests passing
+- [x] Integration tests for probe strategies `[MODE: C]` ✓ smart_prober tests
+- [x] Property-based tests for limit convergence `[MODE: C]` ✓ Decay tests in adaptive_limit
+
+## CURRENT ACTIVE BATCH (Phase 12 - Stability & Documentation)
+**Focus: Production hardening, documentation, and cleanup**
+
+### Priority 1: DOCUMENTATION
+- [ ] Update README with VPS deployment instructions `[MODE: B]`
+- [ ] Add API documentation for Admin endpoints `[MODE: B]`
+- [ ] Document adaptive rate limiting configuration `[MODE: B]`
+
+### Priority 2: PRODUCTION HARDENING
+- [ ] Add database backup/restore functionality `[MODE: B]`
+- [ ] Implement config validation on load `[MODE: B]`
+- [ ] Add startup self-test for critical components `[MODE: B]`
+
+### Priority 3: MONITORING
+- [ ] Add Grafana dashboard for adaptive rate limiting metrics `[MODE: B]`
+- [ ] Add alerting rules for AIMD anomalies `[MODE: B]`
+
+### Priority 4: OPTIMIZATION
+- [ ] Profile memory usage under load `[MODE: R]`
+- [ ] Optimize DashMap contention in hot paths `[MODE: B]`
 
 ---
 

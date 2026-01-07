@@ -129,6 +129,75 @@ Due to macOS security gatekeeper, non-App Store apps might show this. Run this i
 sudo xattr -rd com.apple.quarantine "/Applications/Antigravity Tools.app"
 ```
 
+## 🖥️ VPS/Server Deployment
+
+For headless server deployment without GUI, use the `antigravity-server` binary.
+
+### Option A: Container Deployment (Recommended)
+
+```bash
+# 1. Build container image
+podman build -t antigravity-server:latest -f Containerfile .
+
+# 2. Run container
+podman run -d --name antigravity \
+  -p 8045:8045 \
+  -p 9101:9101 \
+  -v /var/lib/antigravity:/var/lib/antigravity:Z \
+  -e ANTIGRAVITY_API_KEY="your-secret-api-key" \
+  antigravity-server:latest
+
+# 3. Verify health
+curl http://localhost:9101/api/health/detailed
+```
+
+### Option B: Systemd Quadlet (Production)
+
+```bash
+# Copy quadlet file
+sudo cp deploy/antigravity-server.container /etc/containers/systemd/
+
+# Reload and start
+sudo systemctl daemon-reload
+sudo systemctl start antigravity-server
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ANTIGRAVITY_DATA_DIR` | `~/.antigravity` | Data directory for accounts and logs |
+| `ANTIGRAVITY_PROXY_PORT` | `8045` | Proxy API port |
+| `ANTIGRAVITY_ADMIN_PORT` | `9101` | Admin API port |
+| `ANTIGRAVITY_API_KEY` | (none) | API key for authentication |
+| `ANTIGRAVITY_ALLOW_LAN` | `true` | Bind to 0.0.0.0 |
+| `RUST_LOG` | `info` | Log level |
+
+### Admin API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/health` | GET | Basic health check |
+| `/api/health/detailed` | GET | Component health status |
+| `/api/accounts` | GET | List all accounts |
+| `/api/accounts` | POST | Add new account |
+| `/api/accounts/{id}` | DELETE | Remove account |
+| `/api/accounts/reload` | POST | Reload accounts from disk |
+| `/api/config` | GET | Get current config |
+| `/api/config/reload` | POST | Hot-reload configuration |
+| `/api/stats` | GET | Request statistics |
+| `/metrics` | GET | Prometheus metrics |
+
+### Import Accounts from Desktop App
+
+```bash
+# Import from default desktop app location
+antigravity-server import
+
+# Or specify custom paths
+antigravity-server import --from ~/.antigravity_tools --to /var/lib/antigravity
+```
+
 ## 🔌 Quick Integration Examples
 
 ### 🔐 OAuth Authorization Flow (Add Account)
