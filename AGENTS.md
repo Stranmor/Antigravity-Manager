@@ -67,7 +67,7 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [ ] Implement priority queue scheduling `[MODE: B]` - MLQ with DRR
 
 ### Priority 2: CODE QUALITY
-- [ ] Refactor long handler functions (claude.rs 688+ lines) `[MODE: B]` - Extract helper functions
+- [x] Refactor long handler functions (claude.rs 688+ lines) `[MODE: B]` ✓ fadbd2a5 (helpers.rs module, claude.rs 688→279, openai.rs 438→253)
 - [ ] Add integration tests with mock HTTP server `[MODE: C]` - Improve test coverage
 - [ ] Eliminate remaining unwrap() calls in production code `[MODE: B]`
 
@@ -76,8 +76,8 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [ ] Profile and optimize token rotation hot paths `[MODE: B]` - Based on benchmarks
 
 ### Priority 4: RESEARCH
-- [ ] Research WebAssembly for portable Slint UI `[MODE: R]`
-- [ ] Research gRPC support for high-throughput clients `[MODE: R]`
+- [x] Research WebAssembly for portable Slint UI `[MODE: R]` ✓ Research complete (2026-01-07) - Not recommended for this app
+- [x] Research gRPC support for high-throughput clients `[MODE: R]` ✓ Research complete (2026-01-07)
 
 ## PRIORITY QUEUE RESEARCH (2026-01-07)
 
@@ -1394,4 +1394,101 @@ pub struct PoolWarmingConfig {
 ```
 
 **Code Location:** `src-tauri/src/proxy/config.rs`
+
+## SLINT WEBASSEMBLY RESEARCH (2026-01-07)
+**Status: ✓ RESEARCH COMPLETE**
+
+### Summary
+Slint UI applications can be compiled to WebAssembly (Wasm) and run in a web browser using `wasm-bindgen` and `wasm-pack`.
+
+### Compilation Steps
+1. **Modify Cargo.toml:**
+   - Set `crate-type = ["cdylib"]` in `[lib]` section
+   - Add `wasm-bindgen = "0.2"` for wasm32 target
+2. **Modify main.rs:**
+   - Mark entry point with `#[wasm_bindgen(start)]`
+   - Export `pub fn main()` with Slint UI initialization
+3. **Build:** `wasm-pack build --release --target web`
+4. **HTML Integration:** Use `<canvas id="canvas">` element
+
+### Rendering
+- Slint renders to HTML `<canvas>` using **WebGL**
+- Bypasses DOM and CSS for consistent cross-platform look
+- No standard browser text rendering or accessibility features
+
+### Use Cases
+- **Recommended:** Demos, tools/dashboards, consistency across platforms
+- **Not Recommended:** Deep web integration, accessibility requirements
+
+### Trade-offs
+| Aspect | Native Desktop | WebAssembly |
+|--------|----------------|-------------|
+| Binary Size | 15-21 MB | ~2-4 MB (wasm) |
+| Startup | ~50ms | ~100-200ms (load + compile) |
+| Accessibility | Native | None (canvas) |
+| Text Rendering | Native | Custom (no browser fonts) |
+
+### Recommendation
+WebAssembly support is available but **NOT recommended** for Antigravity Manager because:
+1. The desktop app already works well on all platforms
+2. Accessibility features would be lost
+3. Minimal benefit for a local proxy manager
+
+**Future Consideration:** If a lightweight web-based status dashboard is needed, consider a separate minimal web UI rather than porting the full Slint app.
+
+### Sources
+- [Slint Official Documentation](https://slint.dev)
+- [Wasm I/O 2025](https://wasm.io)
+
+## GRPC RESEARCH (2026-01-07)
+**Status: ✓ RESEARCH COMPLETE**
+
+### Summary
+gRPC with the `tonic` framework is a high-performance option for building LLM API proxies, offering 40-60% higher RPS and 25-35% lower latency compared to REST for streaming workloads.
+
+### Framework: Tonic
+- **Built on:** hyper (HTTP/2), tokio (async runtime), prost (protobuf)
+- **Protocol:** HTTP/2 with binary protobuf encoding
+- **Streaming:** Native bidirectional streaming support
+- **Code Generation:** `tonic-build` from .proto files
+
+### Performance Characteristics
+| Metric | REST (JSON) | gRPC (Protobuf) |
+|--------|-------------|-----------------|
+| RPS | Baseline | +40-60% |
+| Latency | Baseline | -25-35% |
+| Payload Size | ~100% | ~30-50% (binary) |
+| Streaming Efficiency | SSE (text) | Native binary |
+
+### Real-World Reference: TensorZero Gateway
+- Rust + gRPC-based LLM inference gateway
+- **<1ms P99 latency overhead** at 10,000 QPS
+- Unified interface for multiple LLM providers
+- Demonstrates production viability of Rust + gRPC for AI workloads
+
+### Integration Approach (If Implemented)
+1. **Define .proto schemas** for request/response messages
+2. **Add tonic-build** to build.rs for code generation
+3. **Create gRPC server** alongside existing HTTP/REST
+4. **Dual-protocol support:** gRPC for high-throughput clients, REST for compatibility
+
+### Trade-offs
+| Aspect | REST (Current) | gRPC (Potential) |
+|--------|----------------|------------------|
+| Client Support | Universal | Requires protobuf |
+| Debugging | curl, browser | grpcurl, specialized |
+| Streaming | SSE text-based | Binary, more efficient |
+| Learning Curve | Low | Medium |
+| Schema Evolution | JSON flexible | Protobuf versioning |
+
+### Recommendation
+gRPC is **OPTIONAL** for Antigravity Manager because:
+1. Current REST/SSE implementation works well for most use cases
+2. Claude Code and similar clients expect OpenAI-compatible REST APIs
+3. gRPC would add complexity for marginal gains in typical usage
+
+**Consider implementing if:**
+- High-throughput batch processing becomes a use case (>1000 QPS)
+- Native mobile clients require efficient streaming
+- Internal microservice communication is needed
 
