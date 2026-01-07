@@ -349,6 +349,43 @@ struct ConfigReloadResponse {
     message: Option<String>,
 }
 
+/// Response for database backup endpoint
+#[derive(Debug, Serialize)]
+struct BackupResponse {
+    success: bool,
+    backup_path: String,
+    size_bytes: u64,
+    timestamp: String,
+}
+
+/// Response for database restore endpoint  
+#[derive(Debug, Serialize)]
+struct RestoreResponse {
+    success: bool,
+    restored_from: String,
+    message: String,
+}
+
+/// Request for database restore endpoint
+#[derive(Debug, Deserialize)]
+struct RestoreRequest {
+    backup_path: String,
+}
+
+/// Response for listing backups
+#[derive(Debug, Serialize)]
+struct BackupInfo {
+    path: String,
+    size_bytes: u64,
+    created_at: String,
+    age_hours: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct ListBackupsResponse {
+    backups: Vec<BackupInfo>,
+}
+
 #[derive(Debug, Serialize)]
 struct ErrorResponse {
     error: String,
@@ -1388,6 +1425,154 @@ fn determine_overall_status(
 }
 
 // ============================================================================
+// Database Backup/Restore Handlers
+// ============================================================================
+
+async fn create_backup_handler(
+    State(state): State<Arc<AdminState>>,
+) -> Result<Json<BackupResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let db_path = state.data_dir.join("proxy_logs.db");
+    let backup_dir = state.data_dir.join("backups");
+
+    if let Err(e) = tokio::fs::create_dir_all(&backup_dir).await {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse::new(format!("Failed to create backup directory: {e}"))),
+        ));
+    }
+
+    let timestamp = time::OffsetDateTime::now_utc();
+    let timestamp_str = timestamp
+        .format(&time::format_description::parse("[year][month][day]_[hour][minute][second]").unwrap())
+        .unwrap_or_else(|_| "unknown".to_string());
+    
+    let backup_filename = format!("proxy_logs_{timestamp_str}.db");
+    let backup_path = backup_dir.join(&backup_filename);
+
+    match tokio::fs::copy(&db_path, &backup_path).await {
+        Ok(size) => {
+            info!("Created database backup: {:?} ({} bytes)", backup_path, size);
+            
+            let timestamp_display = timestamp
+                .format(&time::format_description::well_known::Rfc3339)
+                .unwrap_or_else(|_| "unknown".to_string());
+
+            Ok(Json(BackupResponse {
+                success: true,
+                backup_path: backup_path.to_string_lossy().to_string(),
+                size_bytes: size,
+                timestamp: timestamp_display,
+            }))
+        }
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse::new(format!("Failed to create backup: {e}"))),
+        )),
+    }
+}
+
+async fn list_backups_handler(
+    State(state): State<Arc<AdminState>>,
+) -> Result<Json<ListBackupsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let backup_dir = state.data_dir.join("backups");
+
+    if !backup_dir.exists() {
+        return Ok(Json(ListBackupsResponse { backups: vec![] }));
+    }
+
+    let mut backups = Vec::new();
+    let mut entries = match tokio::fs::read_dir(&backup_dir).await {
+        Ok(e) => e,
+        Err(e) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse::new(format!("Failed to read backup directory: {e}"))),
+            ));
+        }
+    };
+
+    let now = std::time::SystemTime::now();
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        if path.extension().is_some_and(|e| e == "db") {
+            if let Ok(metadata) = tokio::fs::metadata(&path).await {
+                let created_at = metadata
+                    .created()
+                    .or_else(|_| metadata.modified())
+                    .unwrap_or(now);
+                
+                let age_hours = now
+                    .duration_since(created_at)
+                    .map(|d| d.as_secs() / 3600)
+                    .unwrap_or(0);
+
+                let created_str = time::OffsetDateTime::from(created_at)
+                    .format(&time::format_description::well_known::Rfc3339)
+                    .unwrap_or_else(|_| "unknown".to_string());
+
+                backups.push(BackupInfo {
+                    path: path.to_string_lossy().to_string(),
+                    size_bytes: metadata.len(),
+                    created_at: created_str,
+                    age_hours,
+                });
+            }
+        }
+    }
+
+    backups.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+    Ok(Json(ListBackupsResponse { backups }))
+}
+
+async fn restore_backup_handler(
+    State(state): State<Arc<AdminState>>,
+    Json(req): Json<RestoreRequest>,
+) -> Result<Json<RestoreResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let backup_path = std::path::PathBuf::from(&req.backup_path);
+    
+    if !backup_path.exists() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse::new("Backup file not found")),
+        ));
+    }
+
+    if !backup_path.extension().is_some_and(|e| e == "db") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new("Invalid backup file (must be .db)")),
+        ));
+    }
+
+    let db_path = state.data_dir.join("proxy_logs.db");
+    
+    let pre_restore_backup = state.data_dir.join("proxy_logs_pre_restore.db");
+    if db_path.exists() {
+        if let Err(e) = tokio::fs::copy(&db_path, &pre_restore_backup).await {
+            warn!("Failed to create pre-restore backup: {e}");
+        }
+    }
+
+    match tokio::fs::copy(&backup_path, &db_path).await {
+        Ok(size) => {
+            info!("Restored database from {:?} ({} bytes)", backup_path, size);
+            
+            Ok(Json(RestoreResponse {
+                success: true,
+                restored_from: req.backup_path,
+                message: format!("Database restored successfully ({size} bytes). Pre-restore backup saved."),
+            }))
+        }
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse::new(format!("Failed to restore backup: {e}"))),
+        )),
+    }
+}
+
+// ============================================================================
 // Main Entry Point
 // ============================================================================
 
@@ -1668,6 +1853,9 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
         )
         .route("/api/config/reload", post(reload_config_handler))
         .route("/api/stats", get(get_stats_handler))
+        .route("/api/db/backup", post(create_backup_handler))
+        .route("/api/db/backups", get(list_backups_handler))
+        .route("/api/db/restore", post(restore_backup_handler))
         .layer(middleware::from_fn_with_state(
             admin_state.clone(),
             admin_auth_middleware,
