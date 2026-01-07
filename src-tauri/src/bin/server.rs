@@ -542,6 +542,239 @@ struct AppConfigWrapper {
     auto_launch: bool,
 }
 
+// ============================================================================
+// Startup Self-Test
+// ============================================================================
+
+/// Result of a single component self-test
+#[derive(Debug)]
+struct SelfTestResult {
+    component: &'static str,
+    passed: bool,
+    message: String,
+    critical: bool,
+}
+
+impl SelfTestResult {
+    fn pass(component: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            component,
+            passed: true,
+            message: message.into(),
+            critical: false,
+        }
+    }
+
+    fn fail(component: &'static str, message: impl Into<String>, critical: bool) -> Self {
+        Self {
+            component,
+            passed: false,
+            message: message.into(),
+            critical,
+        }
+    }
+}
+
+/// Run startup self-tests for critical components
+/// Returns true if all critical tests pass, false if any critical test fails
+async fn run_startup_self_tests(data_dir: &std::path::Path) -> bool {
+    info!("Running startup self-tests...");
+    let mut results = Vec::new();
+
+    // Test 1: Data directory is writable
+    results.push(test_data_dir_writable(data_dir).await);
+
+    // Test 2: Database is accessible
+    results.push(test_database_accessible(data_dir).await);
+
+    // Test 3: Accounts directory exists
+    results.push(test_accounts_dir(data_dir).await);
+
+    // Test 4: Log directory is writable
+    results.push(test_log_dir_writable(data_dir).await);
+
+    // Test 5: Config file is valid (if exists)
+    results.push(test_config_valid(data_dir).await);
+
+    // Test 6: Network ports are available (checked separately in run_server)
+    // Skipped here as it's checked during server binding
+
+    // Report results
+    let mut all_critical_passed = true;
+    let mut passed_count = 0;
+    let mut failed_count = 0;
+
+    for result in &results {
+        if result.passed {
+            passed_count += 1;
+            info!("  ✓ {}: {}", result.component, result.message);
+        } else {
+            failed_count += 1;
+            if result.critical {
+                error!("  ✗ {}: {} [CRITICAL]", result.component, result.message);
+                all_critical_passed = false;
+            } else {
+                warn!("  ⚠ {}: {} [WARNING]", result.component, result.message);
+            }
+        }
+    }
+
+    info!(
+        "Self-test complete: {} passed, {} failed",
+        passed_count, failed_count
+    );
+
+    all_critical_passed
+}
+
+async fn test_data_dir_writable(data_dir: &std::path::Path) -> SelfTestResult {
+    let test_file = data_dir.join(".self_test_write_check");
+    
+    match tokio::fs::write(&test_file, b"test").await {
+        Ok(()) => {
+            // Cleanup
+            let _ = tokio::fs::remove_file(&test_file).await;
+            SelfTestResult::pass("Data Directory", format!("{:?} is writable", data_dir))
+        }
+        Err(e) => SelfTestResult::fail(
+            "Data Directory",
+            format!("{:?} is not writable: {}", data_dir, e),
+            true, // Critical - we need to write logs and state
+        ),
+    }
+}
+
+async fn test_database_accessible(data_dir: &std::path::Path) -> SelfTestResult {
+    let db_path = data_dir.join("proxy_logs.db");
+    
+    // Try to open/create the database
+    match rusqlite::Connection::open(&db_path) {
+        Ok(conn) => {
+            // Try a simple query
+            match conn.query_row("SELECT 1", [], |row| row.get::<_, i32>(0)) {
+                Ok(_) => SelfTestResult::pass("Database", format!("{:?} accessible", db_path)),
+                Err(e) => SelfTestResult::fail(
+                    "Database",
+                    format!("Query failed: {}", e),
+                    true,
+                ),
+            }
+        }
+        Err(e) => SelfTestResult::fail(
+            "Database",
+            format!("Cannot open {:?}: {}", db_path, e),
+            true, // Critical - we need the database for logging and analytics
+        ),
+    }
+}
+
+async fn test_accounts_dir(data_dir: &std::path::Path) -> SelfTestResult {
+    let accounts_dir = data_dir.join("accounts");
+    
+    if accounts_dir.exists() {
+        // Count account files
+        let count = match std::fs::read_dir(&accounts_dir) {
+            Ok(entries) => entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
+                .count(),
+            Err(_) => 0,
+        };
+        SelfTestResult::pass("Accounts Directory", format!("{} account files found", count))
+    } else {
+        // Not critical - will be created
+        SelfTestResult::fail(
+            "Accounts Directory",
+            format!("{:?} does not exist (will be created)", accounts_dir),
+            false, // Not critical - server will create it
+        )
+    }
+}
+
+async fn test_log_dir_writable(data_dir: &std::path::Path) -> SelfTestResult {
+    let log_dir = data_dir.join("logs");
+    
+    // Ensure log directory exists
+    if !log_dir.exists() {
+        if let Err(e) = tokio::fs::create_dir_all(&log_dir).await {
+            return SelfTestResult::fail(
+                "Log Directory",
+                format!("Cannot create {:?}: {}", log_dir, e),
+                false, // Not critical - logging can fall back to console
+            );
+        }
+    }
+    
+    let test_file = log_dir.join(".self_test_log_check");
+    match tokio::fs::write(&test_file, b"test").await {
+        Ok(()) => {
+            let _ = tokio::fs::remove_file(&test_file).await;
+            SelfTestResult::pass("Log Directory", format!("{:?} is writable", log_dir))
+        }
+        Err(e) => SelfTestResult::fail(
+            "Log Directory",
+            format!("{:?} is not writable: {}", log_dir, e),
+            false, // Not critical - can use console logging
+        ),
+    }
+}
+
+async fn test_config_valid(data_dir: &std::path::Path) -> SelfTestResult {
+    let config_path = data_dir.join("gui_config.json");
+    
+    if !config_path.exists() {
+        return SelfTestResult::pass("Configuration", "No config file (using defaults)");
+    }
+    
+    match tokio::fs::read_to_string(&config_path).await {
+        Ok(content) => {
+            match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(json) => {
+                    if let Some(proxy) = json.get("proxy") {
+                        match serde_json::from_value::<ProxyConfig>(proxy.clone()) {
+                            Ok(config) => {
+                                // Validate config
+                                match config.validate() {
+                                    Ok(()) => SelfTestResult::pass(
+                                        "Configuration",
+                                        format!("{:?} is valid", config_path),
+                                    ),
+                                    Err(errors) => SelfTestResult::fail(
+                                        "Configuration",
+                                        format!("{} validation warnings", errors.len()),
+                                        false, // Not critical - server will use defaults for invalid fields
+                                    ),
+                                }
+                            }
+                            Err(e) => SelfTestResult::fail(
+                                "Configuration",
+                                format!("Invalid proxy config: {}", e),
+                                false,
+                            ),
+                        }
+                    } else {
+                        SelfTestResult::pass("Configuration", "No proxy section (using defaults)")
+                    }
+                }
+                Err(e) => SelfTestResult::fail(
+                    "Configuration",
+                    format!("Invalid JSON: {}", e),
+                    false,
+                ),
+            }
+        }
+        Err(e) => SelfTestResult::fail(
+            "Configuration",
+            format!("Cannot read config: {}", e),
+            false,
+        ),
+    }
+}
+
+// ============================================================================
+// Config Persistence
+// ============================================================================
+
 async fn save_proxy_config(data_dir: &std::path::Path, config: &ProxyConfig) -> Result<(), String> {
     let config_path = data_dir.join("gui_config.json");
 
@@ -1727,6 +1960,12 @@ async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     info!("Data directory: {:?}", server_config.data_dir);
+
+    // Run startup self-tests
+    if !run_startup_self_tests(&server_config.data_dir).await {
+        error!("Critical self-test failed! Server cannot start safely.");
+        return Err("Startup self-test failed".into());
+    }
 
     // Re-load the proxy_config as mutable for env overrides
     let mut proxy_config = proxy_config;

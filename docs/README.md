@@ -5,6 +5,8 @@ This folder contains developer-focused documentation (architecture, implementati
 ## Proxy
 - [`docs/proxy/auth.md`](proxy/auth.md) — proxy authorization modes, expected client behavior, and implementation pointers.
 - [`docs/proxy/accounts.md`](proxy/accounts.md) — account lifecycle in the proxy pool (including auto-disable on `invalid_grant`) and UI behavior.
+- [`docs/proxy/admin-api.md`](proxy/admin-api.md) — complete REST API reference for the headless server Admin API.
+- [`docs/proxy/adaptive-rate-limiting.md`](proxy/adaptive-rate-limiting.md) — AIMD-based predictive rate limiting configuration and tuning guide.
 
 ## z.ai (GLM) integration
 - [`docs/zai/implementation.md`](zai/implementation.md) — end-to-end “what’s implemented” and how to validate it.

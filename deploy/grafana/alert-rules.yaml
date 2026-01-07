@@ -288,3 +288,227 @@ groups:
         labels:
           severity: warning
           service: antigravity
+
+  - name: antigravity-aimd
+    folder: Antigravity
+    interval: 1m
+    rules:
+      # ============================================================
+      # AIMDPenaltySpike - Alert when AIMD penalties spike (many 429s)
+      # ============================================================
+      - uid: antigravity-aimd-penalty-spike
+        title: AIMDPenaltySpike
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: sum(rate(antigravity_aimd_penalties_total[5m])) * 60
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 10
+                  operator:
+                    type: and
+                  reducer:
+                    type: last
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: "Antigravity: AIMD penalty spike ({{ $values.A.Value | printf \"%.1f\" }}/min)"
+          description: "High rate of AIMD penalties indicates many 429 errors. Adaptive limits are contracting aggressively."
+          runbook_url: "Check account quotas and consider adding more accounts"
+        labels:
+          severity: warning
+          service: antigravity
+
+      # ============================================================
+      # AIMDStagnation - Alert when no AIMD activity (system not learning)
+      # ============================================================
+      - uid: antigravity-aimd-stagnation
+        title: AIMDStagnation
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: sum(increase(antigravity_aimd_rewards_total[1h])) or vector(0)
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: sum(increase(antigravity_aimd_penalties_total[1h])) or vector(0)
+              instant: true
+              refId: B
+          - refId: C
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: math
+              expression: "($A + $B) < 1"
+        noDataState: OK
+        execErrState: OK
+        for: 1h
+        annotations:
+          summary: "Antigravity: AIMD system inactive for 1+ hour"
+          description: "No AIMD rewards or penalties recorded. System may not be learning rate limits properly."
+          runbook_url: "Verify adaptive_rate_limit.enabled=true in config"
+        labels:
+          severity: info
+          service: antigravity
+
+      # ============================================================
+      # HedgeWinRateHigh - Alert when hedges win too often (primary too slow)
+      # ============================================================
+      - uid: antigravity-hedge-win-rate-high
+        title: HedgeWinRateHigh
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: sum(increase(antigravity_hedge_wins_total[30m])) or vector(0)
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: sum(increase(antigravity_hedged_requests_total[30m])) or vector(0)
+              instant: true
+              refId: B
+          - refId: C
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: math
+              expression: "$B > 10 and ($A / $B) > 0.5"
+        noDataState: OK
+        execErrState: OK
+        for: 30m
+        annotations:
+          summary: "Antigravity: Hedge requests winning >50% of the time"
+          description: "Primary requests are slow - hedges are winning {{ $values.A.Value | printf \"%.0f\" }}/{{ $values.B.Value | printf \"%.0f\" }} times. Consider increasing p95_latency_ms."
+          runbook_url: "Tune hedging.p95_latency_ms in config"
+        labels:
+          severity: info
+          service: antigravity
+
+      # ============================================================
+      # AdaptiveLimitFloor - Alert when accounts hitting min_limit floor
+      # ============================================================
+      - uid: antigravity-adaptive-limit-floor
+        title: AdaptiveLimitFloor
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: count(antigravity_predicted_limit_gauge <= 10) or vector(0)
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 2
+                  operator:
+                    type: and
+                  reducer:
+                    type: last
+        noDataState: OK
+        execErrState: OK
+        for: 10m
+        annotations:
+          summary: "Antigravity: {{ $values.A.Value | printf \"%.0f\" }} accounts at adaptive limit floor"
+          description: "Multiple accounts have hit the minimum limit floor (10 RPM). These accounts may be heavily rate-limited upstream."
+          runbook_url: "Check account quotas or increase min_limit config"
+        labels:
+          severity: warning
+          service: antigravity
+
+      # ============================================================
+      # ProbeFailureRate - Alert when cheap probes failing frequently
+      # ============================================================
+      - uid: antigravity-probe-failure-rate
+        title: ProbeFailureRate
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: sum(rate(antigravity_adaptive_probes_total{strategy="cheap_probe"}[10m])) * 600 or vector(0)
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: sum(rate(antigravity_aimd_penalties_total[10m])) * 600 or vector(0)
+              instant: true
+              refId: B
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: math
+              expression: "$A > 5 and ($B / $A) > 0.3"
+        noDataState: OK
+        execErrState: OK
+        for: 10m
+        annotations:
+          summary: "Antigravity: High probe failure rate (>30%)"
+          description: "Cheap probes are triggering 429 errors frequently. Accounts may be near their true limits."
+          runbook_url: "Consider lowering safety_margin or disabling cheap probes"
+        labels:
+          severity: info
+          service: antigravity
