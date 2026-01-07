@@ -1,0 +1,13 @@
+[Unit]
+Description=Antigravity VPS Health Check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/stranmor/Documents/project/_mycelium/Antigravity-Manager/scripts/monitor-vps.sh
+StandardOutput=append:/tmp/antigravity-monitor.log
+StandardError=append:/tmp/antigravity-monitor.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Antigravity VPS Health Check Timer
+Requires=antigravity-monitor.service
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

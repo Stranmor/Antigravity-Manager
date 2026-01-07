@@ -157,7 +157,7 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 
 ### Priority 1: AUTOMATED MONITORING (IN PROGRESS)
 - [x] Implement Telegram/Slack webhook alerting `[MODE: B]` ✓ 16d71ab9 (AlertManager module, 5 rules, multi-channel dispatch)
-- [ ] Add VPS health check monitoring with auto-restart `[MODE: B]`
+- [x] Add VPS health check monitoring with auto-restart `[MODE: B]` ✓ (scripts/monitor-vps.sh, systemd timer, docs/operations.md)
 - [ ] Create metrics analysis dashboard for production workload `[MODE: B]`
 
 ### Priority 2: OPERATIONAL TOOLING
