@@ -56,7 +56,7 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Extend live config reload via Admin API `[MODE: B]` ✓ POST /api/config/reload endpoint
 
 ### Priority 4: RESEARCH
-- [ ] Research request coalescing/deduplication `[MODE: R]` - SHA256 hash-based duplicate detection
+- [x] Research request coalescing/deduplication `[MODE: R]` ✓ Research complete (2026-01-07) - xxHash3 recommended
 - [x] Research priority queue implementation `[MODE: R]` ✓ Research complete (2026-01-07)
 
 ## PRIORITY QUEUE RESEARCH (2026-01-07)
@@ -198,6 +198,53 @@ cargo test --features headless hedging
 # - test_error_propagation
 # - test_hedge_result_into_inner
 ```
+
+## REQUEST COALESCING RESEARCH (2026-01-07)
+**Status: ✓ RESEARCH COMPLETE**
+
+### Recommended Approach
+Use **request fingerprinting** with **in-flight deduplication** to coalesce identical concurrent requests.
+
+### 1. Request Fingerprinting
+- **Algorithm:** Use **xxHash3** (`xxhash-rust` crate) - non-cryptographic but extremely fast (>20GB/s)
+- **Hash Fields:**
+  - `model` string
+  - `messages` array (role + content normalized)
+  - `system` prompt
+  - `tools` definition
+  - `temperature`, `top_p`, `max_tokens`
+- **Exclusions:** `request_id`, timestamps, user-specific metadata
+- **Storage:** `u64` hash for O(1) lookups in DashMap
+
+### 2. Coalescing Strategy
+- **Window:** 500ms to 2000ms configurable
+- **Storage:** `DashMap<u64, CoalescedRequest>` for thread-safe concurrent access
+- **Memory Limit:** LRU cache capped at 10,000 fingerprints
+
+### 3. Implementation Pattern
+```rust
+type SharedStream = broadcast::Sender<Result<Chunk, Error>>;
+struct CoalesceManager {
+    pending: DashMap<u64, SharedStream>,
+}
+
+// Atomic entry pattern:
+let entry = map.entry(hash).or_insert_with(|| {
+    let (tx, rx) = broadcast::channel(16);
+    spawn_upstream_call(tx);
+    CoalescedRequest { tx, .. }
+});
+```
+
+### 4. Key Libraries
+- **xxhash-rust** v0.8 - Fast non-cryptographic hashing
+- **DashMap** - Already in project, thread-safe HashMap
+- **tokio::sync::broadcast** - 1-to-N token distribution for SSE
+
+### 5. Trade-offs
+- **Complexity:** Medium (3-4 days implementation)
+- **Benefits:** Reduced API costs, lower latency for duplicate prompts
+- **Risks:** All coalesced requests fail together if master fails
 
 ## AUTOMATIC VPS DEPLOYMENT (2026-01-07)
 **Status: ✓ IMPLEMENTED**
