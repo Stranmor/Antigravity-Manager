@@ -113,26 +113,29 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Integration tests for probe strategies `[MODE: C]` ✓ smart_prober tests
 - [x] Property-based tests for limit convergence `[MODE: C]` ✓ Decay tests in adaptive_limit
 
-## CURRENT ACTIVE BATCH (Phase 12 - Stability & Documentation)
+## COMPLETED: Phase 12 - Stability & Documentation (2026-01-07)
 **Focus: Production hardening, documentation, and cleanup**
 
 ### Priority 1: DOCUMENTATION
-- [ ] Update README with VPS deployment instructions `[MODE: B]`
-- [ ] Add API documentation for Admin endpoints `[MODE: B]`
-- [ ] Document adaptive rate limiting configuration `[MODE: B]`
+- [x] Update README with VPS deployment instructions `[MODE: B]` ✓ Already documented
+- [x] Add API documentation for Admin endpoints `[MODE: B]` ✓ docs/admin-api.md (314da16)
+- [x] Document adaptive rate limiting configuration `[MODE: B]` ✓ docs/adaptive-rate-limiting.md (314da16)
 
 ### Priority 2: PRODUCTION HARDENING
-- [ ] Add database backup/restore functionality `[MODE: B]`
-- [ ] Implement config validation on load `[MODE: B]`
-- [ ] Add startup self-test for critical components `[MODE: B]`
+- [x] Add database backup/restore functionality `[MODE: B]` ✓ create_backup(), restore_from_backup() (314da16)
+- [x] Implement config validation on load `[MODE: B]` ✓ Already present (ProxyConfig::validate)
+- [x] Add startup self-test for critical components `[MODE: B]` ✓ Already present (run_startup_self_tests)
 
 ### Priority 3: MONITORING
-- [ ] Add Grafana dashboard for adaptive rate limiting metrics `[MODE: B]`
-- [ ] Add alerting rules for AIMD anomalies `[MODE: B]`
+- [x] Add Grafana dashboard for adaptive rate limiting metrics `[MODE: B]` ✓ adaptive-rate-limiting-dashboard.json (11d78b2a)
+- [x] Add alerting rules for AIMD anomalies `[MODE: B]` ✓ 5 new alerts in alert-rules.yaml (11d78b2a)
 
 ### Priority 4: OPTIMIZATION
-- [ ] Profile memory usage under load `[MODE: R]`
-- [ ] Optimize DashMap contention in hot paths `[MODE: B]`
+- [ ] Profile memory usage under load `[MODE: R]` (Deferred - requires production workload)
+- [ ] Optimize DashMap contention in hot paths `[MODE: B]` (Deferred - not a bottleneck yet)
+
+## CURRENT ACTIVE BATCH (Phase 13 - Future Enhancements)
+**Status: PHASE 12 COMPLETE - AWAITING NEW STRATEGIC GOAL**
 
 ---
 
