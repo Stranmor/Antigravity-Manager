@@ -124,6 +124,10 @@ pub struct AppState {
     pub coalescer: Arc<crate::proxy::common::coalescing::CoalesceManager<serde_json::Value>>,
     /// Priority queue scheduler for fair request processing (MLQ + DRR)
     pub scheduler: Arc<crate::proxy::common::scheduler::PriorityScheduler<serde_json::Value>>,
+    /// Adaptive rate limit manager (AIMD-based predictive limits)
+    pub adaptive_limits: Arc<crate::proxy::adaptive_limit::AdaptiveLimitManager>,
+    /// Smart prober for speculative hedging and limit discovery
+    pub smart_prober: Arc<crate::proxy::smart_prober::SmartProber>,
 }
 
 /// Axum 服务器实例
@@ -250,6 +254,32 @@ impl AxumServer {
         // Initialize scheduler metrics
         crate::proxy::common::scheduler::init_scheduler_metrics();
 
+        // Initialize adaptive rate limit manager with default config
+        let adaptive_config = crate::proxy::config::AdaptiveRateLimitConfig::default();
+        let aimd = crate::proxy::adaptive_limit::AIMDController {
+            additive_increase: adaptive_config.aimd_increase,
+            multiplicative_decrease: adaptive_config.aimd_decrease,
+            min_limit: adaptive_config.min_limit,
+            max_limit: adaptive_config.max_limit,
+        };
+        let adaptive_limits = Arc::new(
+            crate::proxy::adaptive_limit::AdaptiveLimitManager::new(
+                adaptive_config.safety_margin,
+                aimd,
+            )
+        );
+
+        // Initialize smart prober for speculative hedging
+        let prober_config = crate::proxy::smart_prober::SmartProberConfig {
+            p95_latency: std::time::Duration::from_millis(adaptive_config.p95_latency_ms),
+            jitter_percent: adaptive_config.jitter_percent,
+            enable_cheap_probes: adaptive_config.enable_cheap_probes,
+            enable_hedging: adaptive_config.enable_hedging,
+        };
+        let smart_prober = Arc::new(
+            crate::proxy::smart_prober::SmartProber::new(prober_config, adaptive_limits.clone())
+        );
+
 	        let state = AppState {
 	            token_manager: token_manager.clone(),
 	            anthropic_mapping: mapping_state.clone(),
@@ -273,6 +303,8 @@ impl AxumServer {
             hedger,
             coalescer,
             scheduler,
+            adaptive_limits,
+            smart_prober,
         };
 
 

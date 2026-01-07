@@ -210,14 +210,18 @@ pub fn format_final_error(max_attempts: usize, overload_retry_count: usize, last
     format!("All {max_attempts} attempts failed{retry_info}. Last error: {last_error}")
 }
 
-/// Records success in health monitor and circuit breaker
+/// Records success in health monitor, circuit breaker, and adaptive rate limiter
 pub fn record_success(state: &AppState, account_id: &str) {
     state.health_monitor.record_success(account_id);
     state.circuit_breaker.record_success(account_id);
+    state.smart_prober.record_success(account_id);
 }
 
-/// Records failure in circuit breaker (skip for 529 global overload)
+/// Records failure in circuit breaker and adaptive rate limiter
 pub fn record_failure(state: &AppState, account_id: &str, status_code: u16, error_text: &str) {
+    if status_code == 429 {
+        state.smart_prober.record_429(account_id);
+    }
     if status_code != 529 && status_code >= 400 {
         state.circuit_breaker.record_failure(account_id, error_text);
     }

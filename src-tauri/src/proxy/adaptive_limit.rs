@@ -290,6 +290,8 @@ impl AdaptiveLimitTracker {
         *self.last_calibration.write().unwrap() = Instant::now();
         self.consecutive_above_threshold.store(0, Ordering::Relaxed);
 
+        crate::proxy::prometheus::record_aimd_penalty();
+
         tracing::warn!(
             "📉 AIMD penalize: limit {} → {} (threshold: {}), actual hit at: {}",
             old_limit,
@@ -309,6 +311,8 @@ impl AdaptiveLimitTracker {
         self.working_threshold.store(new_threshold, Ordering::Relaxed);
         self.ceiling.fetch_max(new_limit, Ordering::Relaxed);
         *self.last_calibration.write().unwrap() = Instant::now();
+
+        crate::proxy::prometheus::record_aimd_reward();
 
         tracing::info!(
             "📈 AIMD reward: limit {} → {} (threshold: {})",
