@@ -136,7 +136,7 @@ impl RequestSampler {
                 .take_while(|(i, _)| *i < self.config.max_body_size)
                 .map(|(_, c)| c)
                 .collect::<String>();
-            (format!("{}...[truncated]", truncated), true)
+            (format!("{truncated}...[truncated]"), true)
         }
     }
 

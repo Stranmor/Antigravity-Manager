@@ -131,7 +131,7 @@ impl AdaptiveLimitTracker {
             ceiling: AtomicU64::new(default_limit),
             requests_this_minute: AtomicU64::new(0),
             minute_started_at: RwLock::new(Instant::now()),
-            last_calibration: RwLock::new(Instant::now() - Duration::from_secs(3600)), // Start as "stale"
+            last_calibration: RwLock::new(Instant::now().checked_sub(Duration::from_secs(3600)).unwrap_or_else(Instant::now)),
             consecutive_above_threshold: AtomicU64::new(0),
             safety_margin,
             aimd,

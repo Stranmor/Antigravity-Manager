@@ -881,7 +881,7 @@ async fn reload_config_handler(State(state): State<Arc<AdminState>>) -> impl Int
         changes.push("custom_mapping: updated".to_string());
     }
     if old_config.sampling.enabled != new_config.sampling.enabled
-        || old_config.sampling.sample_rate != new_config.sampling.sample_rate
+        || (old_config.sampling.sample_rate - new_config.sampling.sample_rate).abs() > f64::EPSILON
     {
         changes.push(format!(
             "sampling: enabled={}, rate={}",

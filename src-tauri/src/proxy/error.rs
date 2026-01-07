@@ -367,11 +367,10 @@ impl ProxyError {
                 }
             }
 
-            // Rate limiting
-            ProxyError::RateLimited(_, _) => ErrorCode::RateLimited,
-
-            // Overload is a form of rate limiting
-            ProxyError::Overloaded(_, _) => ErrorCode::RateLimited,
+            // Rate limiting and overload
+            ProxyError::RateLimited(_, _) | ProxyError::Overloaded(_, _) => {
+                ErrorCode::RateLimited
+            }
 
             // Parse errors are upstream issues
             ProxyError::ParseError(_, _) => ErrorCode::UpstreamError,

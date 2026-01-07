@@ -488,7 +488,7 @@ fn update_daily_stats(conn: &Connection, account_id: &str, log: &ProxyRequestLog
             i32::from(!is_success),
             input_tokens,
             output_tokens,
-            log.duration as i64,
+            i64::try_from(log.duration).unwrap_or(i64::MAX),
             i32::from(is_rate_limit),
             timestamp,
         ],
@@ -855,7 +855,7 @@ pub fn save_adaptive_limit(
              ceiling = ?3,
              last_calibration = ?4,
              updated_at = ?4",
-        params![account_id, confirmed_limit as i64, ceiling as i64, now],
+        params![account_id, i64::try_from(confirmed_limit).unwrap_or(i64::MAX), i64::try_from(ceiling).unwrap_or(i64::MAX), now],
     ).map_err(|e| e.to_string())?;
 
     Ok(())
@@ -877,7 +877,7 @@ pub fn save_adaptive_limits_batch(
                  ceiling = ?3,
                  last_calibration = ?4,
                  updated_at = ?4",
-            params![account_id, *confirmed_limit as i64, *ceiling as i64, now],
+            params![account_id, i64::try_from(*confirmed_limit).unwrap_or(i64::MAX), i64::try_from(*ceiling).unwrap_or(i64::MAX), now],
         ).map_err(|e| e.to_string())?;
     }
 

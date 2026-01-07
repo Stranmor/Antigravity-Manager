@@ -244,7 +244,7 @@ impl CircuitBreakerManager {
                         previous_state,
                         CircuitState::Open,
                         Some(reason),
-                        Some(circuit.consecutive_failures as i32),
+                        Some(i32::try_from(circuit.consecutive_failures).unwrap_or(i32::MAX)),
                     );
                 }
             }
@@ -265,7 +265,7 @@ impl CircuitBreakerManager {
                     previous_state,
                     CircuitState::Open,
                     Some(reason),
-                    Some(circuit.consecutive_failures as i32),
+                    Some(i32::try_from(circuit.consecutive_failures).unwrap_or(i32::MAX)),
                 );
             }
             CircuitState::Open => {

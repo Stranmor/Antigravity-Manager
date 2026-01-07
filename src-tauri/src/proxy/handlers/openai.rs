@@ -439,10 +439,10 @@ pub async fn handle_chat_completions(
             );
 
             // Handle overload errors
-            if is_overload_error(status_code, &error_text) {
-                if handle_overload_retry(&mut overload_retry_count, trace_id, &email, "OpenAI").await {
-                    continue;
-                }
+            if is_overload_error(status_code, &error_text)
+                && handle_overload_retry(&mut overload_retry_count, trace_id, &email, "OpenAI").await
+            {
+                continue;
             }
 
             // Parse RetryInfo from Google Cloud
@@ -692,10 +692,10 @@ pub async fn handle_completions(
         if status_code == 529 || status_code == 503 || status_code == 500 {
             token_manager.mark_rate_limited(&email, status_code, retry_after.as_deref(), &error_text);
 
-            if is_overload_error(status_code, &error_text) {
-                if handle_overload_retry(&mut overload_retry_count, trace_id, &email, "Codex").await {
-                    continue;
-                }
+            if is_overload_error(status_code, &error_text)
+                && handle_overload_retry(&mut overload_retry_count, trace_id, &email, "Codex").await
+            {
+                continue;
             }
         }
 
@@ -826,7 +826,7 @@ async fn handle_legacy_non_streaming(
     if state.sampler.should_sample() {
         use crate::proxy::common::sampling::SampledRequestBuilder;
 
-        let request_json = format!("{{\"model\": \"{}\"}}", mapped_model);
+        let request_json = format!("{{\"model\": \"{mapped_model}\"}}");
         let (req_excerpt, req_truncated) = state.sampler.truncate_body(&request_json);
 
         let response_json = serde_json::to_string(&legacy_resp).unwrap_or_default();

@@ -334,16 +334,14 @@ impl UpstreamClient {
                     circuit_breaker.record_failure().await;
 
                     let msg = format!(
-                        "Upstream timeout at {} after {}s (hard deadline exceeded)",
-                        base_url, timeout_secs
+                        "Upstream timeout at {base_url} after {timeout_secs}s (hard deadline exceeded)"
                     );
-                    tracing::warn!("{}", msg);
+                    tracing::warn!("{msg}");
                     last_err = Some(msg);
 
                     if !has_next {
                         break;
                     }
-                    continue;
                 }
                 // HTTP call completed within deadline
                 Ok(Ok(resp)) => {

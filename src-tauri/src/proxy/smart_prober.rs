@@ -52,9 +52,9 @@ pub enum HedgeResult<T> {
 impl<T> HedgeResult<T> {
     pub fn into_inner(self) -> T {
         match self {
-            HedgeResult::PrimaryWon(v) => v,
-            HedgeResult::HedgeWon(v) => v,
-            HedgeResult::NoHedge(v) => v,
+            HedgeResult::PrimaryWon(v)
+            | HedgeResult::HedgeWon(v)
+            | HedgeResult::NoHedge(v) => v,
         }
     }
 
@@ -142,7 +142,7 @@ impl SmartProber {
             
             tokio::spawn(async move {
                 match probe_fn().await {
-                    Ok(_) => {
+                    Ok(()) => {
                         limits.force_expand(&account);
                         tracing::debug!("🔬 Cheap probe succeeded for {}, limit expanded", account);
                     }
@@ -207,7 +207,7 @@ impl SmartProber {
                         limits.record_429(&primary_id);
                         Err(e)
                     }
-                    Err(_) => panic!("Primary task panicked"),
+                    Err(e) => panic!("Primary task panicked: {e}"),
                 }
             }
             secondary_result = &mut secondary_handle => {
@@ -221,7 +221,7 @@ impl SmartProber {
                         limits.record_429(&secondary_id);
                         Err(e)
                     }
-                    Err(_) => panic!("Secondary task panicked"),
+                    Err(e) => panic!("Secondary task panicked: {e}"),
                 }
             }
         }
@@ -273,7 +273,7 @@ impl SmartProber {
                         limits.record_429(&primary_id);
                         Err(e)
                     }
-                    Err(_) => panic!("Primary task panicked"),
+                    Err(e) => panic!("Primary task panicked: {e}"),
                 }
             }
             secondary_result = &mut secondary_handle => {
@@ -287,7 +287,7 @@ impl SmartProber {
                         limits.record_429(&secondary_id);
                         Err(e)
                     }
-                    Err(_) => panic!("Secondary task panicked"),
+                    Err(e) => panic!("Secondary task panicked: {e}"),
                 }
             }
         }

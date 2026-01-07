@@ -727,10 +727,10 @@ pub async fn handle_messages(
         }
 
         // Handle 529 overload
-        if is_overload_error(status_code, &error_text) {
-            if handle_overload_retry(&mut overload_retry_count, trace_id, &email, "Claude").await {
-                continue;
-            }
+        if is_overload_error(status_code, &error_text)
+            && handle_overload_retry(&mut overload_retry_count, trace_id, &email, "Claude").await
+        {
+            continue;
         }
 
         // Standard retry with backoff
@@ -913,8 +913,8 @@ async fn handle_non_streaming_response(
             .response_body(resp_excerpt, resp_truncated)
             .status_code(200)
             .tokens(
-                Some(claude_response.usage.input_tokens as u64),
-                Some(claude_response.usage.output_tokens as u64),
+                Some(u64::from(claude_response.usage.input_tokens)),
+                Some(u64::from(claude_response.usage.output_tokens)),
             )
             .build();
 

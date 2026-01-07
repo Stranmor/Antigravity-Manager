@@ -207,7 +207,7 @@ impl RequestHedger {
             result = &mut primary_future => {
                 // Primary completed before hedge delay
                 debug!("[{}] Primary completed before hedge delay", trace_id);
-                return result.map(HedgeResult::NoHedge);
+                result.map(HedgeResult::NoHedge)
             }
 
             () = sleep(hedge_delay) => {
@@ -230,14 +230,14 @@ impl RequestHedger {
                         // Primary completed first (hedge is auto-cancelled)
                         info!("[{}] Primary request won the race", trace_id);
                         record_primary_won();
-                        return result.map(HedgeResult::PrimaryWon);
+                        result.map(HedgeResult::PrimaryWon)
                     }
 
                     result = &mut hedge_future => {
                         // Hedge completed first (primary is auto-cancelled)
                         info!("[{}] Hedge request won the race", trace_id);
                         record_hedge_won();
-                        return result.map(HedgeResult::HedgeWon);
+                        result.map(HedgeResult::HedgeWon)
                     }
                 }
             }

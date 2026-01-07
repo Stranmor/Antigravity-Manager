@@ -48,11 +48,12 @@ use tracing::{debug, warn};
 static SCHEDULER_STATS: OnceLock<SchedulerStats> = OnceLock::new();
 
 /// Priority level for request scheduling
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum PriorityLevel {
     /// High priority: ULTRA tier, fast models, explicit priority 0
     High = 0,
     /// Normal priority: PRO tier, standard models, default
+    #[default]
     Normal = 1,
     /// Low priority: FREE tier, large models, explicit priority 2
     Low = 2,
@@ -82,19 +83,12 @@ impl PriorityLevel {
         }
     }
 
-    /// Get the next lower priority (for aging boost)
+    #[must_use]
     pub fn boosted(&self) -> Self {
         match self {
             Self::Low => Self::Normal,
-            Self::Normal => Self::High,
-            Self::High => Self::High, // Already highest
+            Self::Normal | Self::High => Self::High,
         }
-    }
-}
-
-impl Default for PriorityLevel {
-    fn default() -> Self {
-        Self::Normal
     }
 }
 
@@ -152,14 +146,14 @@ impl<T> QueuedRequest<T> {
         }
     }
 
-    /// Set account metadata
+    #[must_use]
     pub fn with_account(mut self, account_id: String, tier: Option<String>) -> Self {
         self.account_id = Some(account_id);
         self.account_tier = tier;
         self
     }
 
-    /// Set model metadata
+    #[must_use]
     pub fn with_model(mut self, model: String) -> Self {
         self.model = Some(model);
         self
@@ -658,15 +652,15 @@ impl<T: Send + Sync + 'static> PriorityScheduler<T> {
             let result = match priority {
                 PriorityLevel::High => {
                     let mut queue = self.high.lock();
-                    self.try_dequeue_from(&mut queue)
+                    Self::try_dequeue_from(&mut queue)
                 }
                 PriorityLevel::Normal => {
                     let mut queue = self.normal.lock();
-                    self.try_dequeue_from(&mut queue)
+                    Self::try_dequeue_from(&mut queue)
                 }
                 PriorityLevel::Low => {
                     let mut queue = self.low.lock();
-                    self.try_dequeue_from(&mut queue)
+                    Self::try_dequeue_from(&mut queue)
                 }
             };
 
@@ -696,8 +690,7 @@ impl<T: Send + Sync + 'static> PriorityScheduler<T> {
         None
     }
 
-    /// Try to dequeue from a specific queue using DRR
-    fn try_dequeue_from(&self, queue: &mut PriorityQueue<T>) -> Option<QueuedRequest<T>> {
+    fn try_dequeue_from(queue: &mut PriorityQueue<T>) -> Option<QueuedRequest<T>> {
         if queue.is_empty() {
             queue.reset_deficit();
             return None;

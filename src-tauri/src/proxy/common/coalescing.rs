@@ -234,7 +234,7 @@ impl std::fmt::Display for CoalesceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::PrimaryClosed => write!(f, "Primary request closed without result"),
-            Self::Lagged(n) => write!(f, "Receiver lagged behind by {} messages", n),
+            Self::Lagged(n) => write!(f, "Receiver lagged behind by {n} messages"),
         }
     }
 }
@@ -335,7 +335,7 @@ impl<T: Clone + Send + Sync + 'static> CoalesceManager<T> {
         {
             let mut lru = self.lru.lock();
             if lru.len() >= lru.cap().get() {
-                if let Some((evicted_fp, _)) = lru.pop_lru() {
+                if let Some((evicted_fp, ())) = lru.pop_lru() {
                     self.pending.remove(&evicted_fp);
                     record_eviction();
                     debug!(
