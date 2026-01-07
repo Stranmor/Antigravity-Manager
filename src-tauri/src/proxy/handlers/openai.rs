@@ -20,7 +20,7 @@ use crate::proxy::server::AppState;
 use crate::proxy::handlers::common::WithResolvedModel;
 use crate::proxy::handlers::helpers::{
     handle_overload_retry, is_overload_error, format_final_error,
-    record_success, record_failure,
+    record_failure, record_success_with_probe,
 };
 use crate::proxy::error::ProxyError;
 use crate::proxy::middleware::request_id::RequestId;
@@ -406,7 +406,7 @@ pub async fn handle_chat_completions(
 
         // Handle success
         if status.is_success() {
-            record_success(&state, &account_id);
+            record_success_with_probe(&state, &account_id, &access_token, trace_id);
 
             if is_stream {
                 if let Some(sender) = coalesce_sender {

@@ -278,6 +278,119 @@ pub fn should_skip_account_adaptive(state: &AppState, account_id: &str) -> Optio
     }
 }
 
+/// Fire a cheap probe request to test if rate limits have increased.
+/// This is a fire-and-forget operation that runs in the background.
+/// 
+/// Should be called after successful requests when ProbeStrategy is CheapProbe or higher.
+/// The probe uses a minimal 1-token request to avoid wasting quota.
+pub fn maybe_fire_cheap_probe(
+    state: &AppState,
+    account_id: &str,
+    access_token: &str,
+    trace_id: &str,
+) {
+    let strategy = state.smart_prober.strategy_for(account_id);
+    
+    // Only fire cheap probe when strategy indicates we're approaching limits
+    if !matches!(strategy, ProbeStrategy::CheapProbe | ProbeStrategy::DelayedHedge | ProbeStrategy::ImmediateHedge) {
+        return;
+    }
+    
+    // Record probe metric
+    let strategy_str = match strategy {
+        ProbeStrategy::None => "none",
+        ProbeStrategy::CheapProbe => "cheap_probe",
+        ProbeStrategy::DelayedHedge => "delayed_hedge",
+        ProbeStrategy::ImmediateHedge => "immediate_hedge",
+    };
+    crate::proxy::prometheus::record_adaptive_probe(strategy_str);
+    
+    debug!(
+        "[{}] 🔬 Firing cheap probe for account {} (strategy: {:?})",
+        trace_id, account_id, strategy
+    );
+    
+    // Clone values for the spawned task
+    let upstream = state.upstream.clone();
+    let adaptive_limits = state.adaptive_limits.clone();
+    let account_id_owned = account_id.to_string();
+    let access_token_owned = access_token.to_string();
+    let trace_id_owned = trace_id.to_string();
+    
+    // Fire-and-forget cheap probe
+    tokio::spawn(async move {
+        // Minimal request body - single character prompt with max_tokens=1
+        let cheap_probe_body = serde_json::json!({
+            "contents": [{
+                "role": "user",
+                "parts": [{"text": "."}]
+            }],
+            "generationConfig": {
+                "maxOutputTokens": 1,
+                "candidateCount": 1
+            }
+        });
+        
+        // Use a short timeout for probe (5 seconds)
+        let result = upstream
+            .call_v1_internal(
+                "generateContent",
+                &access_token_owned,
+                cheap_probe_body,
+                None,
+                5, // 5 second timeout
+            )
+            .await;
+        
+        match result {
+            Ok(response) => {
+                let status = response.status();
+                if status.is_success() {
+                    // Probe succeeded - limit might be higher than expected
+                    adaptive_limits.force_expand(&account_id_owned);
+                    debug!(
+                        "[{}] 🔬 Cheap probe succeeded for {}, limit expanded",
+                        trace_id_owned, account_id_owned
+                    );
+                } else if status.as_u16() == 429 {
+                    // Probe hit rate limit - record it
+                    adaptive_limits.record_429(&account_id_owned);
+                    debug!(
+                        "[{}] 🔬 Cheap probe hit 429 for {}, limit contracted",
+                        trace_id_owned, account_id_owned
+                    );
+                } else {
+                    debug!(
+                        "[{}] 🔬 Cheap probe returned {} for {}",
+                        trace_id_owned, status, account_id_owned
+                    );
+                }
+            }
+            Err(e) => {
+                debug!(
+                    "[{}] 🔬 Cheap probe failed for {}: {}",
+                    trace_id_owned, account_id_owned, e
+                );
+            }
+        }
+    });
+}
+
+/// Records success and optionally fires a cheap probe for limit calibration.
+/// This is the main entry point for recording successful requests.
+pub fn record_success_with_probe(
+    state: &AppState,
+    account_id: &str,
+    access_token: &str,
+    trace_id: &str,
+) {
+    // Record success in all monitors
+    record_success(state, account_id);
+    
+    // Maybe fire cheap probe for limit expansion discovery
+    maybe_fire_cheap_probe(state, account_id, access_token, trace_id);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

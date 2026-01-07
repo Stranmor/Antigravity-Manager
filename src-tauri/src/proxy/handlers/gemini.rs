@@ -152,6 +152,13 @@ pub async fn handle_generate(
             state.health_monitor.record_success(&account_id);
             state.circuit_breaker.record_success(&account_id);
             state.smart_prober.record_success(&account_id);
+            
+            crate::proxy::handlers::helpers::maybe_fire_cheap_probe(
+                &state,
+                &account_id,
+                &access_token,
+                request_id.as_str(),
+            );
 
             // 6. 响应处理
             if is_stream {

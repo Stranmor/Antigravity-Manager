@@ -21,8 +21,8 @@ use crate::proxy::server::AppState;
 use crate::proxy::handlers::common::WithResolvedModel;
 use crate::proxy::handlers::helpers::{
     handle_overload_retry, handle_rate_limit_response, is_overload_error,
-    format_final_error, record_success, record_failure, record_auth_error,
-    RateLimitContext,
+    format_final_error, record_failure, record_auth_error,
+    record_success_with_probe, RateLimitContext,
 };
 use crate::proxy::error::ProxyError;
 use crate::proxy::middleware::request_id::RequestId;
@@ -684,7 +684,7 @@ pub async fn handle_messages(
 
         // Handle success
         if status.is_success() {
-            record_success(&state, &account_id);
+            record_success_with_probe(&state, &account_id, &access_token, trace_id);
 
             if request.stream {
                 return handle_streaming_response(response, trace_id, email, &resolved_model_for_log);
