@@ -364,13 +364,10 @@ impl AdaptiveLimitManager {
 
     /// Get or create tracker for account
     pub fn get_or_create(&self, account_id: &str) -> dashmap::mapref::one::Ref<'_, String, AdaptiveLimitTracker> {
-        if !self.trackers.contains_key(account_id) {
-            self.trackers.insert(
-                account_id.to_string(),
-                AdaptiveLimitTracker::new(self.safety_margin, self.aimd.clone()),
-            );
-        }
-        self.trackers.get(account_id).unwrap()
+        self.trackers
+            .entry(account_id.to_string())
+            .or_insert_with(|| AdaptiveLimitTracker::new(self.safety_margin, self.aimd.clone()));
+        self.trackers.get(account_id).expect("just inserted")
     }
 
     /// Get tracker for account (if exists)
