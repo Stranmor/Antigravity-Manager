@@ -96,6 +96,7 @@ Optimize the Antigravity Manager codebase for 2026 standards, starting with styl
 - [x] Integrate adaptive limits with TokenManager `[MODE: B]` ✓ AppState.adaptive_limits
 - [x] Wire SmartProber to all handlers (claude, openai, gemini) `[MODE: B]` ✓ helpers.rs record_success/record_429
 - [x] Add persistence for learned limits to DB `[MODE: B]` ✓ AdaptiveLimitTracker.to_persisted/from_persisted
+- [x] **Wire proactive 429 prevention into handlers** `[MODE: B]` ✓ b6c451ce (should_skip_account_adaptive check, load/save on startup/shutdown)
 
 ### Priority 3: OBSERVABILITY
 - [x] Add Prometheus metrics for adaptive probing `[MODE: B]` ✓ antigravity_adaptive_probes_total
