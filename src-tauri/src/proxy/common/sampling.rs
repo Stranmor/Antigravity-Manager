@@ -366,7 +366,8 @@ mod tests {
 
     #[test]
     fn test_sampler_never_sample() {
-        reset_sampling_stats();
+        // Capture stats before test (tests run in parallel, so use delta)
+        let (sampled_before, _) = get_sampling_stats();
 
         let config = SamplingConfig {
             enabled: true,
@@ -381,8 +382,9 @@ mod tests {
             assert!(!sampler.should_sample());
         }
 
-        let (sampled, _) = get_sampling_stats();
-        assert_eq!(sampled, 0);
+        let (sampled_after, _) = get_sampling_stats();
+        // Delta should be 0 - this test added no sampled requests
+        assert_eq!(sampled_after - sampled_before, 0);
     }
 
     #[test]
