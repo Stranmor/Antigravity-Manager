@@ -122,6 +122,8 @@ pub struct AppState {
     pub hedger: Arc<crate::proxy::common::hedging::RequestHedger>,
     /// Request coalescer for deduplicating identical concurrent requests
     pub coalescer: Arc<crate::proxy::common::coalescing::CoalesceManager<serde_json::Value>>,
+    /// Priority queue scheduler for fair request processing (MLQ + DRR)
+    pub scheduler: Arc<crate::proxy::common::scheduler::PriorityScheduler<serde_json::Value>>,
 }
 
 /// Axum 服务器实例
@@ -239,6 +241,15 @@ impl AxumServer {
         // Initialize coalescing metrics
         crate::proxy::common::coalescing::init_coalescing_metrics();
 
+        // Initialize priority queue scheduler with default config (disabled by default)
+        let scheduler = Arc::new(
+            crate::proxy::common::scheduler::PriorityScheduler::new(
+                crate::proxy::config::SchedulerConfig::default()
+            )
+        );
+        // Initialize scheduler metrics
+        crate::proxy::common::scheduler::init_scheduler_metrics();
+
 	        let state = AppState {
 	            token_manager: token_manager.clone(),
 	            anthropic_mapping: mapping_state.clone(),
@@ -261,6 +272,7 @@ impl AxumServer {
             sampler,
             hedger,
             coalescer,
+            scheduler,
         };
 
 
