@@ -512,3 +512,176 @@ groups:
         labels:
           severity: info
           service: antigravity
+
+      # ============================================================
+      # AIMDHighPenaltyRate - Alert when penalties >> rewards (limit thrashing)
+      # ============================================================
+      - uid: antigravity-aimd-high-penalty
+        title: AIMDHighPenaltyRate
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: rate(antigravity_aimd_penalties_total[5m])
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: rate(antigravity_aimd_rewards_total[5m])
+              refId: B
+          - refId: C
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: math
+              expression: "$A > 0.1 and $A > ($B * 3)"
+        noDataState: OK
+        execErrState: OK
+        for: 15m
+        annotations:
+          summary: "Antigravity: AIMD limit thrashing (penalties >> rewards)"
+          description: "Penalties: {{ $values.A.Value }}/min, Rewards: {{ $values.B.Value }}/min. Accounts hitting limits too frequently."
+          runbook_url: "Increase safety_margin or reduce account load"
+        labels:
+          severity: warning
+          service: antigravity
+
+      # ============================================================
+      # AIMDLimitCollapse - Alert when predicted limits drop significantly
+      # ============================================================
+      - uid: antigravity-aimd-limit-collapse
+        title: AIMDLimitCollapse
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: sum(antigravity_predicted_limit_gauge)
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 1920
+              to: 1800
+            datasourceUid: ${datasource}
+            model:
+              expr: sum(antigravity_predicted_limit_gauge)
+              instant: true
+              refId: B
+          - refId: C
+            relativeTimeRange:
+              from: 120
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: math
+              expression: "($A / $B) < 0.5 and $B > 100"
+        noDataState: OK
+        execErrState: OK
+        for: 5m
+        annotations:
+          summary: "Antigravity: Total predicted limits dropped >50%"
+          description: "Limits dropped from {{ $values.B.Value }} to {{ $values.A.Value }} RPM. Possible upstream throttling."
+          runbook_url: "Check upstream API status and recent 429 patterns"
+        labels:
+          severity: critical
+          service: antigravity
+
+      # ============================================================
+      # AIMDLowHedgeWinRate - Alert when hedges are losing too often
+      # ============================================================
+      - uid: antigravity-aimd-low-hedge-win
+        title: AIMDLowHedgeWinRate
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: antigravity_hedge_win_rate
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 0.3
+                  operator:
+                    type: and
+                  reducer:
+                    type: last
+        noDataState: OK
+        execErrState: OK
+        for: 30m
+        annotations:
+          summary: "Antigravity: Low hedge win rate (<30%)"
+          description: "Hedge requests are completing first only {{ $values.A.Value | humanizePercentage }}. Primary requests may be too slow."
+          runbook_url: "Check upstream latency or reduce hedge_delay_ms"
+        labels:
+          severity: info
+          service: antigravity
+
+      # ============================================================
+      # AIMDNoProbeActivity - Alert when adaptive probing stops completely
+      # ============================================================
+      - uid: antigravity-aimd-no-probes
+        title: AIMDNoProbeActivity
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            datasourceUid: ${datasource}
+            model:
+              expr: rate(antigravity_adaptive_probes_total[5m])
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 0.01
+                  operator:
+                    type: and
+                  reducer:
+                    type: last
+        noDataState: OK
+        execErrState: OK
+        for: 30m
+        annotations:
+          summary: "Antigravity: No adaptive probe activity detected"
+          description: "Adaptive probing has stopped. Check if feature is disabled or all accounts are at safe levels."
+          runbook_url: "Verify adaptive_rate_limit.enabled=true in config"
+        labels:
+          severity: info
+          service: antigravity
