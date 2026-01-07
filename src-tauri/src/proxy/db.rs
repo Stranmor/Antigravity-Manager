@@ -11,7 +11,7 @@ pub fn get_proxy_db_path() -> Result<PathBuf, String> {
 /// Schema version for migrations
 /// Used for documentation and debugging - actual migration logic uses version table
 #[allow(dead_code)]
-const SCHEMA_VERSION: i32 = 2;
+const SCHEMA_VERSION: i32 = 3;
 
 pub fn init_db() -> Result<(), String> {
     let db_path = get_proxy_db_path()?;
@@ -43,6 +43,9 @@ pub fn init_db() -> Result<(), String> {
     }
     if current_version < 2 {
         migrate_v2(&conn)?;
+    }
+    if current_version < 3 {
+        migrate_v3(&conn)?;
     }
 
     Ok(())
@@ -194,6 +197,27 @@ fn migrate_v2(conn: &Connection) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     tracing::info!("Database migration v2 completed successfully");
+    Ok(())
+}
+
+fn migrate_v3(conn: &Connection) -> Result<(), String> {
+    tracing::info!("Running database migration v3: adaptive rate limit persistence");
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS adaptive_limits (
+            account_id TEXT PRIMARY KEY,
+            confirmed_limit INTEGER NOT NULL,
+            ceiling INTEGER NOT NULL,
+            last_calibration INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )",
+        [],
+    ).map_err(|e| e.to_string())?;
+
+    conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (3)", [])
+        .map_err(|e| e.to_string())?;
+
+    tracing::info!("Database migration v3 completed successfully");
     Ok(())
 }
 
@@ -804,6 +828,121 @@ pub fn get_global_stats() -> Result<std::collections::HashMap<String, i64>, Stri
         stats.insert(key, value);
     }
     Ok(stats)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistedAdaptiveLimit {
+    pub account_id: String,
+    pub confirmed_limit: u64,
+    pub ceiling: u64,
+    pub last_calibration: i64,
+}
+
+pub fn save_adaptive_limit(
+    account_id: &str,
+    confirmed_limit: u64,
+    ceiling: u64,
+) -> Result<(), String> {
+    let db_path = get_proxy_db_path()?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+
+    conn.execute(
+        "INSERT INTO adaptive_limits (account_id, confirmed_limit, ceiling, last_calibration, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?4)
+         ON CONFLICT(account_id) DO UPDATE SET
+             confirmed_limit = ?2,
+             ceiling = ?3,
+             last_calibration = ?4,
+             updated_at = ?4",
+        params![account_id, confirmed_limit as i64, ceiling as i64, now],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+pub fn save_adaptive_limits_batch(
+    limits: &[(String, u64, u64)],
+) -> Result<(), String> {
+    let db_path = get_proxy_db_path()?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+
+    for (account_id, confirmed_limit, ceiling) in limits {
+        conn.execute(
+            "INSERT INTO adaptive_limits (account_id, confirmed_limit, ceiling, last_calibration, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?4)
+             ON CONFLICT(account_id) DO UPDATE SET
+                 confirmed_limit = ?2,
+                 ceiling = ?3,
+                 last_calibration = ?4,
+                 updated_at = ?4",
+            params![account_id, *confirmed_limit as i64, *ceiling as i64, now],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+pub fn load_adaptive_limits() -> Result<Vec<PersistedAdaptiveLimit>, String> {
+    let db_path = get_proxy_db_path()?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn.prepare(
+        "SELECT account_id, confirmed_limit, ceiling, last_calibration FROM adaptive_limits"
+    ).map_err(|e| e.to_string())?;
+
+    let rows = stmt.query_map([], |row| {
+        Ok(PersistedAdaptiveLimit {
+            account_id: row.get(0)?,
+            confirmed_limit: row.get::<_, i64>(1)? as u64,
+            ceiling: row.get::<_, i64>(2)? as u64,
+            last_calibration: row.get(3)?,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    let mut limits = Vec::new();
+    for row in rows {
+        limits.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(limits)
+}
+
+pub fn load_adaptive_limit(account_id: &str) -> Result<Option<PersistedAdaptiveLimit>, String> {
+    let db_path = get_proxy_db_path()?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let result = conn.query_row(
+        "SELECT account_id, confirmed_limit, ceiling, last_calibration
+         FROM adaptive_limits WHERE account_id = ?1",
+        [account_id],
+        |row| {
+            Ok(PersistedAdaptiveLimit {
+                account_id: row.get(0)?,
+                confirmed_limit: row.get::<_, i64>(1)? as u64,
+                ceiling: row.get::<_, i64>(2)? as u64,
+                last_calibration: row.get(3)?,
+            })
+        },
+    );
+
+    match result {
+        Ok(limit) => Ok(Some(limit)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+pub fn delete_adaptive_limit(account_id: &str) -> Result<(), String> {
+    let db_path = get_proxy_db_path()?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "DELETE FROM adaptive_limits WHERE account_id = ?1",
+        [account_id],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 /// Get aggregated stats from request_logs for backwards compatibility

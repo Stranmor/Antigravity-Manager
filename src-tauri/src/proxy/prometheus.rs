@@ -10,6 +10,11 @@
 //! - `antigravity_log_disk_bytes` - Gauge of log disk usage in bytes
 //! - `antigravity_log_rotations_total` - Counter of log rotation events
 //! - `antigravity_log_cleanup_removed_total` - Counter of files removed by cleanup
+//! - `antigravity_adaptive_probes_total{strategy}` - Counter of probes by strategy
+//! - `antigravity_aimd_rewards_total` - Counter of AIMD limit expansions
+//! - `antigravity_aimd_penalties_total` - Counter of AIMD limit contractions
+//! - `antigravity_hedge_wins_total` - Counter of hedge request wins
+//! - `antigravity_primary_wins_total` - Counter of primary request wins after hedge
 
 use metrics::{counter, describe_counter, describe_gauge, describe_histogram, gauge, histogram};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
@@ -95,6 +100,31 @@ pub fn init_metrics() -> PrometheusHandle {
         describe_counter!(
             "antigravity_log_cleanup_removed_total",
             "Total number of log files removed by cleanup"
+        );
+
+        describe_counter!(
+            "antigravity_adaptive_probes_total",
+            "Total adaptive rate limit probes by strategy"
+        );
+        describe_counter!(
+            "antigravity_aimd_rewards_total",
+            "Total AIMD limit expansions (success above threshold)"
+        );
+        describe_counter!(
+            "antigravity_aimd_penalties_total",
+            "Total AIMD limit contractions (429 received)"
+        );
+        describe_counter!(
+            "antigravity_hedge_wins_total",
+            "Total times hedge request completed before primary"
+        );
+        describe_counter!(
+            "antigravity_primary_wins_total",
+            "Total times primary request won after hedge fired"
+        );
+        describe_gauge!(
+            "antigravity_adaptive_limit_gauge",
+            "Current working threshold per account"
         );
 
         handle
@@ -196,6 +226,32 @@ pub fn record_log_cleanup(count: usize) {
     if count > 0 {
         counter!("antigravity_log_cleanup_removed_total").increment(count as u64);
     }
+}
+
+pub fn record_adaptive_probe(strategy: &str) {
+    let labels = [("strategy", strategy.to_string())];
+    counter!("antigravity_adaptive_probes_total", &labels).increment(1);
+}
+
+pub fn record_aimd_reward() {
+    counter!("antigravity_aimd_rewards_total").increment(1);
+}
+
+pub fn record_aimd_penalty() {
+    counter!("antigravity_aimd_penalties_total").increment(1);
+}
+
+pub fn record_hedge_win() {
+    counter!("antigravity_hedge_wins_total").increment(1);
+}
+
+pub fn record_primary_win() {
+    counter!("antigravity_primary_wins_total").increment(1);
+}
+
+pub fn update_adaptive_limit_gauge(account_id: &str, working_threshold: u64) {
+    let labels = [("account_id", account_id.to_string())];
+    gauge!("antigravity_adaptive_limit_gauge", &labels).set(working_threshold as f64);
 }
 
 /// Render all metrics in Prometheus text format.

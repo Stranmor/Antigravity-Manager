@@ -253,6 +253,10 @@ pub struct ProxyConfig {
     /// Priority queue scheduler configuration
     #[serde(default)]
     pub scheduler: SchedulerConfig,
+
+    /// Adaptive rate limiting configuration (AIMD-based predictive limits)
+    #[serde(default)]
+    pub adaptive_rate_limit: AdaptiveRateLimitConfig,
 }
 
 /// 上游代理配置
@@ -432,6 +436,129 @@ impl Default for CoalescingConfig {
     }
 }
 
+/// Adaptive Rate Limit configuration
+///
+/// Implements predictive rate limiting using AIMD (Additive Increase, Multiplicative Decrease)
+/// algorithm inspired by TCP congestion control. The goal is to predict and avoid 429 errors
+/// BEFORE they happen, eliminating latency from rate limiting entirely.
+///
+/// ## How it works:
+/// 1. Track requests per minute per account
+/// 2. Maintain a "working threshold" at safety_margin × confirmed_limit
+/// 3. When usage approaches threshold, probe to discover if limit increased
+/// 4. On 429: immediately contract limit (multiplicative decrease)
+/// 5. On success above threshold: gradually expand limit (additive increase)
+///
+/// ## Probing Strategies:
+/// - `< 70%` usage: None (safe zone)
+/// - `70-85%` usage: CheapProbe (fire-and-forget minimal request)
+/// - `85-95%` usage: DelayedHedge (secondary request after P95 latency)
+/// - `> 95%` usage: ImmediateHedge (parallel requests)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdaptiveRateLimitConfig {
+    /// Enable adaptive rate limiting (default: false)
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Safety margin as fraction of confirmed limit (default: 0.85 = 15% buffer)
+    #[serde(default = "default_adaptive_safety_margin")]
+    pub safety_margin: f64,
+
+    /// Additive increase factor on success above threshold (default: 0.05 = +5%)
+    #[serde(default = "default_adaptive_aimd_increase")]
+    pub aimd_increase: f64,
+
+    /// Multiplicative decrease factor on 429 (default: 0.7 = -30%)
+    #[serde(default = "default_adaptive_aimd_decrease")]
+    pub aimd_decrease: f64,
+
+    /// Minimum limit floor (default: 10 RPM)
+    #[serde(default = "default_adaptive_min_limit")]
+    pub min_limit: u64,
+
+    /// Maximum limit ceiling (default: 1000 RPM)
+    #[serde(default = "default_adaptive_max_limit")]
+    pub max_limit: u64,
+
+    /// Enable cheap probes for limit discovery (default: true)
+    #[serde(default = "default_adaptive_enable_cheap_probes")]
+    pub enable_cheap_probes: bool,
+
+    /// Enable hedging (parallel requests near limit) (default: true)
+    #[serde(default = "default_adaptive_enable_hedging")]
+    pub enable_hedging: bool,
+
+    /// P95 latency in milliseconds for hedge delay (default: 2500ms)
+    #[serde(default = "default_adaptive_p95_latency_ms")]
+    pub p95_latency_ms: u64,
+
+    /// Jitter percentage for hedge delay (default: 0.2 = ±20%)
+    #[serde(default = "default_adaptive_jitter_percent")]
+    pub jitter_percent: f64,
+
+    /// Decay period in hours for persisted limits (default: 6)
+    #[serde(default = "default_adaptive_decay_hours")]
+    pub persistence_decay_hours: u64,
+}
+
+fn default_adaptive_safety_margin() -> f64 {
+    0.85
+}
+
+fn default_adaptive_aimd_increase() -> f64 {
+    0.05
+}
+
+fn default_adaptive_aimd_decrease() -> f64 {
+    0.7
+}
+
+fn default_adaptive_min_limit() -> u64 {
+    10
+}
+
+fn default_adaptive_max_limit() -> u64 {
+    1000
+}
+
+fn default_adaptive_enable_cheap_probes() -> bool {
+    true
+}
+
+fn default_adaptive_enable_hedging() -> bool {
+    true
+}
+
+fn default_adaptive_p95_latency_ms() -> u64 {
+    2500
+}
+
+fn default_adaptive_jitter_percent() -> f64 {
+    0.2
+}
+
+fn default_adaptive_decay_hours() -> u64 {
+    6
+}
+
+impl Default for AdaptiveRateLimitConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            safety_margin: default_adaptive_safety_margin(),
+            aimd_increase: default_adaptive_aimd_increase(),
+            aimd_decrease: default_adaptive_aimd_decrease(),
+            min_limit: default_adaptive_min_limit(),
+            max_limit: default_adaptive_max_limit(),
+            enable_cheap_probes: default_adaptive_enable_cheap_probes(),
+            enable_hedging: default_adaptive_enable_hedging(),
+            p95_latency_ms: default_adaptive_p95_latency_ms(),
+            jitter_percent: default_adaptive_jitter_percent(),
+            persistence_decay_hours: default_adaptive_decay_hours(),
+        }
+    }
+}
+
 /// Priority queue scheduler configuration
 ///
 /// Implements Multi-Level Queue (MLQ) with Deficit Round Robin (DRR) for fair
@@ -549,6 +676,7 @@ impl Default for ProxyConfig {
             hedging: HedgingConfig::default(),
             coalescing: CoalescingConfig::default(),
             scheduler: SchedulerConfig::default(),
+            adaptive_rate_limit: AdaptiveRateLimitConfig::default(),
         }
     }
 }

@@ -22,6 +22,8 @@ pub mod sticky_config;
 pub mod session_manager;
 pub mod health;
 pub mod telemetry;
+pub mod adaptive_limit;
+pub mod smart_prober;
 
 #[cfg(test)]
 mod tests;
@@ -35,8 +37,11 @@ pub use config::LogRotationConfig;
 pub use config::PoolWarmingConfig;
 pub use config::SamplingConfig;
 pub use config::HedgingConfig;
+pub use config::AdaptiveRateLimitConfig;
 pub use token_manager::TokenManager;
 pub use server::AxumServer;
 pub use security::ProxySecurityConfig;
 pub use server_logger::{init_server_logger, cleanup_old_logs, start_log_cleanup_task, LogGuards};
 pub use common::sampling::{RequestSampler, SampledRequest, SampledRequestBuilder, get_sampling_stats};
+pub use adaptive_limit::{AdaptiveLimitManager, AdaptiveLimitTracker, AIMDController, ProbeStrategy};
+pub use smart_prober::{SmartProber, SmartProberConfig, HedgeResult};
