@@ -7,7 +7,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/antigravity-core",
+    "crates/antigravity-core", "src-leptos",
     "src-slint",
     "src-tauri",
 ]

@@ -1,0 +1,45 @@
+[package]
+name = "antigravity-leptos"
+version = "3.3.20"
+edition = "2024"
+
+[dependencies]
+# Leptos core
+leptos = { version = "0.7", features = ["csr"] }
+leptos_router = { version = "0.7" }
+leptos_meta = { version = "0.7" }
+
+# WASM bindings
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "Window", 
+    "Document", 
+    "Navigator", 
+    "Clipboard",
+    "console"
+] }
+
+# Serialization (for Tauri IPC)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde-wasm-bindgen = "0.6"
+
+# Async
+futures = "0.3"
+
+# Logging
+console_log = "1"
+log = "0.4"
+console_error_panic_hook = "0.1"
+
+# Time
+chrono = { version = "0.4", features = ["wasmbind"] }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "antigravity-leptos"
+path = "src/main.rs"

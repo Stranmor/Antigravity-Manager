@@ -1,0 +1,60 @@
+//! Sidebar navigation component
+
+use leptos::prelude::*;
+use leptos_router::hooks::use_location;
+
+#[component]
+pub fn Sidebar() -> impl IntoView {
+    let location = use_location();
+    let current_path = move || location.pathname.get();
+    
+    let nav_items = vec![
+        ("Dashboard", "/", "📊"),
+        ("Accounts", "/accounts", "👥"),
+        ("API Proxy", "/proxy", "🔌"),
+        ("Settings", "/settings", "⚙️"),
+    ];
+
+    view! {
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <span class="logo-icon">"🚀"</span>
+                    <span class="logo-text">"Antigravity"</span>
+                </div>
+                <span class="version">"v3.3.20"</span>
+            </div>
+            
+            <nav class="sidebar-nav">
+                {nav_items.into_iter().map(|(label, path, icon)| {
+                    let is_active = move || {
+                        let curr = current_path();
+                        if path == "/" {
+                            curr == "/"
+                        } else {
+                            curr.starts_with(path)
+                        }
+                    };
+                    
+                    view! {
+                        <a 
+                            href=path 
+                            class:nav-item=true
+                            class:active=is_active
+                        >
+                            <span class="nav-icon">{icon}</span>
+                            <span class="nav-label">{label}</span>
+                        </a>
+                    }
+                }).collect_view()}
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="/monitor" class="nav-item">
+                    <span class="nav-icon">"📡"</span>
+                    <span class="nav-label">"Monitor"</span>
+                </a>
+            </div>
+        </aside>
+    }
+}
