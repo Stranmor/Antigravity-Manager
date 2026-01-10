@@ -4,11 +4,16 @@
 
 ---
 
-## 🚀 МИГРАЦИЯ НА SLINT IN PROGRESS
+## 🚀 МИГРАЦИЯ НА SLINT - ПРОГРЕСС
 
-### Фаза 1: Extract Core ✅ DONE
+### ✅ Фаза 1: Extract Core - DONE
+### ✅ Фаза 2: Account Module - DONE  
+### ✅ Фаза 3: Dashboard Data Binding - DONE
 
-**Создана структура:**
+---
+
+## Текущая структура
+
 ```
 Antigravity-Manager/
 ├── Cargo.toml                 # Workspace root
@@ -17,19 +22,23 @@ Antigravity-Manager/
 │       ├── Cargo.toml
 │       └── src/
 │           ├── lib.rs
-│           ├── error.rs
+│           ├── error.rs       # AppError, AppResult
 │           ├── models/        # Account, Token, Quota, Config
-│           ├── modules/       # Logger (stub)
+│           ├── modules/
+│           │   ├── account.rs # ✅ CRUD operations
+│           │   └── logger.rs  # Logging utilities
 │           ├── proxy/         # Config types
 │           └── utils/         # HTTP client
 ├── src-slint/                 # ✅ Slint native UI
 │   ├── Cargo.toml
 │   ├── build.rs
 │   └── src/
-│       ├── main.rs
+│       ├── main.rs            # Entry point with data binding
+│       ├── backend/           # ✅ Backend bridge
+│       │   └── mod.rs
 │       └── ui/
-│           ├── app.slint      # Main window
-│           ├── dashboard.slint
+│           ├── app.slint      # Main window with DashboardStats
+│           ├── dashboard.slint # ✅ Real data display
 │           └── components/
 │               ├── theme.slint
 │               ├── sidebar.slint
@@ -37,58 +46,56 @@ Antigravity-Manager/
 └── src-tauri/                 # Legacy (for upstream sync)
 ```
 
-### Верификация
+---
 
-- ✅ `antigravity-core` компилируется
-- ✅ `antigravity-desktop` (Slint) компилируется
-- ✅ Приложение запускается и отображает UI
+## Верифицированные результаты
 
-### Следующие шаги
+### Приложение работает с реальными данными:
+```
+Stats: 5 accounts, 89% avg Gemini, 89% avg Claude, 4 low quota
+```
 
-- [ ] Фаза 2: Портировать остальные modules (account, oauth, quota)
-- [ ] Фаза 3: Портировать proxy handlers
-- [ ] Фаза 4: Подключить backend к Slint UI callbacks
-- [ ] Фаза 5: Accounts page
-- [ ] Фаза 6: Settings page
-- [ ] Фаза 7: API Proxy page
-- [ ] Фаза 8: Monitor page
+### Dashboard отображает:
+- ✅ Total Accounts: 5
+- ✅ Avg. Gemini Quota: 89%
+- ✅ Avg. Claude Quota: 89%
+- ✅ Low Quota Count: 4
+- ✅ Current Account: email + last used time
+
+---
+
+## Следующие шаги
+
+- [ ] Фаза 4: Accounts page (table/grid view)
+- [ ] Фаза 5: Settings page
+- [ ] Фаза 6: API Proxy page  
+- [ ] Фаза 7: Monitor page (request logs)
+- [ ] Фаза 8: OAuth module port
 - [ ] Фаза 9: System tray integration
 - [ ] Фаза 10: CI/CD для Slint builds
 
 ---
 
-## Upstream Sync Strategy
+## Коммиты
+
+1. `284a7444` - feat: migrate to Slint native UI - Phase 1
+2. `e6cbaa67` - feat: Phase 2 - Port account module and backend bridge
+3. `a25251d2` - feat: Dashboard with real data binding
+
+---
+
+## Запуск
 
 ```bash
-# Когда upstream обновляется:
+cd src-slint && cargo run
+```
+
+---
+
+## Upstream Sync
+
+```bash
 git fetch upstream
 git merge upstream/main
-
-# Конфликты только в:
-# - package.json (игнорируем)
-# - index.html (игнорируем)  
-# - src/ (deprecated, игнорируем)
-
-# Чистый merge:
-# - src-tauri/src/proxy/**  ← critical updates
-# - src-tauri/src/modules/** ← business logic
-```
-
----
-
-## Версия
-
-- **v3.3.20** (upstream sync)
-- **Slint UI**: In Development
-- Workspace: `Cargo.toml` (root)
-
----
-
-## Сервис (Legacy Tauri)
-
-```
-systemctl --user status antigravity-manager.service
-● antigravity-manager.service - Antigravity Manager Proxy
-   Active: active (running)
-   Endpoint: http://127.0.0.1:8045
+# Conflicts only in src/ (deprecated) and package.json
 ```
