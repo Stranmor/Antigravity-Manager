@@ -1,6 +1,7 @@
 //! API Proxy page
 
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use crate::app::AppState;
 use crate::components::{Button, ButtonVariant};
 use crate::tauri::commands;
@@ -14,39 +15,60 @@ pub fn ApiProxy() -> impl IntoView {
     let copied = RwSignal::new(false);
     
     // Toggle proxy
-    let toggle_proxy = Action::new(move |_: &()| async move {
+    let on_toggle = move || {
         loading.set(true);
-        let status = state.proxy_status.get();
-        
-        let result = if status.running {
-            commands::stop_proxy_service().await
-        } else {
-            if let Some(config) = state.config.get() {
-                commands::start_proxy_service(&config.proxy).await
+        spawn_local(async move {
+            let state = expect_context::<AppState>();
+            let status = state.proxy_status.get();
+            
+            let result = if status.running {
+                commands::stop_proxy_service().await
             } else {
-                Err("No config loaded".to_string())
+                if let Some(config) = state.config.get() {
+                    commands::start_proxy_service(&config.proxy).await
+                } else {
+                    Err("No config loaded".to_string())
+                }
+            };
+            
+            if result.is_ok() {
+                if let Ok(new_status) = commands::get_proxy_status().await {
+                    state.proxy_status.set(new_status);
+                }
             }
-        };
-        
-        if result.is_ok() {
-            // Refresh status
-            if let Ok(new_status) = commands::get_proxy_status().await {
-                state.proxy_status.set(new_status);
-            }
-        }
-        loading.set(false);
-    });
+            loading.set(false);
+        });
+    };
     
     // Generate API key
-    let generate_key = Action::new(move |_: &()| async move {
-        if let Ok(new_key) = commands::generate_api_key().await {
-            state.config.update(|c| {
-                if let Some(config) = c.as_mut() {
-                    config.proxy.api_key = new_key;
-                }
+    let on_generate_key = move || {
+        spawn_local(async move {
+            if let Ok(new_key) = commands::generate_api_key().await {
+                let state = expect_context::<AppState>();
+                state.config.update(|c| {
+                    if let Some(config) = c.as_mut() {
+                        config.proxy.api_key = new_key;
+                    }
+                });
+            }
+        });
+    };
+    
+    // Copy to clipboard
+    let on_copy = move || {
+        if let Some(config) = state.config.get() {
+            if let Some(window) = web_sys::window() {
+                let clipboard = window.navigator().clipboard();
+                let _ = clipboard.write_text(&config.proxy.api_key);
+            }
+            copied.set(true);
+            // Reset after 2 seconds
+            spawn_local(async move {
+                gloo_timers::future::TimeoutFuture::new(2000).await;
+                copied.set(false);
             });
         }
-    });
+    };
 
     view! {
         <div class="page proxy">
@@ -56,9 +78,7 @@ pub fn ApiProxy() -> impl IntoView {
                     <p class="subtitle">"OpenAI-compatible API endpoint"</p>
                 </div>
                 <div class="header-actions">
-                    <a href="/monitor" class="btn btn--secondary">
-                        "📡 Monitor"
-                    </a>
+                    <a href="/monitor" class="btn btn--secondary">"📡 Monitor"</a>
                 </div>
             </header>
             
@@ -81,12 +101,11 @@ pub fn ApiProxy() -> impl IntoView {
                     </div>
                 </div>
                 <Button 
+                    text={if state.proxy_status.get().running { "⏹ Stop".to_string() } else { "▶ Start".to_string() }}
                     variant=if state.proxy_status.get().running { ButtonVariant::Danger } else { ButtonVariant::Primary }
                     loading=loading.get()
-                    on_click=Callback::new(move |_| toggle_proxy.dispatch(()))
-                >
-                    {move || if state.proxy_status.get().running { "⏹ Stop" } else { "▶ Start" }}
-                </Button>
+                    on_click=on_toggle
+                />
             </section>
             
             // Configuration
@@ -98,7 +117,7 @@ pub fn ApiProxy() -> impl IntoView {
                         <label>"Port"</label>
                         <input 
                             type="number" 
-                            value=move || state.config.get().map(|c| c.proxy.port).unwrap_or(8045)
+                            prop:value=move || state.config.get().map(|c| c.proxy.port.to_string()).unwrap_or_default()
                             disabled=move || state.proxy_status.get().running
                         />
                     </div>
@@ -107,7 +126,7 @@ pub fn ApiProxy() -> impl IntoView {
                         <label>"Request Timeout (s)"</label>
                         <input 
                             type="number" 
-                            value=move || state.config.get().map(|c| c.proxy.request_timeout).unwrap_or(120)
+                            prop:value=move || state.config.get().map(|c| c.proxy.request_timeout.to_string()).unwrap_or_default()
                         />
                     </div>
                     
@@ -137,29 +156,17 @@ pub fn ApiProxy() -> impl IntoView {
                     <input 
                         type="password" 
                         class="api-key-input"
-                        value=move || state.config.get().map(|c| c.proxy.api_key.clone()).unwrap_or_default()
+                        prop:value=move || state.config.get().map(|c| c.proxy.api_key.clone()).unwrap_or_default()
                         readonly=true
                     />
-                    <button 
-                        class="btn btn--icon"
-                        on:click=move |_| {
-                            if let Some(config) = state.config.get() {
-                                let _ = web_sys::window()
-                                    .and_then(|w| w.navigator().clipboard())
-                                    .map(|c| c.write_text(&config.proxy.api_key));
-                                copied.set(true);
-                                set_timeout(move || copied.set(false), std::time::Duration::from_secs(2));
-                            }
-                        }
-                    >
+                    <button class="btn btn--icon" on:click=move |_| on_copy()>
                         {move || if copied.get() { "✓" } else { "📋" }}
                     </button>
                     <Button 
+                        text="🔄 Generate".to_string()
                         variant=ButtonVariant::Secondary
-                        on_click=Callback::new(move |_| generate_key.dispatch(()))
-                    >
-                        "🔄 Generate"
-                    </Button>
+                        on_click=on_generate_key
+                    />
                 </div>
             </section>
             
@@ -191,9 +198,7 @@ client = OpenAI(
 response = client.chat.completions.create(
     model="gemini-3-flash",
     messages=[{{"role": "user", "content": "Hello!"}}]
-)
-
-print(response.choices[0].message.content)"#, 
+)"#, 
                         state.config.get().map(|c| c.proxy.port).unwrap_or(8045),
                         state.config.get().map(|c| c.proxy.api_key.clone()).unwrap_or_else(|| "YOUR_API_KEY".to_string())
                     )}</code></pre>

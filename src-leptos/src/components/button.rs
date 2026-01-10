@@ -2,7 +2,7 @@
 
 use leptos::prelude::*;
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, PartialEq)]
 pub enum ButtonVariant {
     #[default]
     Primary,
@@ -24,28 +24,36 @@ impl ButtonVariant {
 
 #[component]
 pub fn Button(
-    #[prop(into)] children: Children,
-    #[prop(optional)] variant: ButtonVariant,
-    #[prop(optional)] disabled: bool,
-    #[prop(optional)] loading: bool,
-    #[prop(optional, into)] class: String,
-    #[prop(into)] on_click: Callback<()>,
+    /// Button text content
+    #[prop(into)] 
+    text: String,
+    /// Button variant
+    #[prop(optional)] 
+    variant: ButtonVariant,
+    /// Whether button is disabled
+    #[prop(optional)] 
+    disabled: bool,
+    /// Whether button is in loading state
+    #[prop(optional)] 
+    loading: bool,
+    /// Additional CSS class
+    #[prop(optional, into)] 
+    class: String,
+    /// Click handler
+    on_click: impl Fn() + 'static + Clone,
 ) -> impl IntoView {
+    let variant_class = variant.class();
+    let loading_class = if loading { "btn--loading" } else { "" };
+    let btn_class = format!("btn {} {} {}", variant_class, loading_class, class);
+    let btn_text = if loading { "Loading...".to_string() } else { text };
+    
     view! {
         <button 
-            class=format!("btn {} {} {}", 
-                variant.class(), 
-                if loading { "btn--loading" } else { "" },
-                class
-            )
+            class=btn_class
             disabled=disabled || loading
-            on:click=move |_| on_click.call(())
+            on:click=move |_| on_click()
         >
-            {move || if loading {
-                view! { <span class="btn__spinner"></span> }.into_any()
-            } else {
-                children().into_any()
-            }}
+            {btn_text}
         </button>
     }
 }

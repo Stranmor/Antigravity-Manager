@@ -1,7 +1,9 @@
 //! Main App component with routing
 
 use leptos::prelude::*;
-use leptos_router::*;
+use leptos::task::spawn_local;
+use leptos_router::components::{Router, Routes, Route};
+use leptos_router::path;
 use crate::pages::{Dashboard, Accounts, ApiProxy, Settings, Monitor};
 use crate::components::Sidebar;
 
@@ -27,6 +29,12 @@ impl AppState {
     }
 }
 
+impl Default for AppState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Root App component
 #[component]
 pub fn App() -> impl IntoView {
@@ -47,11 +55,11 @@ pub fn App() -> impl IntoView {
                 <Sidebar />
                 <main class="main-content">
                     <Routes fallback=|| "Page not found">
-                        <Route path="/" view=Dashboard />
-                        <Route path="/accounts" view=Accounts />
-                        <Route path="/proxy" view=ApiProxy />
-                        <Route path="/settings" view=Settings />
-                        <Route path="/monitor" view=Monitor />
+                        <Route path=path!("/") view=Dashboard />
+                        <Route path=path!("/accounts") view=Accounts />
+                        <Route path=path!("/proxy") view=ApiProxy />
+                        <Route path=path!("/settings") view=Settings />
+                        <Route path=path!("/monitor") view=Monitor />
                     </Routes>
                 </main>
             </div>

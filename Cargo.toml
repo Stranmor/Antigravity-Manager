@@ -1,14 +1,14 @@
 # Antigravity Manager - Workspace Root
 # This workspace contains:
 # - antigravity-core: Shared business logic (proxy, accounts, models)
-# - antigravity-desktop: Slint-based native desktop UI
-# - antigravity_tools (src-tauri): Legacy Tauri app (for upstream sync)
+# - src-leptos: Leptos-based WASM frontend for Tauri
+# - src-tauri: Tauri backend
 
 [workspace]
 resolver = "2"
 members = [
-    "crates/antigravity-core", "src-leptos",
-    "src-slint",
+    "crates/antigravity-core",
+    "src-leptos",
     "src-tauri",
 ]
 
@@ -64,8 +64,10 @@ bytes = "1.5"
 pin-project = "1.1"
 eventsource-stream = "0.2"
 
-# Slint UI
-slint = "1.9"
+# Leptos UI (WASM)
+leptos = { version = "0.7", features = ["csr"] }
+leptos_router = "0.7"
+leptos_meta = "0.7"
 
 [profile.release]
 opt-level = 3

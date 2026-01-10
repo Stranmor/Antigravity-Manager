@@ -6,7 +6,6 @@ use leptos_router::hooks::use_location;
 #[component]
 pub fn Sidebar() -> impl IntoView {
     let location = use_location();
-    let current_path = move || location.pathname.get();
     
     let nav_items = vec![
         ("Dashboard", "/", "📊"),
@@ -27,8 +26,9 @@ pub fn Sidebar() -> impl IntoView {
             
             <nav class="sidebar-nav">
                 {nav_items.into_iter().map(|(label, path, icon)| {
+                    let current_path = location.pathname.clone();
                     let is_active = move || {
-                        let curr = current_path();
+                        let curr = current_path.get();
                         if path == "/" {
                             curr == "/"
                         } else {
@@ -39,8 +39,7 @@ pub fn Sidebar() -> impl IntoView {
                     view! {
                         <a 
                             href=path 
-                            class:nav-item=true
-                            class:active=is_active
+                            class=move || format!("nav-item {}", if is_active() { "active" } else { "" })
                         >
                             <span class="nav-icon">{icon}</span>
                             <span class="nav-label">{label}</span>

@@ -1,6 +1,7 @@
 //! Settings page
 
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use crate::app::AppState;
 use crate::components::{Button, ButtonVariant};
 use crate::tauri::commands;
@@ -13,25 +14,27 @@ pub fn Settings() -> impl IntoView {
     let saving = RwSignal::new(false);
     
     // Save settings
-    let save_settings = Action::new(move |_: &()| async move {
+    let on_save = move || {
         saving.set(true);
-        if let Some(config) = state.config.get() {
-            let _ = commands::save_config(&config).await;
-        }
-        saving.set(false);
-    });
+        spawn_local(async move {
+            let state = expect_context::<AppState>();
+            if let Some(config) = state.config.get() {
+                let _ = commands::save_config(&config).await;
+            }
+            saving.set(false);
+        });
+    };
 
     view! {
         <div class="page settings">
             <header class="page-header">
                 <h1>"Settings"</h1>
                 <Button 
+                    text="💾 Save".to_string()
                     variant=ButtonVariant::Primary
                     loading=saving.get()
-                    on_click=Callback::new(move |_| save_settings.dispatch(()))
-                >
-                    "💾 Save"
-                </Button>
+                    on_click=on_save
+                />
             </header>
             
             // General
@@ -44,9 +47,9 @@ pub fn Settings() -> impl IntoView {
                         <p class="setting-desc">"Interface language"</p>
                     </div>
                     <select>
-                        <option value="en" selected=move || state.config.get().map(|c| c.language == "en").unwrap_or(true)>"English"</option>
-                        <option value="zh" selected=move || state.config.get().map(|c| c.language == "zh").unwrap_or(false)>"中文"</option>
-                        <option value="ru" selected=move || state.config.get().map(|c| c.language == "ru").unwrap_or(false)>"Русский"</option>
+                        <option value="en">"English"</option>
+                        <option value="zh">"中文"</option>
+                        <option value="ru">"Русский"</option>
                     </select>
                 </div>
                 
@@ -100,7 +103,7 @@ pub fn Settings() -> impl IntoView {
                         type="number" 
                         min="1" 
                         max="1440"
-                        value=move || state.config.get().map(|c| c.refresh_interval).unwrap_or(30)
+                        prop:value=move || state.config.get().map(|c| c.refresh_interval.to_string()).unwrap_or_default()
                     />
                 </div>
             </section>
@@ -118,29 +121,11 @@ pub fn Settings() -> impl IntoView {
                         <input 
                             type="text" 
                             readonly=true
-                            value=move || state.config.get()
+                            prop:value=move || state.config.get()
                                 .and_then(|c| c.default_export_path)
                                 .unwrap_or_else(|| "Not set".to_string())
                         />
                         <button class="btn btn--icon">"📁"</button>
-                    </div>
-                </div>
-                
-                <div class="setting-row">
-                    <div class="setting-info">
-                        <label>"Antigravity executable"</label>
-                        <p class="setting-desc">"Path to antigravity CLI"</p>
-                    </div>
-                    <div class="path-input">
-                        <input 
-                            type="text" 
-                            readonly=true
-                            value=move || state.config.get()
-                                .and_then(|c| c.antigravity_executable)
-                                .unwrap_or_else(|| "Auto-detect".to_string())
-                        />
-                        <button class="btn btn--icon">"📁"</button>
-                        <button class="btn btn--secondary">"Detect"</button>
                     </div>
                 </div>
             </section>
@@ -156,8 +141,6 @@ pub fn Settings() -> impl IntoView {
                         <p>"Version 3.3.20"</p>
                         <p class="links">
                             <a href="https://github.com/nicepkg/gpt-runner" target="_blank">"GitHub"</a>
-                            " • "
-                            <a href="#" on:click=|_| { /* Check for updates */ }>"Check for updates"</a>
                         </p>
                     </div>
                 </div>
@@ -173,11 +156,10 @@ pub fn Settings() -> impl IntoView {
                         <p class="setting-desc">"Remove all request logs"</p>
                     </div>
                     <Button 
+                        text="Clear Logs".to_string()
                         variant=ButtonVariant::Danger
-                        on_click=Callback::new(|_| {})
-                    >
-                        "Clear Logs"
-                    </Button>
+                        on_click=|| {}
+                    />
                 </div>
             </section>
         </div>

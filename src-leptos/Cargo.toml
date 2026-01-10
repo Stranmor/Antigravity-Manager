@@ -18,7 +18,8 @@ web-sys = { version = "0.3", features = [
     "Document", 
     "Navigator", 
     "Clipboard",
-    "console"
+    "console",
+    "HtmlInputElement"
 ] }
 
 # Serialization (for Tauri IPC)
@@ -28,6 +29,7 @@ serde-wasm-bindgen = "0.6"
 
 # Async
 futures = "0.3"
+gloo-timers = { version = "0.3", features = ["futures"] }
 
 # Logging
 console_log = "1"

@@ -4,7 +4,6 @@
 
 use serde::{de::DeserializeOwned, Serialize};
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::JsFuture;
 
 #[wasm_bindgen]
 extern "C" {

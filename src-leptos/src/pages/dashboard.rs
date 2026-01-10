@@ -32,28 +32,28 @@ pub fn Dashboard() -> impl IntoView {
             // Stats grid
             <section class="stats-grid">
                 <StatsCard 
-                    title="Total Accounts"
+                    title="Total Accounts".to_string()
                     value=Signal::derive(move || stats.get().total_accounts.to_string())
-                    icon="👥"
-                    color="blue"
+                    icon="👥".to_string()
+                    color="blue".to_string()
                 />
                 <StatsCard 
-                    title="Avg Gemini Quota"
+                    title="Avg Gemini Quota".to_string()
                     value=Signal::derive(move || format!("{}%", stats.get().avg_gemini_quota))
-                    icon="✨"
-                    color="purple"
+                    icon="✨".to_string()
+                    color="purple".to_string()
                 />
                 <StatsCard 
-                    title="Avg Image Quota"
+                    title="Avg Image Quota".to_string()
                     value=Signal::derive(move || format!("{}%", stats.get().avg_gemini_image_quota))
-                    icon="🎨"
-                    color="pink"
+                    icon="🎨".to_string()
+                    color="pink".to_string()
                 />
                 <StatsCard 
-                    title="Avg Claude Quota"
+                    title="Avg Claude Quota".to_string()
                     value=Signal::derive(move || format!("{}%", stats.get().avg_claude_quota))
-                    icon="🤖"
-                    color="orange"
+                    icon="🤖".to_string()
+                    color="orange".to_string()
                 />
             </section>
             
@@ -87,10 +87,9 @@ pub fn Dashboard() -> impl IntoView {
                     Some(account) => view! {
                         <div class="current-account-card">
                             <div class="account-info">
-                                <span class="email">{account.email}</span>
-                                {account.name.map(|n| view! { <span class="name">{n}</span> })}
+                                <span class="email">{account.email.clone()}</span>
                             </div>
-                            <button class="btn btn--secondary">"Switch Account"</button>
+                            <a href="/accounts" class="btn btn--secondary">"Switch Account"</a>
                         </div>
                     }.into_any(),
                     None => view! {

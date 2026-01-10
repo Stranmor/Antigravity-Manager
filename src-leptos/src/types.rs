@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Account quota information
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct AccountQuota {
     pub models: Vec<ModelQuota>,
     pub is_forbidden: bool,
@@ -13,7 +13,7 @@ pub struct AccountQuota {
 }
 
 /// Model quota entry
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ModelQuota {
     pub model: String,
     pub used: i32,
@@ -21,7 +21,7 @@ pub struct ModelQuota {
 }
 
 /// Account data
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Account {
     pub id: String,
     pub email: String,
@@ -35,7 +35,7 @@ pub struct Account {
 }
 
 /// Account tokens
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AccountTokens {
     pub access_token: Option<String>,
     pub refresh_token: Option<String>,
@@ -43,7 +43,7 @@ pub struct AccountTokens {
 }
 
 /// Proxy status
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct ProxyStatus {
     pub running: bool,
     pub port: u16,
@@ -52,7 +52,7 @@ pub struct ProxyStatus {
 }
 
 /// Proxy configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProxyConfig {
     pub enabled: bool,
     pub port: u16,
@@ -66,14 +66,14 @@ pub struct ProxyConfig {
 }
 
 /// Upstream proxy config
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct UpstreamProxyConfig {
     pub enabled: bool,
     pub url: String,
 }
 
 /// Application configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AppConfig {
     pub language: String,
     pub theme: String,
@@ -89,7 +89,7 @@ pub struct AppConfig {
 }
 
 /// Dashboard statistics (computed from accounts)
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct DashboardStats {
     pub total_accounts: usize,
     pub avg_gemini_quota: i32,

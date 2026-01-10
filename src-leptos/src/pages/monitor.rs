@@ -4,7 +4,7 @@ use leptos::prelude::*;
 use crate::components::{Button, ButtonVariant};
 
 /// Request log entry
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RequestLog {
     pub id: String,
     pub timestamp: i64,
@@ -53,6 +53,10 @@ pub fn Monitor() -> impl IntoView {
                 .collect()
         }
     });
+    
+    let on_clear = move || {
+        logs.set(vec![]);
+    };
 
     view! {
         <div class="page monitor">
@@ -93,29 +97,28 @@ pub fn Monitor() -> impl IntoView {
                 
                 <div class="quick-filters">
                     <button 
-                        class:active=move || filter.get().is_empty()
+                        class=move || if filter.get().is_empty() { "active" } else { "" }
                         on:click=move |_| filter.set(String::new())
                     >"All"</button>
                     <button 
-                        class:active=move || filter.get() == "40"
+                        class=move || if filter.get() == "40" { "active" } else { "" }
                         on:click=move |_| filter.set("40".to_string())
                     >"Errors"</button>
                     <button 
-                        class:active=move || filter.get() == "gemini"
+                        class=move || if filter.get() == "gemini" { "active" } else { "" }
                         on:click=move |_| filter.set("gemini".to_string())
                     >"Gemini"</button>
                     <button 
-                        class:active=move || filter.get() == "claude"
+                        class=move || if filter.get() == "claude" { "active" } else { "" }
                         on:click=move |_| filter.set("claude".to_string())
                     >"Claude"</button>
                 </div>
                 
                 <Button 
+                    text="🗑".to_string()
                     variant=ButtonVariant::Ghost
-                    on_click=Callback::new(move |_| logs.set(vec![]))
-                >
-                    "🗑"
-                </Button>
+                    on_click=on_clear
+                />
             </div>
             
             // Logs table
@@ -138,6 +141,11 @@ pub fn Monitor() -> impl IntoView {
                             key=|log| log.id.clone()
                             children=|log| {
                                 let status_class = if log.status >= 200 && log.status < 400 { "success" } else { "error" };
+                                let model_display = log.model.clone().unwrap_or_else(|| "-".to_string());
+                                let mapped = log.mapped_model.clone().filter(|m| Some(m) != log.model.as_ref());
+                                let account = log.account_email.clone().unwrap_or_else(|| "-".to_string());
+                                let tokens_in = log.input_tokens.map(|t| format!("I:{}", t)).unwrap_or_default();
+                                let tokens_out = log.output_tokens.map(|t| format!("O:{}", t)).unwrap_or_default();
                                 
                                 view! {
                                     <tr class="log-row">
@@ -148,18 +156,12 @@ pub fn Monitor() -> impl IntoView {
                                         </td>
                                         <td class="col-method">{log.method}</td>
                                         <td class="col-model">
-                                            {log.model.clone().unwrap_or_else(|| "-".to_string())}
-                                            {log.mapped_model.as_ref().filter(|m| Some(*m) != log.model.as_ref()).map(|m| {
-                                                view! { <span class="mapped">" → "{m}</span> }
-                                            })}
+                                            {model_display}
+                                            {mapped.map(|m| format!(" → {}", m))}
                                         </td>
-                                        <td class="col-account">{log.account_email.clone().unwrap_or_else(|| "-".to_string())}</td>
+                                        <td class="col-account">{account}</td>
                                         <td class="col-path">{log.url}</td>
-                                        <td class="col-tokens">
-                                            {log.input_tokens.map(|t| format!("I:{}", t))}
-                                            " "
-                                            {log.output_tokens.map(|t| format!("O:{}", t))}
-                                        </td>
+                                        <td class="col-tokens">{tokens_in}" "{tokens_out}</td>
                                         <td class="col-duration">{log.duration_ms}"ms"</td>
                                     </tr>
                                 }
