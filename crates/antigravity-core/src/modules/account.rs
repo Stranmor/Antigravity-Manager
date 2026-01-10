@@ -125,7 +125,8 @@ pub fn list_accounts() -> Result<Vec<Account>, String> {
             Ok(account) => accounts.push(account),
             Err(e) => {
                 logger::log_error(&format!("Failed to load account {}: {}", summary.id, e));
-                if e.contains("not found") || e.contains("No such file") {
+                // Auto-repair: remove missing or corrupted accounts
+                if e.contains("not found") || e.contains("No such file") || e.contains("Failed to parse") {
                     invalid_ids.push(summary.id.clone());
                 }
             }
