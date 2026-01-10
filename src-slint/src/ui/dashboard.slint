@@ -1,0 +1,315 @@
+// Dashboard Page
+
+import { VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
+import { Theme } from "components/theme.slint";
+import { StatsCard } from "components/stats-card.slint";
+
+export component Dashboard inherits Rectangle {
+    background: Theme.background;
+    
+    ScrollView {
+        VerticalBox {
+            padding: Theme.spacing-lg;
+            spacing: Theme.spacing-lg;
+            
+            // Header
+            HorizontalLayout {
+                spacing: Theme.spacing-md;
+                alignment: space-between;
+                
+                VerticalLayout {
+                    spacing: 4px;
+                    
+                    Text {
+                        text: "Hello, User 👋";
+                        color: Theme.text-primary;
+                        font-size: Theme.font-2xl;
+                        font-weight: 700;
+                    }
+                    
+                    Text {
+                        text: "Welcome to Antigravity Manager";
+                        color: Theme.text-secondary;
+                        font-size: Theme.font-md;
+                    }
+                }
+                
+                // Action buttons
+                HorizontalLayout {
+                    spacing: Theme.spacing-sm;
+                    
+                    Rectangle {
+                        width: 120px;
+                        height: 36px;
+                        background: Theme.accent-blue;
+                        border-radius: Theme.radius-md;
+                        
+                        Text {
+                            text: "+ Add Account";
+                            color: white;
+                            font-size: Theme.font-sm;
+                            font-weight: 500;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        
+                        TouchArea {
+                            mouse-cursor: pointer;
+                        }
+                    }
+                    
+                    Rectangle {
+                        width: 120px;
+                        height: 36px;
+                        background: Theme.surface-elevated;
+                        border-radius: Theme.radius-md;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        
+                        Text {
+                            text: "🔄 Refresh";
+                            color: Theme.text-primary;
+                            font-size: Theme.font-sm;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        
+                        TouchArea {
+                            mouse-cursor: pointer;
+                        }
+                    }
+                }
+            }
+            
+            // Stats Grid
+            HorizontalLayout {
+                spacing: Theme.spacing-md;
+                
+                StatsCard {
+                    label: "Total Accounts";
+                    value: "5";
+                    icon: "👤";
+                    accent-color: Theme.accent-blue;
+                    horizontal-stretch: 1;
+                }
+                
+                StatsCard {
+                    label: "Avg. Gemini Quota";
+                    value: "78%";
+                    icon: "✨";
+                    accent-color: Theme.accent-green;
+                    horizontal-stretch: 1;
+                }
+                
+                StatsCard {
+                    label: "Avg. Gemini Image";
+                    value: "65%";
+                    icon: "🖼";
+                    accent-color: Theme.accent-purple;
+                    horizontal-stretch: 1;
+                }
+                
+                StatsCard {
+                    label: "Avg. Claude Quota";
+                    value: "82%";
+                    icon: "🤖";
+                    accent-color: Theme.accent-cyan;
+                    horizontal-stretch: 1;
+                }
+                
+                StatsCard {
+                    label: "Low Quota";
+                    value: "1";
+                    icon: "⚠️";
+                    accent-color: Theme.accent-orange;
+                    horizontal-stretch: 1;
+                }
+            }
+            
+            // Two-column layout
+            HorizontalLayout {
+                spacing: Theme.spacing-md;
+                
+                // Current Account Card
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 200px;
+                    background: Theme.surface;
+                    border-radius: Theme.radius-lg;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    
+                    VerticalBox {
+                        padding: Theme.spacing-md;
+                        spacing: Theme.spacing-md;
+                        
+                        Text {
+                            text: "Current Account";
+                            color: Theme.text-primary;
+                            font-size: Theme.font-lg;
+                            font-weight: 600;
+                        }
+                        
+                        HorizontalLayout {
+                            spacing: Theme.spacing-md;
+                            
+                            // Avatar placeholder
+                            Rectangle {
+                                width: 48px;
+                                height: 48px;
+                                background: Theme.accent-blue;
+                                border-radius: 24px;
+                                
+                                Text {
+                                    text: "U";
+                                    color: white;
+                                    font-size: 20px;
+                                    font-weight: 600;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            
+                            VerticalLayout {
+                                spacing: 4px;
+                                
+                                Text {
+                                    text: "user@example.com";
+                                    color: Theme.text-primary;
+                                    font-size: Theme.font-md;
+                                    font-weight: 500;
+                                }
+                                
+                                Text {
+                                    text: "Last used: Just now";
+                                    color: Theme.text-secondary;
+                                    font-size: Theme.font-sm;
+                                }
+                            }
+                        }
+                        
+                        Rectangle { vertical-stretch: 1; background: transparent; }
+                        
+                        Rectangle {
+                            height: 36px;
+                            background: Theme.surface-elevated;
+                            border-radius: Theme.radius-md;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            
+                            Text {
+                                text: "Switch Account →";
+                                color: Theme.text-primary;
+                                font-size: Theme.font-sm;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            
+                            TouchArea { mouse-cursor: pointer; }
+                        }
+                    }
+                }
+                
+                // Best Accounts Card
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 200px;
+                    background: Theme.surface;
+                    border-radius: Theme.radius-lg;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    
+                    VerticalBox {
+                        padding: Theme.spacing-md;
+                        spacing: Theme.spacing-sm;
+                        
+                        Text {
+                            text: "Best Accounts";
+                            color: Theme.text-primary;
+                            font-size: Theme.font-lg;
+                            font-weight: 600;
+                        }
+                        
+                        Text {
+                            text: "Accounts with highest quotas";
+                            color: Theme.text-secondary;
+                            font-size: Theme.font-sm;
+                        }
+                        
+                        Rectangle { vertical-stretch: 1; background: transparent; }
+                        
+                        Text {
+                            text: "Connect accounts to see recommendations";
+                            color: Theme.text-muted;
+                            font-size: Theme.font-sm;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+            }
+            
+            // Quick Actions
+            HorizontalLayout {
+                spacing: Theme.spacing-md;
+                
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 50px;
+                    background: #312e81;  // Indigo dark
+                    border-radius: Theme.radius-lg;
+                    
+                    HorizontalLayout {
+                        padding: Theme.spacing-md;
+                        alignment: space-between;
+                        
+                        Text {
+                            text: "View All Accounts";
+                            color: #a5b4fc;  // Indigo light
+                            font-size: Theme.font-md;
+                            font-weight: 500;
+                            vertical-alignment: center;
+                        }
+                        
+                        Text {
+                            text: "→";
+                            color: #a5b4fc;
+                            font-size: Theme.font-lg;
+                            vertical-alignment: center;
+                        }
+                    }
+                    
+                    TouchArea { mouse-cursor: pointer; }
+                }
+                
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 50px;
+                    background: #581c87;  // Purple dark
+                    border-radius: Theme.radius-lg;
+                    
+                    HorizontalLayout {
+                        padding: Theme.spacing-md;
+                        alignment: space-between;
+                        
+                        Text {
+                            text: "Export Data";
+                            color: #d8b4fe;  // Purple light
+                            font-size: Theme.font-md;
+                            font-weight: 500;
+                            vertical-alignment: center;
+                        }
+                        
+                        Text {
+                            text: "↓";
+                            color: #d8b4fe;
+                            font-size: Theme.font-lg;
+                            vertical-alignment: center;
+                        }
+                    }
+                    
+                    TouchArea { mouse-cursor: pointer; }
+                }
+            }
+        }
+    }
+}

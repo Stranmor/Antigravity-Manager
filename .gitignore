@@ -13,6 +13,8 @@ dist
 dist-ssr
 *.local
 .vite
+coverage/
+Cargo.lock
 
 # Editor directories and files
 .vscode/*
@@ -26,9 +28,12 @@ dist-ssr
 *.sw?
 
 # Build output
+target/
 src-tauri/target/
 src-tauri/gen/
 src-tauri/.env
+src-slint/target/
+crates/*/target/
 
 # Environment
 .env

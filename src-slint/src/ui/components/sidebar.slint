@@ -1,0 +1,147 @@
+// Sidebar Navigation Component
+
+import { VerticalBox } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+component NavItem inherits Rectangle {
+    in property <string> label;
+    in property <string> icon-text;
+    in property <bool> active: false;
+    
+    callback clicked();
+    
+    height: 44px;
+    background: active ? Theme.surface-elevated : transparent;
+    border-radius: Theme.radius-md;
+    
+    animate background { duration: 150ms; easing: ease-out; }
+    
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 12px;
+        alignment: start;
+        
+        // Icon placeholder (text-based for now)
+        Text {
+            text: icon-text;
+            color: active ? Theme.accent-blue : Theme.text-secondary;
+            font-size: 16px;
+            vertical-alignment: center;
+            animate color { duration: 150ms; }
+        }
+        
+        // Label
+        Text {
+            text: label;
+            color: active ? Theme.text-primary : Theme.text-secondary;
+            font-size: Theme.font-md;
+            vertical-alignment: center;
+            animate color { duration: 150ms; }
+        }
+    }
+    
+    // Hover effect
+    states [
+        hovered when touch-area.has-hover && !active: {
+            background: Theme.surface-hover;
+        }
+    ]
+    
+    touch-area := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+export component Sidebar inherits Rectangle {
+    in-out property <int> current-page: 0;
+    
+    callback navigate(int);
+    
+    background: Theme.surface;
+    border-width: 0px;
+    
+    // Right border
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        height: 100%;
+        background: Theme.border;
+    }
+    
+    VerticalBox {
+        padding: Theme.spacing-md;
+        spacing: Theme.spacing-sm;
+        alignment: start;
+        
+        // Logo / Title
+        HorizontalLayout {
+            padding-bottom: Theme.spacing-lg;
+            spacing: 8px;
+            
+            Text {
+                text: "🚀";
+                font-size: 24px;
+                vertical-alignment: center;
+            }
+            
+            Text {
+                text: "Antigravity";
+                color: Theme.text-primary;
+                font-size: Theme.font-lg;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+        }
+        
+        // Navigation Items
+        NavItem {
+            label: "Dashboard";
+            icon-text: "📊";
+            active: current-page == 0;
+            clicked => { root.navigate(0); }
+        }
+        
+        NavItem {
+            label: "Accounts";
+            icon-text: "👤";
+            active: current-page == 1;
+            clicked => { root.navigate(1); }
+        }
+        
+        NavItem {
+            label: "API Proxy";
+            icon-text: "🔌";
+            active: current-page == 2;
+            clicked => { root.navigate(2); }
+        }
+        
+        NavItem {
+            label: "Monitor";
+            icon-text: "📈";
+            active: current-page == 4;
+            clicked => { root.navigate(4); }
+        }
+        
+        NavItem {
+            label: "Settings";
+            icon-text: "⚙️";
+            active: current-page == 3;
+            clicked => { root.navigate(3); }
+        }
+        
+        // Spacer
+        Rectangle { 
+            vertical-stretch: 1;
+            background: transparent;
+        }
+        
+        // Version info
+        Text {
+            text: "v3.3.20";
+            color: Theme.text-muted;
+            font-size: Theme.font-xs;
+            horizontal-alignment: center;
+        }
+    }
+}

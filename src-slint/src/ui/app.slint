@@ -1,0 +1,91 @@
+// Antigravity Manager - Main Application Window
+// Design: Industrial Minimalism with Dark Theme
+
+import { VerticalBox, HorizontalBox, Button, ScrollView, LineEdit, ComboBox, Switch, Slider, TabWidget } from "std-widgets.slint";
+import { Dashboard } from "dashboard.slint";
+import { Sidebar } from "components/sidebar.slint";
+import { Theme } from "components/theme.slint";
+
+export component AppWindow inherits Window {
+    title: "Antigravity Manager";
+    min-width: 900px;
+    min-height: 600px;
+    background: Theme.background;
+    
+    // Current page index: 0=Dashboard, 1=Accounts, 2=API Proxy, 3=Settings, 4=Monitor
+    in-out property <int> current-page: 0;
+    
+    // Callbacks for navigation
+    callback navigate(int);
+    navigate(page) => {
+        current-page = page;
+    }
+    
+    HorizontalBox {
+        padding: 0px;
+        spacing: 0px;
+        
+        // Left Sidebar
+        Sidebar {
+            width: 220px;
+            current-page: root.current-page;
+            navigate(page) => { root.navigate(page); }
+        }
+        
+        // Main Content Area
+        Rectangle {
+            background: Theme.background;
+            
+            // Page content based on current-page
+            if current-page == 0: Dashboard {
+                width: 100%;
+                height: 100%;
+            }
+            
+            // Placeholder for other pages
+            if current-page == 1: Rectangle {
+                background: Theme.background;
+                Text {
+                    text: "Accounts Page (Coming Soon)";
+                    color: Theme.text-primary;
+                    font-size: 24px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            
+            if current-page == 2: Rectangle {
+                background: Theme.background;
+                Text {
+                    text: "API Proxy Page (Coming Soon)";
+                    color: Theme.text-primary;
+                    font-size: 24px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            
+            if current-page == 3: Rectangle {
+                background: Theme.background;
+                Text {
+                    text: "Settings Page (Coming Soon)";
+                    color: Theme.text-primary;
+                    font-size: 24px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            
+            if current-page == 4: Rectangle {
+                background: Theme.background;
+                Text {
+                    text: "Monitor Page (Coming Soon)";
+                    color: Theme.text-primary;
+                    font-size: 24px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}

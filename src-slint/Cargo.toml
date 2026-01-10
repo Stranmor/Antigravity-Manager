@@ -1,0 +1,36 @@
+[package]
+name = "antigravity-desktop"
+description = "Antigravity Manager - Native Desktop UI (Slint)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Core business logic
+antigravity-core = { path = "../crates/antigravity-core" }
+
+# Slint UI
+slint = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Utilities
+chrono = { workspace = true }
+dirs = { workspace = true }
+
+[build-dependencies]
+slint-build = "1.9"
+
+[[bin]]
+name = "antigravity-manager"
+path = "src/main.rs"
