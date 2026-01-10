@@ -4,12 +4,93 @@
 
 mod backend;
 
-use antigravity_core::modules::logger;
+use antigravity_core::modules::{self, logger};
 use backend::BackendState;
-use slint::{Model, VecModel};
+use slint::{Model, ModelRc, VecModel};
 use std::rc::Rc;
 
 slint::include_modules!();
+
+/// Helper to build AccountData from antigravity_core::Account
+fn build_account_data(account: &antigravity_core::models::Account, current_id: Option<&str>) -> AccountData {
+    let is_current = current_id.map(|id| account.id == id).unwrap_or(false);
+    let tier = BackendState::get_tier(account);
+    let is_forbidden = account.quota.as_ref().map(|q| q.is_forbidden).unwrap_or(false);
+    
+    AccountData {
+        id: account.id.clone().into(),
+        email: account.email.clone().into(),
+        name: account.name.clone().unwrap_or_default().into(),
+        disabled: account.disabled,
+        disabled_reason: account.disabled_reason.clone().unwrap_or_default().into(),
+        proxy_disabled: account.proxy_disabled,
+        subscription_tier: tier.into(),
+        last_used: chrono::DateTime::from_timestamp(account.last_used, 0)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+            .unwrap_or_else(|| "Unknown".to_string())
+            .into(),
+        gemini_pro_quota: BackendState::get_model_quota(account, "gemini-3-pro") as i32,
+        gemini_flash_quota: BackendState::get_model_quota(account, "flash") as i32,
+        gemini_image_quota: BackendState::get_model_quota(account, "image") as i32,
+        claude_quota: BackendState::get_model_quota(account, "claude") as i32,
+        is_current,
+        is_forbidden,
+        selected: false,
+    }
+}
+
+/// Reload accounts from backend and update UI model
+fn reload_accounts(
+    model: &Rc<VecModel<AccountData>>,
+    app_weak: &slint::Weak<AppWindow>,
+) {
+    if let Ok(accounts) = modules::list_accounts() {
+        let current_id = modules::get_current_account_id().ok().flatten();
+        
+        // Clear and rebuild
+        while model.row_count() > 0 {
+            model.remove(0);
+        }
+        
+        for account in &accounts {
+            model.push(build_account_data(account, current_id.as_deref()));
+        }
+        
+        // Update counts
+        if let Some(app) = app_weak.upgrade() {
+            let total = accounts.len() as i32;
+            let pro_count = accounts.iter().filter(|a| {
+                BackendState::get_tier(a) == "PRO"
+            }).count() as i32;
+            let ultra_count = accounts.iter().filter(|a| {
+                BackendState::get_tier(a) == "ULTRA"
+            }).count() as i32;
+            let free_count = total - pro_count - ultra_count;
+            
+            app.global::<AppState>().set_all_count(total);
+            app.global::<AppState>().set_pro_count(pro_count);
+            app.global::<AppState>().set_ultra_count(ultra_count);
+            app.global::<AppState>().set_free_count(free_count);
+            app.global::<AppState>().set_total_items(total);
+            app.global::<AppState>().set_selected_count(0);
+        }
+        
+        tracing::info!("Reloaded {} accounts", accounts.len());
+    }
+}
+
+/// Get selected account IDs from model
+fn get_selected_ids(model: &Rc<VecModel<AccountData>>) -> Vec<String> {
+    let mut ids = Vec::new();
+    for i in 0..model.row_count() {
+        if let Some(account) = model.row_data(i) {
+            if account.selected {
+                ids.push(account.id.to_string());
+            }
+        }
+    }
+    ids
+}
 
 fn main() {
     // Initialize logging
@@ -59,31 +140,8 @@ fn main() {
             }).unwrap_or_default();
             
             // Build accounts data for UI
-            let accounts_data: Vec<AccountData> = state.accounts().iter().map(|a| {
-                let is_current = current_id.as_ref().map(|id| &a.id == id).unwrap_or(false);
-                let tier = BackendState::get_tier(a);
-                let is_forbidden = a.quota.as_ref().map(|q| q.is_forbidden).unwrap_or(false);
-                
-                AccountData {
-                    id: a.id.clone().into(),
-                    email: a.email.clone().into(),
-                    name: a.name.clone().unwrap_or_default().into(),
-                    disabled: a.disabled,
-                    disabled_reason: a.disabled_reason.clone().unwrap_or_default().into(),
-                    proxy_disabled: a.proxy_disabled,
-                    subscription_tier: tier.into(),
-                    last_used: chrono::DateTime::from_timestamp(a.last_used, 0)
-                        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
-                        .unwrap_or_else(|| "Unknown".to_string())
-                        .into(),
-                    gemini_pro_quota: BackendState::get_model_quota(a, "gemini-3-pro") as i32,
-                    gemini_flash_quota: BackendState::get_model_quota(a, "flash") as i32,
-                    gemini_image_quota: BackendState::get_model_quota(a, "image") as i32,
-                    claude_quota: BackendState::get_model_quota(a, "claude") as i32,
-                    is_current,
-                    is_forbidden,
-                    selected: false,
-                }
+            let accounts_data: Vec<AccountData> = state.accounts().iter().enumerate().map(|(_i, a)| {
+                build_account_data(a, current_id.as_deref())
             }).collect();
             
             (
@@ -142,7 +200,7 @@ fn main() {
 
     // Create accounts model (Rc for sharing with callbacks)
     let accounts_vec_model = Rc::new(VecModel::from(accounts_data));
-    let accounts_model = slint::ModelRc::from(accounts_vec_model.clone());
+    let accounts_model = ModelRc::from(accounts_vec_model.clone());
     
     // Set AppState global data for AccountsPage
     app.global::<AppState>().set_accounts(accounts_model);
@@ -154,36 +212,77 @@ fn main() {
     app.global::<AppState>().set_total_pages(((total_accounts as f32) / 20.0).ceil().max(1.0) as i32);
     app.global::<AppState>().set_current_page(1);
 
-    // Set up AppState callbacks
+    // === AppState Callbacks ===
+    
     app.global::<AppState>().on_add_account(|| {
-        tracing::info!("AppState: Add account requested");
+        tracing::info!("Add account requested - TODO: Open OAuth dialog");
     });
 
-    app.global::<AppState>().on_refresh_all(|| {
-        tracing::info!("AppState: Refresh all requested");
+    // Refresh all accounts
+    let model_for_refresh = accounts_vec_model.clone();
+    let app_weak_for_refresh = app.as_weak();
+    app.global::<AppState>().on_refresh_all(move || {
+        tracing::info!("Refresh all accounts");
+        reload_accounts(&model_for_refresh, &app_weak_for_refresh);
     });
 
-    app.global::<AppState>().on_export_selected(|| {
-        tracing::info!("AppState: Export selected requested");
+    // Export selected accounts
+    let model_for_export = accounts_vec_model.clone();
+    app.global::<AppState>().on_export_selected(move || {
+        let selected_ids = get_selected_ids(&model_for_export);
+        if selected_ids.is_empty() {
+            tracing::warn!("No accounts selected for export");
+            return;
+        }
+        
+        // Load full accounts data
+        let mut accounts_to_export = Vec::new();
+        for id in &selected_ids {
+            if let Ok(account) = modules::load_account(id) {
+                accounts_to_export.push(account);
+            }
+        }
+        
+        // Serialize to JSON
+        let json = serde_json::to_string_pretty(&accounts_to_export).unwrap_or_default();
+        tracing::info!("Exported {} accounts ({} bytes)", accounts_to_export.len(), json.len());
+        
+        // TODO: Save to file using native dialog
+        // For now, just log
     });
 
-    app.global::<AppState>().on_delete_selected(|| {
-        tracing::info!("AppState: Delete selected requested");
+    // Delete selected accounts
+    let model_for_delete = accounts_vec_model.clone();
+    let app_weak_for_delete = app.as_weak();
+    app.global::<AppState>().on_delete_selected(move || {
+        let selected_ids = get_selected_ids(&model_for_delete);
+        if selected_ids.is_empty() {
+            return;
+        }
+        
+        tracing::info!("Deleting {} accounts", selected_ids.len());
+        
+        if let Err(e) = modules::delete_accounts(&selected_ids) {
+            tracing::error!("Failed to delete accounts: {}", e);
+        } else {
+            reload_accounts(&model_for_delete, &app_weak_for_delete);
+        }
     });
 
     app.global::<AppState>().on_toggle_proxy_batch(|enable| {
-        tracing::info!("AppState: Toggle proxy batch: {}", enable);
+        tracing::info!("Toggle proxy batch: {}", enable);
+        // TODO: Implement batch proxy toggle
     });
 
     app.global::<AppState>().on_search_changed(|query| {
-        tracing::info!("AppState: Search: {}", query);
+        tracing::info!("Search: {}", query);
+        // TODO: Implement search filtering
     });
 
     // Toggle single account selection
     let model_for_toggle = accounts_vec_model.clone();
     let app_weak_for_toggle = app.as_weak();
     app.global::<AppState>().on_toggle_select(move |id| {
-        tracing::info!("Toggle select: {}", id);
         let id_str = id.to_string();
         let mut selected_count = 0;
         
@@ -199,7 +298,6 @@ fn main() {
             }
         }
         
-        // Update selected count
         if let Some(app) = app_weak_for_toggle.upgrade() {
             app.global::<AppState>().set_selected_count(selected_count);
         }
@@ -209,9 +307,6 @@ fn main() {
     let model_for_toggle_all = accounts_vec_model.clone();
     let app_weak_for_toggle_all = app.as_weak();
     app.global::<AppState>().on_toggle_all(move || {
-        tracing::info!("Toggle all");
-        
-        // Check if all are selected
         let mut all_selected = true;
         for i in 0..model_for_toggle_all.row_count() {
             if let Some(account) = model_for_toggle_all.row_data(i) {
@@ -222,7 +317,6 @@ fn main() {
             }
         }
         
-        // Toggle: if all selected, deselect all; otherwise select all
         let new_state = !all_selected;
         for i in 0..model_for_toggle_all.row_count() {
             if let Some(mut account) = model_for_toggle_all.row_data(i) {
@@ -231,59 +325,128 @@ fn main() {
             }
         }
         
-        // Update selected count
         if let Some(app) = app_weak_for_toggle_all.upgrade() {
             let count = if new_state { model_for_toggle_all.row_count() as i32 } else { 0 };
             app.global::<AppState>().set_selected_count(count);
         }
     });
 
-    app.global::<AppState>().on_switch_account(|id| {
-        tracing::info!("AppState: Switch to account: {}", id);
+    // Switch to account
+    let model_for_switch = accounts_vec_model.clone();
+    let app_weak_for_switch = app.as_weak();
+    app.global::<AppState>().on_switch_account(move |id| {
+        let id_str = id.to_string();
+        tracing::info!("Switching to account: {}", id_str);
+        
+        if let Err(e) = modules::set_current_account_id(&id_str) {
+            tracing::error!("Failed to switch account: {}", e);
+        } else {
+            // Update is_current flags in model
+            let _current_id = Some(id_str.as_str());
+            for i in 0..model_for_switch.row_count() {
+                if let Some(mut account) = model_for_switch.row_data(i) {
+                    account.is_current = account.id.as_str() == id_str;
+                    model_for_switch.set_row_data(i, account);
+                }
+            }
+            
+            // Update current account info
+            if let Some(app) = app_weak_for_switch.upgrade() {
+                if let Ok(Some(account)) = modules::get_current_account() {
+                    app.set_current_account(CurrentAccountInfo {
+                        email: account.email.clone().into(),
+                        name: account.name.as_ref()
+                            .and_then(|n| n.chars().next())
+                            .map(|c| c.to_string())
+                            .unwrap_or_else(|| "U".to_string())
+                            .into(),
+                        last_used: chrono::DateTime::from_timestamp(account.last_used, 0)
+                            .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                            .unwrap_or_else(|| "Unknown".to_string())
+                            .into(),
+                        has_account: true,
+                    });
+                }
+            }
+        }
     });
 
     app.global::<AppState>().on_refresh_account(|id| {
-        tracing::info!("AppState: Refresh account: {}", id);
+        tracing::info!("Refresh account: {} - TODO: Implement OAuth quota refresh", id);
+        // TODO: Implement quota refresh via API
     });
 
     app.global::<AppState>().on_view_details(|id| {
-        tracing::info!("AppState: View details: {}", id);
+        tracing::info!("View details: {} - TODO: Open details dialog", id);
+        // TODO: Implement details dialog
     });
 
+    // Export single account
     app.global::<AppState>().on_export_account(|id| {
-        tracing::info!("AppState: Export account: {}", id);
+        let id_str = id.to_string();
+        if let Ok(account) = modules::load_account(&id_str) {
+            let json = serde_json::to_string_pretty(&account).unwrap_or_default();
+            tracing::info!("Exported account {} ({} bytes)", id_str, json.len());
+            // TODO: Save to file
+        }
     });
 
-    app.global::<AppState>().on_delete_account(|id| {
-        tracing::info!("AppState: Delete account: {}", id);
+    // Delete single account
+    let model_for_delete_one = accounts_vec_model.clone();
+    let app_weak_for_delete_one = app.as_weak();
+    app.global::<AppState>().on_delete_account(move |id| {
+        let id_str = id.to_string();
+        tracing::info!("Deleting account: {}", id_str);
+        
+        if let Err(e) = modules::delete_account(&id_str) {
+            tracing::error!("Failed to delete account: {}", e);
+        } else {
+            reload_accounts(&model_for_delete_one, &app_weak_for_delete_one);
+        }
     });
 
-    app.global::<AppState>().on_toggle_proxy(|id| {
-        tracing::info!("AppState: Toggle proxy: {}", id);
-    });
-
-    // Set up dashboard callbacks
-    let backend_clone = backend.clone();
-    let runtime_handle = runtime.handle().clone();
-    app.on_refresh_accounts(move || {
-        tracing::info!("Refresh accounts requested");
-        let backend = backend_clone.clone();
-        runtime_handle.spawn(async move {
-            let mut state = backend.lock().await;
-            if let Err(e) = state.load_accounts() {
-                tracing::error!("Failed to refresh accounts: {}", e);
-            } else {
-                tracing::info!("Accounts refreshed: {}", state.account_count());
+    // Toggle proxy for single account
+    let model_for_proxy = accounts_vec_model.clone();
+    app.global::<AppState>().on_toggle_proxy(move |id| {
+        let id_str = id.to_string();
+        tracing::info!("Toggle proxy for: {}", id_str);
+        
+        // Find and toggle proxy_disabled
+        for i in 0..model_for_proxy.row_count() {
+            if let Some(mut account) = model_for_proxy.row_data(i) {
+                if account.id.as_str() == id_str {
+                    account.proxy_disabled = !account.proxy_disabled;
+                    
+                    // Save to disk
+                    if let Ok(mut core_account) = modules::load_account(&id_str) {
+                        core_account.proxy_disabled = account.proxy_disabled;
+                        let _ = modules::save_account(&core_account);
+                    }
+                    
+                    model_for_proxy.set_row_data(i, account);
+                    break;
+                }
             }
-        });
+        }
+    });
+
+    // === Dashboard Callbacks ===
+    
+    let _backend_clone = backend.clone();
+    let model_for_dash_refresh = accounts_vec_model.clone();
+    let app_weak_for_dash_refresh = app.as_weak();
+    let _runtime_handle = runtime.handle().clone();
+    app.on_refresh_accounts(move || {
+        tracing::info!("Dashboard: Refresh accounts");
+        reload_accounts(&model_for_dash_refresh, &app_weak_for_dash_refresh);
     });
 
     app.on_add_account(|| {
-        tracing::info!("Add account requested");
+        tracing::info!("Dashboard: Add account - TODO: Open OAuth dialog");
     });
 
     app.on_switch_account(|| {
-        tracing::info!("Switch account requested");
+        tracing::info!("Dashboard: Switch account - TODO: Open account picker");
     });
 
     tracing::info!("Application window created, running event loop...");

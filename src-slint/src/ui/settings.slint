@@ -1,0 +1,719 @@
+// Settings Page - Full Featured Configuration
+
+import { VerticalBox, HorizontalBox, ScrollView, LineEdit, ComboBox, Switch, Slider, Button } from "std-widgets.slint";
+import { Theme } from "components/theme.slint";
+
+// Settings data structure
+export struct SettingsData {
+    language: string,
+    theme: string,
+    auto_refresh: bool,
+    refresh_interval: int,
+    auto_sync: bool,
+    sync_interval: int,
+    auto_launch: bool,
+    default_export_path: string,
+    antigravity_executable: string,
+    // Proxy settings
+    proxy_enabled: bool,
+    proxy_port: int,
+    proxy_auto_start: bool,
+    proxy_allow_lan: bool,
+    proxy_enable_logging: bool,
+    proxy_request_timeout: int,
+    proxy_api_key: string,
+}
+
+// Section header component
+component SectionHeader inherits Rectangle {
+    in property <string> title;
+    in property <string> icon;
+    
+    height: 48px;
+    
+    HorizontalLayout {
+        spacing: 12px;
+        padding-left: 4px;
+        
+        Text {
+            text: icon;
+            font-size: 20px;
+            vertical-alignment: center;
+        }
+        
+        Text {
+            text: title;
+            color: Theme.text-primary;
+            font-size: 16px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// Setting row component
+component SettingRow inherits Rectangle {
+    in property <string> label;
+    in property <string> description;
+    
+    height: description == "" ? 48px : 64px;
+    
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 16px;
+        
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 4px;
+            
+            Text {
+                text: label;
+                color: Theme.text-primary;
+                font-size: 14px;
+                font-weight: 500;
+            }
+            
+            if description != "": Text {
+                text: description;
+                color: Theme.text-muted;
+                font-size: 12px;
+            }
+        }
+        
+        @children
+    }
+}
+
+// Main Settings page
+export component SettingsPage inherits Rectangle {
+    in-out property <SettingsData> settings: {
+        language: "en",
+        theme: "dark",
+        auto_refresh: false,
+        refresh_interval: 15,
+        auto_sync: false,
+        sync_interval: 5,
+        auto_launch: false,
+        default_export_path: "",
+        antigravity_executable: "",
+        proxy_enabled: false,
+        proxy_port: 8045,
+        proxy_auto_start: false,
+        proxy_allow_lan: false,
+        proxy_enable_logging: true,
+        proxy_request_timeout: 30,
+        proxy_api_key: "",
+    };
+    
+    callback save-settings();
+    callback open-data-dir();
+    callback select-export-path();
+    callback select-antigravity-path();
+    callback detect-antigravity-path();
+    callback check-update();
+    callback clear-logs();
+    callback generate-api-key();
+    callback setting-changed(string, string);
+    
+    background: Theme.background;
+    
+    ScrollView {
+        VerticalLayout {
+            padding: 24px;
+            spacing: 16px;
+            
+            // Page header
+            HorizontalLayout {
+                height: 48px;
+                
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 4px;
+                    
+                    Text {
+                        text: "Settings";
+                        color: Theme.text-primary;
+                        font-size: 24px;
+                        font-weight: 700;
+                    }
+                    
+                    Text {
+                        text: "Configure application preferences";
+                        color: Theme.text-secondary;
+                        font-size: 14px;
+                    }
+                }
+                
+                Rectangle { horizontal-stretch: 1; }
+                
+                // Save button
+                Rectangle {
+                    width: 100px;
+                    height: 36px;
+                    background: Theme.accent-blue;
+                    border-radius: 8px;
+                    
+                    HorizontalLayout {
+                        padding: 8px;
+                        spacing: 8px;
+                        alignment: center;
+                        
+                        Text {
+                            text: "💾";
+                            font-size: 14px;
+                            vertical-alignment: center;
+                        }
+                        
+                        Text {
+                            text: "Save";
+                            color: white;
+                            font-size: 14px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+                    }
+                    
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.save-settings(); }
+                    }
+                }
+            }
+            
+            Rectangle { height: 8px; }
+            
+            // General Settings
+            Rectangle {
+                background: Theme.surface;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: Theme.border;
+                
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
+                    
+                    SectionHeader {
+                        title: "General";
+                        icon: "⚙️";
+                    }
+                    
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                    
+                    SettingRow {
+                        label: "Language";
+                        
+                        ComboBox {
+                            width: 150px;
+                            model: ["English", "中文", "日本語", "Русский"];
+                            current-index: settings.language == "en" ? 0 : 
+                                          settings.language == "zh" ? 1 : 
+                                          settings.language == "ja" ? 2 : 3;
+                        }
+                    }
+                    
+                    SettingRow {
+                        label: "Theme";
+                        
+                        ComboBox {
+                            width: 150px;
+                            model: ["Dark", "Light", "System"];
+                            current-index: settings.theme == "dark" ? 0 : 
+                                          settings.theme == "light" ? 1 : 2;
+                        }
+                    }
+                    
+                    SettingRow {
+                        label: "Auto-launch";
+                        description: "Start with system";
+                        
+                        Switch {
+                            checked: settings.auto-launch;
+                        }
+                    }
+                }
+            }
+            
+            // Quota Refresh
+            Rectangle {
+                background: Theme.surface;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: Theme.border;
+                
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
+                    
+                    SectionHeader {
+                        title: "Quota Refresh";
+                        icon: "🔄";
+                    }
+                    
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                    
+                    SettingRow {
+                        label: "Auto-refresh quotas";
+                        
+                        Switch {
+                            checked: settings.auto-refresh;
+                        }
+                    }
+                    
+                    SettingRow {
+                        label: "Refresh interval";
+                        description: "Minutes between quota checks";
+                        
+                        HorizontalLayout {
+                            spacing: 8px;
+                            
+                            LineEdit {
+                                width: 60px;
+                                text: settings.refresh-interval;
+                            }
+                            
+                            Text {
+                                text: "min";
+                                color: Theme.text-secondary;
+                                font-size: 14px;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Paths
+            Rectangle {
+                background: Theme.surface;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: Theme.border;
+                
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
+                    
+                    SectionHeader {
+                        title: "Paths";
+                        icon: "📁";
+                    }
+                    
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                    
+                    SettingRow {
+                        label: "Export directory";
+                        
+                        HorizontalLayout {
+                            spacing: 8px;
+                            
+                            LineEdit {
+                                horizontal-stretch: 1;
+                                text: settings.default-export-path;
+                                placeholder-text: "Default export path...";
+                            }
+                            
+                            Rectangle {
+                                width: 80px;
+                                height: 32px;
+                                background: Theme.surface-elevated;
+                                border-radius: 6px;
+                                border-width: 1px;
+                                border-color: Theme.border;
+                                
+                                Text {
+                                    text: "Browse";
+                                    color: Theme.text-primary;
+                                    font-size: 13px;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                                
+                                TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.select-export-path(); }
+                                }
+                            }
+                        }
+                    }
+                    
+                    SettingRow {
+                        label: "Antigravity executable";
+                        
+                        HorizontalLayout {
+                            spacing: 8px;
+                            
+                            LineEdit {
+                                horizontal-stretch: 1;
+                                text: settings.antigravity-executable;
+                                placeholder-text: "Path to Antigravity Tools...";
+                            }
+                            
+                            Rectangle {
+                                width: 80px;
+                                height: 32px;
+                                background: Theme.surface-elevated;
+                                border-radius: 6px;
+                                border-width: 1px;
+                                border-color: Theme.border;
+                                
+                                Text {
+                                    text: "Detect";
+                                    color: Theme.accent-blue;
+                                    font-size: 13px;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                                
+                                TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.detect-antigravity-path(); }
+                                }
+                            }
+                        }
+                    }
+                    
+                    HorizontalLayout {
+                        padding: 16px;
+                        spacing: 16px;
+                        
+                        Rectangle {
+                            width: 140px;
+                            height: 36px;
+                            background: Theme.surface-elevated;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            
+                            HorizontalLayout {
+                                alignment: center;
+                                spacing: 8px;
+                                
+                                Text {
+                                    text: "📂";
+                                    font-size: 14px;
+                                    vertical-alignment: center;
+                                }
+                                
+                                Text {
+                                    text: "Open Data Dir";
+                                    color: Theme.text-primary;
+                                    font-size: 13px;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            
+                            TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.open-data-dir(); }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Proxy Settings
+            Rectangle {
+                background: Theme.surface;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: Theme.border;
+                
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
+                    
+                    SectionHeader {
+                        title: "API Proxy";
+                        icon: "🔌";
+                    }
+                    
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                    
+                    SettingRow {
+                        label: "Enable proxy";
+                        
+                        Switch {
+                            checked: settings.proxy-enabled;
+                        }
+                    }
+                    
+                    SettingRow {
+                        label: "Port";
+                        
+                        LineEdit {
+                            width: 100px;
+                            text: settings.proxy-port;
+                        }
+                    }
+                    
+                    SettingRow {
+                        label: "Auto-start proxy";
+                        
+                        Switch {
+                            checked: settings.proxy-auto-start;
+                        }
+                    }
+                    
+                    SettingRow {
+                        label: "Allow LAN access";
+                        
+                        Switch {
+                            checked: settings.proxy-allow-lan;
+                        }
+                    }
+                    
+                    SettingRow {
+                        label: "Enable logging";
+                        
+                        Switch {
+                            checked: settings.proxy-enable-logging;
+                        }
+                    }
+                    
+                    SettingRow {
+                        label: "Request timeout";
+                        
+                        HorizontalLayout {
+                            spacing: 8px;
+                            
+                            LineEdit {
+                                width: 60px;
+                                text: settings.proxy-request-timeout;
+                            }
+                            
+                            Text {
+                                text: "sec";
+                                color: Theme.text-secondary;
+                                font-size: 14px;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                    
+                    SettingRow {
+                        label: "API Key";
+                        
+                        HorizontalLayout {
+                            spacing: 8px;
+                            
+                            LineEdit {
+                                horizontal-stretch: 1;
+                                text: settings.proxy-api-key;
+                                input-type: password;
+                            }
+                            
+                            Rectangle {
+                                width: 100px;
+                                height: 32px;
+                                background: Theme.accent-blue.transparentize(0.85);
+                                border-radius: 6px;
+                                
+                                Text {
+                                    text: "Generate";
+                                    color: Theme.accent-blue;
+                                    font-size: 13px;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                                
+                                TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.generate-api-key(); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Maintenance
+            Rectangle {
+                background: Theme.surface;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: Theme.border;
+                
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
+                    
+                    SectionHeader {
+                        title: "Maintenance";
+                        icon: "🧹";
+                    }
+                    
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                    
+                    HorizontalLayout {
+                        padding: 8px;
+                        spacing: 16px;
+                        
+                        Rectangle {
+                            width: 120px;
+                            height: 36px;
+                            background: Theme.error.transparentize(0.85);
+                            border-radius: 8px;
+                            
+                            HorizontalLayout {
+                                alignment: center;
+                                spacing: 8px;
+                                
+                                Text {
+                                    text: "🗑️";
+                                    font-size: 14px;
+                                    vertical-alignment: center;
+                                }
+                                
+                                Text {
+                                    text: "Clear Logs";
+                                    color: Theme.error;
+                                    font-size: 13px;
+                                    font-weight: 500;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            
+                            TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.clear-logs(); }
+                            }
+                        }
+                        
+                        Rectangle {
+                            width: 140px;
+                            height: 36px;
+                            background: Theme.accent-blue.transparentize(0.85);
+                            border-radius: 8px;
+                            
+                            HorizontalLayout {
+                                alignment: center;
+                                spacing: 8px;
+                                
+                                Text {
+                                    text: "✨";
+                                    font-size: 14px;
+                                    vertical-alignment: center;
+                                }
+                                
+                                Text {
+                                    text: "Check Update";
+                                    color: Theme.accent-blue;
+                                    font-size: 13px;
+                                    font-weight: 500;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            
+                            TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.check-update(); }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // About
+            Rectangle {
+                background: Theme.surface;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: Theme.border;
+                
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
+                    
+                    SectionHeader {
+                        title: "About";
+                        icon: "ℹ️";
+                    }
+                    
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                    
+                    HorizontalLayout {
+                        padding: 8px;
+                        spacing: 16px;
+                        
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 8px;
+                            
+                            Text {
+                                text: "Antigravity Manager";
+                                color: Theme.text-primary;
+                                font-size: 16px;
+                                font-weight: 600;
+                            }
+                            
+                            Text {
+                                text: "Version 3.3.20 (Slint Native)";
+                                color: Theme.text-secondary;
+                                font-size: 13px;
+                            }
+                            
+                            Text {
+                                text: "© 2024-2026 Antigravity Project";
+                                color: Theme.text-muted;
+                                font-size: 12px;
+                            }
+                        }
+                        
+                        Rectangle {
+                            width: 100px;
+                            height: 36px;
+                            background: Theme.surface-elevated;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            
+                            HorizontalLayout {
+                                alignment: center;
+                                spacing: 8px;
+                                
+                                Text {
+                                    text: "🔗";
+                                    font-size: 14px;
+                                    vertical-alignment: center;
+                                }
+                                
+                                Text {
+                                    text: "GitHub";
+                                    color: Theme.text-primary;
+                                    font-size: 13px;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            
+                            TouchArea { mouse-cursor: pointer; }
+                        }
+                    }
+                }
+            }
+            
+            // Bottom padding
+            Rectangle { height: 24px; }
+        }
+    }
+}
