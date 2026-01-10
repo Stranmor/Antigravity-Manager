@@ -6,6 +6,8 @@ mod backend;
 
 use antigravity_core::modules::logger;
 use backend::BackendState;
+use slint::{Model, VecModel};
+use std::rc::Rc;
 
 slint::include_modules!();
 
@@ -80,6 +82,7 @@ fn main() {
                     claude_quota: BackendState::get_model_quota(a, "claude") as i32,
                     is_current,
                     is_forbidden,
+                    selected: false,
                 }
             }).collect();
             
@@ -137,8 +140,11 @@ fn main() {
         has_account,
     });
 
+    // Create accounts model (Rc for sharing with callbacks)
+    let accounts_vec_model = Rc::new(VecModel::from(accounts_data));
+    let accounts_model = slint::ModelRc::from(accounts_vec_model.clone());
+    
     // Set AppState global data for AccountsPage
-    let accounts_model = slint::ModelRc::new(slint::VecModel::from(accounts_data));
     app.global::<AppState>().set_accounts(accounts_model);
     app.global::<AppState>().set_all_count(all_count);
     app.global::<AppState>().set_pro_count(pro_count);
@@ -173,12 +179,63 @@ fn main() {
         tracing::info!("AppState: Search: {}", query);
     });
 
-    app.global::<AppState>().on_toggle_select(|id| {
-        tracing::info!("AppState: Toggle select: {}", id);
+    // Toggle single account selection
+    let model_for_toggle = accounts_vec_model.clone();
+    let app_weak_for_toggle = app.as_weak();
+    app.global::<AppState>().on_toggle_select(move |id| {
+        tracing::info!("Toggle select: {}", id);
+        let id_str = id.to_string();
+        let mut selected_count = 0;
+        
+        for i in 0..model_for_toggle.row_count() {
+            if let Some(mut account) = model_for_toggle.row_data(i) {
+                if account.id.as_str() == id_str {
+                    account.selected = !account.selected;
+                    model_for_toggle.set_row_data(i, account.clone());
+                }
+                if account.selected {
+                    selected_count += 1;
+                }
+            }
+        }
+        
+        // Update selected count
+        if let Some(app) = app_weak_for_toggle.upgrade() {
+            app.global::<AppState>().set_selected_count(selected_count);
+        }
     });
 
-    app.global::<AppState>().on_toggle_all(|| {
-        tracing::info!("AppState: Toggle all");
+    // Toggle all accounts selection
+    let model_for_toggle_all = accounts_vec_model.clone();
+    let app_weak_for_toggle_all = app.as_weak();
+    app.global::<AppState>().on_toggle_all(move || {
+        tracing::info!("Toggle all");
+        
+        // Check if all are selected
+        let mut all_selected = true;
+        for i in 0..model_for_toggle_all.row_count() {
+            if let Some(account) = model_for_toggle_all.row_data(i) {
+                if !account.selected {
+                    all_selected = false;
+                    break;
+                }
+            }
+        }
+        
+        // Toggle: if all selected, deselect all; otherwise select all
+        let new_state = !all_selected;
+        for i in 0..model_for_toggle_all.row_count() {
+            if let Some(mut account) = model_for_toggle_all.row_data(i) {
+                account.selected = new_state;
+                model_for_toggle_all.set_row_data(i, account);
+            }
+        }
+        
+        // Update selected count
+        if let Some(app) = app_weak_for_toggle_all.upgrade() {
+            let count = if new_state { model_for_toggle_all.row_count() as i32 } else { 0 };
+            app.global::<AppState>().set_selected_count(count);
+        }
     });
 
     app.global::<AppState>().on_switch_account(|id| {

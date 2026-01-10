@@ -10,6 +10,7 @@
 ### ✅ Фаза 2: Account Module - DONE  
 ### ✅ Фаза 3: Dashboard Data Binding - DONE
 ### ✅ Фаза 4: Accounts Page - DONE
+### ✅ Фаза 4.1: Selection Logic - DONE
 
 ---
 
