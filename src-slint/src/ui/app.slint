@@ -5,6 +5,7 @@ import { Dashboard } from "dashboard.slint";
 import { AccountsPage, AccountData, FilterType, ViewMode } from "accounts.slint";
 import { SettingsPage, SettingsData } from "settings.slint";
 import { ApiProxyPage, ProxyStatus, ProxyConfig } from "proxy.slint";
+import { MonitorPage, RequestLog, MonitorStats } from "monitor.slint";
 import { Sidebar } from "components/sidebar.slint";
 import { Theme } from "components/theme.slint";
 import { AppState } from "globals.slint";
@@ -126,144 +127,10 @@ export component AppWindow inherits Window {
             }
             
             // Monitor
-            if current-page == 4: Rectangle {
-                background: Theme.background;
-                
-                VerticalLayout {
-                    padding: 24px;
-                    spacing: 16px;
-                    
-                    HorizontalLayout {
-                        Text {
-                            text: "Request Monitor";
-                            color: Theme.text-primary;
-                            font-size: 24px;
-                            font-weight: 700;
-                            horizontal-stretch: 1;
-                        }
-                        
-                        Rectangle {
-                            width: 100px;
-                            height: 32px;
-                            background: Theme.error;
-                            border-radius: 8px;
-                            
-                            Text {
-                                text: "Clear All";
-                                color: white;
-                                font-size: 13px;
-                                font-weight: 500;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                            }
-                            
-                            TouchArea { mouse-cursor: pointer; }
-                        }
-                    }
-                    
-                    Text {
-                        text: "Real-time API request logging";
-                        color: Theme.text-secondary;
-                        font-size: 14px;
-                    }
-                    
-                    Rectangle {
-                        vertical-stretch: 1;
-                        background: Theme.surface;
-                        border-radius: 12px;
-                        border-width: 1px;
-                        border-color: Theme.border;
-                        
-                        VerticalLayout {
-                            Rectangle {
-                                height: 40px;
-                                background: Theme.surface-elevated;
-                                border-radius: 12px;
-                                
-                                HorizontalLayout {
-                                    padding-left: 16px;
-                                    padding-right: 16px;
-                                    spacing: 16px;
-                                    
-                                    Text {
-                                        width: 80px;
-                                        text: "Time";
-                                        color: Theme.text-secondary;
-                                        font-size: 12px;
-                                        font-weight: 600;
-                                        vertical-alignment: center;
-                                    }
-                                    
-                                    Text {
-                                        width: 60px;
-                                        text: "Method";
-                                        color: Theme.text-secondary;
-                                        font-size: 12px;
-                                        font-weight: 600;
-                                        vertical-alignment: center;
-                                    }
-                                    
-                                    Text {
-                                        horizontal-stretch: 1;
-                                        text: "Endpoint";
-                                        color: Theme.text-secondary;
-                                        font-size: 12px;
-                                        font-weight: 600;
-                                        vertical-alignment: center;
-                                    }
-                                    
-                                    Text {
-                                        width: 60px;
-                                        text: "Status";
-                                        color: Theme.text-secondary;
-                                        font-size: 12px;
-                                        font-weight: 600;
-                                        vertical-alignment: center;
-                                    }
-                                    
-                                    Text {
-                                        width: 150px;
-                                        text: "Account";
-                                        color: Theme.text-secondary;
-                                        font-size: 12px;
-                                        font-weight: 600;
-                                        vertical-alignment: center;
-                                    }
-                                }
-                            }
-                            
-                            Rectangle {
-                                vertical-stretch: 1;
-                                
-                                VerticalLayout {
-                                    alignment: center;
-                                    spacing: 12px;
-                                    
-                                    Text {
-                                        text: "📡";
-                                        font-size: 48px;
-                                        horizontal-alignment: center;
-                                    }
-                                    
-                                    Text {
-                                        text: "No Requests Yet";
-                                        color: Theme.text-primary;
-                                        font-size: 18px;
-                                        font-weight: 600;
-                                        horizontal-alignment: center;
-                                    }
-                                    
-                                    Text {
-                                        text: "Requests will appear here in real-time";
-                                        color: Theme.text-muted;
-                                        font-size: 14px;
-                                        horizontal-alignment: center;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            if current-page == 4: MonitorPage {
+                width: 100%;
+                height: 100%;
+                back => { root.navigate(2); }  // Go back to Proxy page
             }
         }
     }
