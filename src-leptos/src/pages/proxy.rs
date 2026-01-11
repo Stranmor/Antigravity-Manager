@@ -21,21 +21,22 @@ pub fn ApiProxy() -> impl IntoView {
             let state = expect_context::<AppState>();
             let status = state.proxy_status.get();
             
-            let result = if status.running {
-                commands::stop_proxy_service().await
-            } else {
-                if let Some(config) = state.config.get() {
-                    commands::start_proxy_service(&config.proxy).await
-                } else {
-                    Err("No config loaded".to_string())
+            if status.running {
+                // Stop proxy
+                if commands::stop_proxy_service().await.is_ok() {
+                    if let Ok(new_status) = commands::get_proxy_status().await {
+                        state.proxy_status.set(new_status);
+                    }
                 }
-            };
-            
-            if result.is_ok() {
-                if let Ok(new_status) = commands::get_proxy_status().await {
-                    state.proxy_status.set(new_status);
+            } else {
+                // Start proxy
+                if let Some(config) = state.config.get() {
+                    if let Ok(new_status) = commands::start_proxy_service(&config.proxy).await {
+                        state.proxy_status.set(new_status);
+                    }
                 }
             }
+            
             loading.set(false);
         });
     };

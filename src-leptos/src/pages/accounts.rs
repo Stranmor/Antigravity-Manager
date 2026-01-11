@@ -14,6 +14,14 @@ pub fn Accounts() -> impl IntoView {
     let selected_ids = RwSignal::new(std::collections::HashSet::<String>::new());
     let search_query = RwSignal::new(String::new());
     
+    // Loading states
+    let refresh_pending = RwSignal::new(false);
+    let oauth_pending = RwSignal::new(false);
+    let sync_pending = RwSignal::new(false);
+    
+    // Error/success messages
+    let message = RwSignal::new(Option::<(String, bool)>::None);
+    
     // Filtered accounts
     let filtered_accounts = Memo::new(move |_| {
         let query = search_query.get().to_lowercase();
@@ -36,30 +44,124 @@ pub fn Accounts() -> impl IntoView {
         !accounts.is_empty() && accounts.iter().all(|a| selected.contains(&a.id))
     });
     
-    // Refresh action
-    let refresh_pending = RwSignal::new(false);
+    // Show message helper
+    let show_message = move |msg: String, is_error: bool| {
+        message.set(Some((msg, is_error)));
+        spawn_local(async move {
+            gloo_timers::future::TimeoutFuture::new(3000).await;
+            message.set(None);
+        });
+    };
+    
+    // Refresh accounts list
     let on_refresh = move || {
         refresh_pending.set(true);
         spawn_local(async move {
-            if let Ok(accounts) = commands::list_accounts().await {
-                let state = expect_context::<AppState>();
-                state.accounts.set(accounts);
+            match commands::list_accounts().await {
+                Ok(accounts) => {
+                    let state = expect_context::<AppState>();
+                    state.accounts.set(accounts);
+                }
+                Err(e) => show_message(format!("Failed to refresh: {}", e), true),
             }
             refresh_pending.set(false);
         });
     };
     
-    // Delete selected action
+    // Refresh all quotas
+    let on_refresh_quotas = move || {
+        refresh_pending.set(true);
+        spawn_local(async move {
+            match commands::refresh_all_quotas().await {
+                Ok(stats) => {
+                    show_message(format!("Refreshed {}/{} accounts", stats.success, stats.total), false);
+                    // Reload accounts to get updated quotas
+                    if let Ok(accounts) = commands::list_accounts().await {
+                        let state = expect_context::<AppState>();
+                        state.accounts.set(accounts);
+                    }
+                }
+                Err(e) => show_message(format!("Failed: {}", e), true),
+            }
+            refresh_pending.set(false);
+        });
+    };
+    
+    // Start OAuth login
+    let on_add_account = move || {
+        oauth_pending.set(true);
+        spawn_local(async move {
+            match commands::start_oauth_login().await {
+                Ok(account) => {
+                    show_message(format!("Added: {}", account.email), false);
+                    // Reload accounts
+                    if let Ok(accounts) = commands::list_accounts().await {
+                        let state = expect_context::<AppState>();
+                        state.accounts.set(accounts);
+                    }
+                }
+                Err(e) => show_message(format!("OAuth failed: {}", e), true),
+            }
+            oauth_pending.set(false);
+        });
+    };
+    
+    // Sync from local Antigravity DB
+    let on_sync_local = move || {
+        sync_pending.set(true);
+        spawn_local(async move {
+            match commands::sync_account_from_db().await {
+                Ok(Some(account)) => {
+                    show_message(format!("Synced: {}", account.email), false);
+                    if let Ok(accounts) = commands::list_accounts().await {
+                        let state = expect_context::<AppState>();
+                        state.accounts.set(accounts);
+                    }
+                }
+                Ok(None) => show_message("No account found in local DB".to_string(), true),
+                Err(e) => show_message(format!("Sync failed: {}", e), true),
+            }
+            sync_pending.set(false);
+        });
+    };
+    
+    // Delete selected accounts
     let on_delete_selected = move || {
         let ids: Vec<String> = selected_ids.get().into_iter().collect();
+        let count = ids.len();
         spawn_local(async move {
-            for id in &ids {
-                let _ = commands::delete_account(id).await;
+            match commands::delete_accounts(&ids).await {
+                Ok(()) => {
+                    show_message(format!("Deleted {} accounts", count), false);
+                    selected_ids.set(std::collections::HashSet::new());
+                    if let Ok(accounts) = commands::list_accounts().await {
+                        let state = expect_context::<AppState>();
+                        state.accounts.set(accounts);
+                    }
+                }
+                Err(e) => show_message(format!("Delete failed: {}", e), true),
             }
-            selected_ids.set(std::collections::HashSet::new());
-            if let Ok(accounts) = commands::list_accounts().await {
+        });
+    };
+    
+    // Switch to account
+    let on_switch_account = move |account_id: String| {
+        spawn_local(async move {
+            if commands::switch_account(&account_id).await.is_ok() {
                 let state = expect_context::<AppState>();
-                state.accounts.set(accounts);
+                state.current_account_id.set(Some(account_id));
+            }
+        });
+    };
+    
+    // Delete single account
+    let on_delete_account = move |account_id: String| {
+        spawn_local(async move {
+            if commands::delete_account(&account_id).await.is_ok() {
+                if let Ok(accounts) = commands::list_accounts().await {
+                    let state = expect_context::<AppState>();
+                    state.accounts.set(accounts);
+                }
             }
         });
     };
@@ -75,18 +177,37 @@ pub fn Accounts() -> impl IntoView {
                 </div>
                 <div class="header-actions">
                     <Button 
-                        text="🔄 Refresh".to_string()
+                        text="📥 Sync Local".to_string()
                         variant=ButtonVariant::Secondary
-                        on_click=on_refresh
+                        on_click=on_sync_local
+                        loading=sync_pending.get()
+                    />
+                    <Button 
+                        text="🔄 Refresh Quotas".to_string()
+                        variant=ButtonVariant::Secondary
+                        on_click=on_refresh_quotas
                         loading=refresh_pending.get()
                     />
                     <Button 
                         text="➕ Add Account".to_string()
                         variant=ButtonVariant::Primary 
-                        on_click=|| {}
+                        on_click=on_add_account
+                        loading=oauth_pending.get()
                     />
                 </div>
             </header>
+            
+            // Message banner
+            <Show when=move || message.get().is_some()>
+                {move || {
+                    let (msg, is_error) = message.get().unwrap();
+                    view! {
+                        <div class=format!("alert {}", if is_error { "alert--error" } else { "alert--success" })>
+                            <span>{msg}</span>
+                        </div>
+                    }
+                }}
+            </Show>
             
             // Toolbar
             <div class="toolbar">
@@ -111,13 +232,17 @@ pub fn Accounts() -> impl IntoView {
                             variant=ButtonVariant::Danger
                             on_click=on_delete_selected
                         />
-                        <Button 
-                            text="📤 Export".to_string()
-                            variant=ButtonVariant::Secondary
-                            on_click=|| {}
-                        />
                     </div>
                 </Show>
+                
+                <div class="toolbar-right">
+                    <Button 
+                        text="🔄".to_string()
+                        variant=ButtonVariant::Ghost
+                        on_click=on_refresh
+                        loading=refresh_pending.get()
+                    />
+                </div>
             </div>
             
             // Accounts table
@@ -152,11 +277,14 @@ pub fn Accounts() -> impl IntoView {
                             each=move || filtered_accounts.get()
                             key=|account| account.id.clone()
                             children=move |account| {
-                                let account_id = account.id.clone();
+                            let account_id = account.id.clone();
                                 let account_id2 = account.id.clone();
                                 let account_id3 = account.id.clone();
                                 let account_id4 = account.id.clone();
                                 let account_id5 = account.id.clone();
+                                let account_id_checkbox = account.id.clone();
+                                let account_id_switch = account.id.clone();
+                                let account_id_delete = account.id.clone();
                                 let email = account.email.clone();
                                 let is_disabled = account.disabled;
                                 let proxy_disabled = account.proxy_disabled;
@@ -164,7 +292,7 @@ pub fn Accounts() -> impl IntoView {
                                 // Compute quota
                                 let quota_gemini = account.quota.as_ref().map(|q| {
                                     q.models.iter()
-                                        .find(|m| m.model.contains("gemini"))
+                                        .find(|m| m.model.contains("gemini") || m.model.contains("flash"))
                                         .map(|m| if m.limit > 0 { (m.limit - m.used) * 100 / m.limit } else { 0 })
                                         .unwrap_or(0)
                                 }).unwrap_or(0);
@@ -206,6 +334,10 @@ pub fn Accounts() -> impl IntoView {
                                     }
                                 };
                                 
+                                let is_current = move || {
+                                    state.current_account_id.get() == Some(account_id5.clone())
+                                };
+                                
                                 view! {
                                     <tr class=move || format!("account-row {} {}", is_current_class(), is_selected_class())>
                                         <td class="col-checkbox">
@@ -213,7 +345,7 @@ pub fn Accounts() -> impl IntoView {
                                                 type="checkbox" 
                                                 checked=is_selected_checked
                                                 on:change={
-                                                    let id = account_id5.clone();
+                                                    let id = account_id_checkbox.clone();
                                                     move |_| {
                                                         let id = id.clone();
                                                         selected_ids.update(move |set| {
@@ -230,7 +362,12 @@ pub fn Accounts() -> impl IntoView {
                                         <td class="col-status">
                                             <span class=move || format!("status-dot {}", status_class())></span>
                                         </td>
-                                        <td class="col-email">{email.clone()}</td>
+                                        <td class="col-email">
+                                            <span class="email-text">{email.clone()}</span>
+                                            <Show when=is_current>
+                                                <span class="current-badge">"ACTIVE"</span>
+                                            </Show>
+                                        </td>
                                         <td class="col-quota">
                                             <div class="quota-bar">
                                                 <div 
@@ -255,8 +392,22 @@ pub fn Accounts() -> impl IntoView {
                                             </span>
                                         </td>
                                         <td class="col-actions">
-                                            <button class="btn btn--icon" title="Switch">"⚡"</button>
-                                            <button class="btn btn--icon btn--danger" title="Delete">"🗑"</button>
+                                            <button 
+                                                class="btn btn--icon" 
+                                                title="Switch to this account"
+                                                on:click={
+                                                    let id = account_id_switch.clone();
+                                                    move |_| on_switch_account(id.clone())
+                                                }
+                                            >"⚡"</button>
+                                            <button 
+                                                class="btn btn--icon btn--danger" 
+                                                title="Delete"
+                                                on:click={
+                                                    let id = account_id_delete.clone();
+                                                    move |_| on_delete_account(id.clone())
+                                                }
+                                            >"🗑"</button>
                                         </td>
                                     </tr>
                                 }
@@ -269,6 +420,21 @@ pub fn Accounts() -> impl IntoView {
                     <div class="empty-state">
                         <span class="empty-icon">"👥"</span>
                         <p>"No accounts found"</p>
+                        <p class="hint">"Add an account using OAuth or sync from local Antigravity"</p>
+                        <div class="empty-actions">
+                            <Button 
+                                text="➕ Add Account".to_string()
+                                variant=ButtonVariant::Primary
+                                on_click=on_add_account
+                                loading=oauth_pending.get()
+                            />
+                            <Button 
+                                text="📥 Sync Local".to_string()
+                                variant=ButtonVariant::Secondary
+                                on_click=on_sync_local
+                                loading=sync_pending.get()
+                            />
+                        </div>
                     </div>
                 </Show>
             </div>

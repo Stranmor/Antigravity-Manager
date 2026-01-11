@@ -77,9 +77,9 @@ async fn load_initial_data() {
         state.accounts.set(accounts);
     }
     
-    // Load current account ID
-    if let Ok(id) = crate::tauri::commands::get_current_account_id().await {
-        state.current_account_id.set(id);
+    // Load current account
+    if let Ok(Some(account)) = crate::tauri::commands::get_current_account().await {
+        state.current_account_id.set(Some(account.id));
     }
     
     // Load config

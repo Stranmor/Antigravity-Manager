@@ -167,3 +167,48 @@ impl DashboardStats {
         stats
     }
 }
+
+/// Refresh statistics
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct RefreshStats {
+    pub total: usize,
+    pub success: usize,
+    pub failed: usize,
+}
+
+/// Proxy statistics
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct ProxyStats {
+    pub total_requests: u64,
+    pub success_requests: u64,
+    pub failed_requests: u64,
+    pub total_input_tokens: u64,
+    pub total_output_tokens: u64,
+}
+
+/// Proxy request log entry
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProxyRequestLog {
+    pub id: String,
+    pub timestamp: i64,
+    pub method: String,
+    pub path: String,
+    pub status: u16,
+    pub duration_ms: u32,
+    pub model: Option<String>,
+    pub mapped_model: Option<String>,
+    pub account_email: Option<String>,
+    pub input_tokens: Option<u32>,
+    pub output_tokens: Option<u32>,
+    pub error_message: Option<String>,
+}
+
+/// Update information
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct UpdateInfo {
+    pub available: bool,
+    pub current_version: String,
+    pub latest_version: String,
+    pub release_url: Option<String>,
+    pub release_notes: Option<String>,
+}
