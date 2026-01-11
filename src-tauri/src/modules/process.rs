@@ -719,7 +719,7 @@ pub fn start_antigravity() -> Result<(), String> {
         let (path_str, path) = {
             let mut path_str = path_str;
             let mut path = std::path::PathBuf::from(&path_str);
-            
+
             // 容错处理：如果指定的路径位于 .app 内部（比如误选了 Helper），则自动修正为 .app 目录
             if let Some(app_idx) = path_str.find(".app") {
                 let corrected_app = &path_str[..app_idx + 4];
@@ -734,7 +734,7 @@ pub fn start_antigravity() -> Result<(), String> {
             }
             (path_str, path)
         };
-        
+
         #[cfg(not(target_os = "macos"))]
         let path = std::path::PathBuf::from(&path_str);
 

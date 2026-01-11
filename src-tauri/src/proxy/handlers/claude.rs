@@ -121,7 +121,9 @@ fn filter_invalid_thinking_blocks(messages: &mut Vec<Message>) {
                                     text: thinking.clone(),
                                 });
                             } else {
-                                tracing::debug!("[Claude-Handler] Dropping empty thinking block with invalid signature");
+                                tracing::debug!(
+                                    "[Claude-Handler] Dropping empty thinking block with invalid signature"
+                                );
                             }
                         }
                     }
@@ -813,7 +815,7 @@ pub async fn handle_messages(
                             StatusCode::BAD_GATEWAY,
                             format!("Failed to read body: {}", e),
                         )
-                            .into_response()
+                            .into_response();
                     }
                 };
 
@@ -826,7 +828,7 @@ pub async fn handle_messages(
                     Ok(v) => v,
                     Err(e) => {
                         return (StatusCode::BAD_GATEWAY, format!("Parse error: {}", e))
-                            .into_response()
+                            .into_response();
                     }
                 };
 
@@ -842,7 +844,7 @@ pub async fn handle_messages(
                                 StatusCode::INTERNAL_SERVER_ERROR,
                                 format!("Convert error: {}", e),
                             )
-                                .into_response()
+                                .into_response();
                         }
                     };
 
@@ -854,7 +856,7 @@ pub async fn handle_messages(
                             StatusCode::INTERNAL_SERVER_ERROR,
                             format!("Transform error: {}", e),
                         )
-                            .into_response()
+                            .into_response();
                     }
                 };
 
@@ -1013,7 +1015,10 @@ pub async fn handle_messages(
         if apply_retry_strategy(strategy, attempt, status_code, &trace_id).await {
             // 关键修复: 判断是否需要轮换账号
             if !should_rotate_account(status_code) {
-                info!("[{}] ⏸️  Keeping same account for status {} (server-side issue, rotation pointless)", trace_id, status_code);
+                info!(
+                    "[{}] ⏸️  Keeping same account for status {} (server-side issue, rotation pointless)",
+                    trace_id, status_code
+                );
                 skip_rotation = true; // 下次迭代不轮换
             }
             continue;

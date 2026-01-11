@@ -20,7 +20,7 @@ pub struct UpstreamClient {
 }
 
 impl UpstreamClient {
-    pub fn new(proxy_config: Option<crate::proxy::config::UpstreamProxyConfig>) -> Self {
+    pub fn new(proxy_config: Option<crate::models::UpstreamProxyConfig>) -> Self {
         let mut builder = Client::builder()
             // Connection settings (优化连接复用，减少建立开销)
             .connect_timeout(Duration::from_secs(20))

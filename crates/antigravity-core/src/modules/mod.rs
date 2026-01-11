@@ -6,8 +6,10 @@
 pub mod account;
 pub mod config;
 pub mod logger;
+pub mod proxy_db;
 
 // Re-export for convenience
 pub use account::*;
 pub use config::*;
 pub use logger::*;
+pub use proxy_db::*;

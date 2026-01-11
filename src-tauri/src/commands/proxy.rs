@@ -1,5 +1,9 @@
-use crate::proxy::monitor::{ProxyMonitor, ProxyRequestLog, ProxyStats};
-use crate::proxy::{ProxyConfig, TokenManager};
+use crate::models::ProxyRequestLog;
+use crate::models::{
+    ExperimentalConfig, ProxyConfig, StickySessionConfig, UpstreamProxyConfig, ZaiDispatchMode,
+};
+use crate::proxy::monitor::{ProxyMonitor, ProxyStats, TauriEventBus};
+use crate::proxy::{security::ProxySecurityConfig, AxumServer, TokenManager};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::State;
@@ -56,7 +60,10 @@ pub async fn start_proxy_service(
     {
         let mut monitor_lock = state.monitor.write().await;
         if monitor_lock.is_none() {
-            *monitor_lock = Some(Arc::new(ProxyMonitor::new(1000, Some(app_handle.clone()))));
+            *monitor_lock = Some(Arc::new(ProxyMonitor::new(
+                1000,
+                Some(Box::new(TauriEventBus::new(app_handle.clone()))),
+            )));
         }
         // Sync enabled state from config
         if let Some(monitor) = monitor_lock.as_ref() {
@@ -85,8 +92,8 @@ pub async fn start_proxy_service(
         .map_err(|e| format!("加载账号失败: {}", e))?;
 
     if active_accounts == 0 {
-        let zai_enabled = config.zai.enabled
-            && !matches!(config.zai.dispatch_mode, crate::proxy::ZaiDispatchMode::Off);
+        let zai_enabled =
+            config.zai.enabled && !matches!(config.zai.dispatch_mode, ZaiDispatchMode::Off);
         if !zai_enabled {
             return Err("没有可用账号，请先添加账号".to_string());
         }
@@ -100,7 +107,7 @@ pub async fn start_proxy_service(
         config.custom_mapping.clone(),
         config.request_timeout,
         config.upstream_proxy.clone(),
-        crate::proxy::ProxySecurityConfig::from_proxy_config(&config),
+        ProxySecurityConfig::from_proxy_config(&config),
         config.zai.clone(),
         monitor.clone(),
         config.experimental.clone(),
@@ -331,7 +338,7 @@ fn extract_model_ids(value: &serde_json::Value) -> Vec<String> {
 #[tauri::command]
 pub async fn fetch_zai_models(
     zai: crate::proxy::ZaiConfig,
-    upstream_proxy: crate::proxy::config::UpstreamProxyConfig,
+    upstream_proxy: UpstreamProxyConfig,
     request_timeout: u64,
 ) -> Result<Vec<String>, String> {
     if zai.base_url.trim().is_empty() {
@@ -392,12 +399,12 @@ pub async fn fetch_zai_models(
 #[tauri::command]
 pub async fn get_proxy_scheduling_config(
     state: State<'_, ProxyServiceState>,
-) -> Result<crate::proxy::sticky_config::StickySessionConfig, String> {
+) -> Result<StickySessionConfig, String> {
     let instance_lock = state.instance.read().await;
     if let Some(instance) = instance_lock.as_ref() {
         Ok(instance.token_manager.get_sticky_config().await)
     } else {
-        Ok(crate::proxy::sticky_config::StickySessionConfig::default())
+        Ok(StickySessionConfig::default())
     }
 }
 
@@ -405,7 +412,7 @@ pub async fn get_proxy_scheduling_config(
 #[tauri::command]
 pub async fn update_proxy_scheduling_config(
     state: State<'_, ProxyServiceState>,
-    config: crate::proxy::sticky_config::StickySessionConfig,
+    config: StickySessionConfig,
 ) -> Result<(), String> {
     let instance_lock = state.instance.read().await;
     if let Some(instance) = instance_lock.as_ref() {

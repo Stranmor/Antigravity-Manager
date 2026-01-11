@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// 调度模式枚举
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -14,6 +15,16 @@ pub enum SchedulingMode {
 impl Default for SchedulingMode {
     fn default() -> Self {
         Self::Balance
+    }
+}
+
+impl fmt::Display for SchedulingMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SchedulingMode::CacheFirst => write!(f, "CacheFirst"),
+            SchedulingMode::Balance => write!(f, "Balance"),
+            SchedulingMode::PerformanceFirst => write!(f, "PerformanceFirst"),
+        }
     }
 }
 

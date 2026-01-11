@@ -14,7 +14,7 @@ pub fn create_client(timeout_secs: u64) -> Client {
 /// 创建带指定代理配置的 HTTP 客户端
 pub fn create_client_with_proxy(
     timeout_secs: u64,
-    proxy_config: Option<crate::proxy::config::UpstreamProxyConfig>,
+    proxy_config: Option<crate::models::UpstreamProxyConfig>,
 ) -> Client {
     let mut builder = Client::builder().timeout(std::time::Duration::from_secs(timeout_secs));
 

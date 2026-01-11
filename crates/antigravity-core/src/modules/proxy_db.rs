@@ -1,9 +1,9 @@
-use crate::proxy::monitor::ProxyRequestLog;
+use antigravity_shared::models::{ProxyRequestLog, ProxyStats};
 use rusqlite::{params, Connection};
 use std::path::PathBuf;
 
 pub fn get_proxy_db_path() -> Result<PathBuf, String> {
-    let data_dir = crate::modules::account::get_data_dir()?;
+    let data_dir = crate::utils::paths::get_data_dir()?;
     Ok(data_dir.join("proxy_logs.db"))
 }
 
@@ -116,7 +116,7 @@ pub fn get_logs(limit: usize) -> Result<Vec<ProxyRequestLog>, String> {
     Ok(logs)
 }
 
-pub fn get_stats() -> Result<crate::proxy::monitor::ProxyStats, String> {
+pub fn get_stats() -> Result<ProxyStats, String> {
     let db_path = get_proxy_db_path()?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
@@ -140,14 +140,32 @@ pub fn get_stats() -> Result<crate::proxy::monitor::ProxyStats, String> {
         )
         .map_err(|e| e.to_string())?;
 
-    Ok(crate::proxy::monitor::ProxyStats {
+    let total_input_tokens: u64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(input_tokens), 0) FROM request_logs",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let total_output_tokens: u64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(output_tokens), 0) FROM request_logs",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    Ok(ProxyStats {
         total_requests,
         success_count,
         error_count,
+        total_input_tokens,
+        total_output_tokens,
     })
 }
 
-pub fn clear_logs() -> Result<(), String> {
+pub fn clear_proxy_logs() -> Result<(), String> {
     let db_path = get_proxy_db_path()?;
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM request_logs", [])

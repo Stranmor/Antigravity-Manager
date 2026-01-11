@@ -43,6 +43,13 @@ pub fn run() {
             modules::tray::create_tray(app.handle())?;
             info!("Tray created");
 
+            // Show main window after setup
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+                info!("Main window shown");
+            }
+
             // 自动启动反代服务
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

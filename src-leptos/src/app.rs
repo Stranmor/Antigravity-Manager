@@ -4,8 +4,11 @@ use crate::components::Sidebar;
 use crate::pages::{Accounts, ApiProxy, Dashboard, Monitor, Settings};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_router::components::{Route, Router, Routes};
-use leptos_router::path;
+use leptos_router::{
+    components::{Route, Router, Routes},
+    path,
+};
+use log;
 
 /// Global application state
 #[derive(Clone)]
@@ -74,23 +77,28 @@ async fn load_initial_data(state: AppState) {
     state.loading.set(true);
 
     // Load accounts
-    if let Ok(accounts) = crate::tauri::commands::list_accounts().await {
-        state.accounts.set(accounts);
+    match crate::tauri::commands::list_accounts().await {
+        Ok(accounts) => state.accounts.set(accounts),
+        Err(e) => log::error!("Failed to load accounts: {:?}", e),
     }
 
     // Load current account
-    if let Ok(Some(account)) = crate::tauri::commands::get_current_account().await {
-        state.current_account_id.set(Some(account.id));
+    match crate::tauri::commands::get_current_account().await {
+        Ok(Some(account)) => state.current_account_id.set(Some(account.id)),
+        Ok(None) => log::info!("No current account found."),
+        Err(e) => log::error!("Failed to load current account: {:?}", e),
     }
 
     // Load config
-    if let Ok(config) = crate::tauri::commands::load_config().await {
-        state.config.set(Some(config));
+    match crate::tauri::commands::load_config().await {
+        Ok(config) => state.config.set(Some(config)),
+        Err(e) => log::error!("Failed to load config: {:?}", e),
     }
 
     // Load proxy status
-    if let Ok(status) = crate::tauri::commands::get_proxy_status().await {
-        state.proxy_status.set(status);
+    match crate::tauri::commands::get_proxy_status().await {
+        Ok(status) => state.proxy_status.set(status),
+        Err(e) => log::error!("Failed to load proxy status: {:?}", e),
     }
 
     state.loading.set(false);

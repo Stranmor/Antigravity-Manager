@@ -96,7 +96,9 @@ pub fn ApiProxy() -> impl IntoView {
                 commands::start_proxy_service().await.map(|_| ())
             };
 
-            if result.is_ok() && let Ok(new_status) = commands::get_proxy_status().await {
+            if result.is_ok()
+                && let Ok(new_status) = commands::get_proxy_status().await
+            {
                 s.proxy_status.set(new_status);
             }
             loading.set(false);

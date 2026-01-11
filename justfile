@@ -126,3 +126,16 @@ rebuild: clean build
 
 # Pre-commit check: fmt + lint + test
 pre-commit: fmt lint test
+
+# === Installation ===
+
+# Install the latest built deb package
+install:
+    sudo dpkg -i target/release/bundle/deb/*.deb
+
+# Build and install in one command
+reinstall: build-deb install
+
+# Uninstall
+uninstall:
+    sudo dpkg -r antigravity-tools

@@ -62,7 +62,7 @@ pub fn Monitor() -> impl IntoView {
             all_logs
                 .into_iter()
                 .filter(|l| {
-                    l.path.to_lowercase().contains(&query)
+                    l.url.to_lowercase().contains(&query)
                         || l.method.to_lowercase().contains(&query)
                         || l.model
                             .as_ref()
@@ -76,7 +76,7 @@ pub fn Monitor() -> impl IntoView {
     // Computed stats from logs
     let log_stats = Memo::new(move |_| {
         let s = stats.get();
-        (s.total_requests, s.success_requests, s.failed_requests)
+        (s.total_requests, s.success_count, s.error_count)
     });
 
     let on_clear = move || {
@@ -223,7 +223,7 @@ pub fn Monitor() -> impl IntoView {
                                 let tokens_in = log.input_tokens.unwrap_or(0);
                                 let tokens_out = log.output_tokens.unwrap_or(0);
                                 let time = format_timestamp(log.timestamp);
-                                let has_error = log.error_message.is_some();
+                                let has_error = log.error.is_some();
 
                                 view! {
                                     <tr class=format!("log-row {}", if has_error { "has-error" } else { "" })>
@@ -239,13 +239,13 @@ pub fn Monitor() -> impl IntoView {
                                             {mapped.map(|m| view! { <span class="model-mapped">" → "{m}</span> })}
                                         </td>
                                         <td class="col-account">{account}</td>
-                                        <td class="col-path"><code>{log.path}</code></td>
+                                        <td class="col-path"><code>{log.url}</code></td>
                                         <td class="col-tokens">
                                             <span class="tokens-in">{tokens_in}</span>
                                             " / "
                                             <span class="tokens-out">{tokens_out}</span>
                                         </td>
-                                        <td class="col-duration">{log.duration_ms}"ms"</td>
+                                        <td class="col-duration">{log.duration}"ms"</td>
                                     </tr>
                                 }
                             }

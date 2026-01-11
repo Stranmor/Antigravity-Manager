@@ -209,7 +209,9 @@ pub fn transform_claude_request_in(
     if is_thinking_enabled {
         let should_disable = should_disable_thinking_due_to_history(&claude_req.messages);
         if should_disable {
-            tracing::warn!("[Thinking-Mode] Automatically disabling thinking checks due to incompatible tool-use history (mixed application)");
+            tracing::warn!(
+                "[Thinking-Mode] Automatically disabling thinking checks due to incompatible tool-use history (mixed application)"
+            );
             is_thinking_enabled = false;
         }
     }
@@ -379,7 +381,9 @@ fn should_disable_thinking_due_to_history(messages: &[Message]) -> bool {
 
                 // 如果有工具调用，但没有 Thinking 块 -> 不兼容
                 if has_tool_use && !has_thinking {
-                    tracing::info!("[Thinking-Mode] Detected ToolUse without Thinking in history. Requesting disable.");
+                    tracing::info!(
+                        "[Thinking-Mode] Detected ToolUse without Thinking in history. Requesting disable."
+                    );
                     return true;
                 }
             }
@@ -565,7 +569,10 @@ fn build_contents(
                             // [HOTFIX] Gemini Protocol Enforcement: Thinking block MUST be the first block.
                             // If we already have content (like Text), we must downgrade this thinking block to Text.
                             if !parts.is_empty() {
-                                tracing::warn!("[Claude-Request] Thinking block found at non-zero index (prev parts: {}). Downgrading to Text.", parts.len());
+                                tracing::warn!(
+                                    "[Claude-Request] Thinking block found at non-zero index (prev parts: {}). Downgrading to Text.",
+                                    parts.len()
+                                );
                                 if !thinking.is_empty() {
                                     parts.push(json!({
                                         "text": thinking
@@ -577,7 +584,9 @@ fn build_contents(
                             // [FIX] If thinking is disabled (smart downgrade), convert ALL thinking blocks to text
                             // to avoid "thinking is disabled but message contains thinking" error
                             if !is_thinking_enabled {
-                                tracing::warn!("[Claude-Request] Thinking disabled. Downgrading thinking block to text.");
+                                tracing::warn!(
+                                    "[Claude-Request] Thinking disabled. Downgrading thinking block to text."
+                                );
                                 if !thinking.is_empty() {
                                     parts.push(json!({
                                         "text": thinking
@@ -589,7 +598,9 @@ fn build_contents(
                             // [FIX] Empty thinking blocks cause "Field required" errors.
                             // We downgrade them to Text to avoid structural errors and signature mismatch.
                             if thinking.is_empty() {
-                                tracing::warn!("[Claude-Request] Empty thinking block detected. Downgrading to Text.");
+                                tracing::warn!(
+                                    "[Claude-Request] Empty thinking block detected. Downgrading to Text."
+                                );
                                 parts.push(json!({
                                     "text": "..."
                                 }));
@@ -606,7 +617,9 @@ fn build_contents(
                             // [CRITICAL FIX] Do NOT add skip_thought_signature_validator for Vertex AI
                             // If no signature, the block should have been filtered out
                             if signature.is_none() {
-                                tracing::warn!("[Claude-Request] Thinking block without signature (should have been filtered!)");
+                                tracing::warn!(
+                                    "[Claude-Request] Thinking block without signature (should have been filtered!)"
+                                );
                             }
 
                             if let Some(sig) = signature {
@@ -618,7 +631,8 @@ fn build_contents(
                                     if !is_model_compatible(&family, &mapped_model) {
                                         tracing::warn!(
                                             "[Thinking-Compatibility] Incompatible signature detected (Family: {}, Target: {}). Dropping signature.",
-                                            family, mapped_model
+                                            family,
+                                            mapped_model
                                         );
                                         parts.push(json!({
                                             "text": thinking
@@ -818,7 +832,10 @@ fn build_contents(
                             "thought": true
                         }),
                     );
-                    tracing::debug!("First part of model message at {} is not a valid thought block. Prepending dummy.", contents.len());
+                    tracing::debug!(
+                        "First part of model message at {} is not a valid thought block. Prepending dummy.",
+                        contents.len()
+                    );
                 } else {
                     // 确保首项包含了 thought: true (防止只有 signature 的情况)
                     if let Some(p0) = parts.get_mut(0) {

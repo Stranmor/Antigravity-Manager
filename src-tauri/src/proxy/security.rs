@@ -1,4 +1,4 @@
-use crate::proxy::config::{ProxyAuthMode, ProxyConfig};
+use crate::models::{ProxyAuthMode, ProxyConfig};
 
 #[derive(Debug, Clone)]
 pub struct ProxySecurityConfig {

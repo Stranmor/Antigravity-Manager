@@ -1,5 +1,5 @@
 // Gemini v1internal 包装/解包
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 /// 包装请求体为 v1internal 格式
 pub fn wrap_request(body: &Value, project_id: &str, mapped_model: &str) -> Value {
@@ -233,14 +233,12 @@ mod tests {
 
         // Should have 2 parts: Antigravity + User
         assert_eq!(parts.len(), 2);
-        assert!(
-            parts[0]
-                .get("text")
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .contains("You are Antigravity")
-        );
+        assert!(parts[0]
+            .get("text")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .contains("You are Antigravity"));
         assert_eq!(
             parts[1].get("text").unwrap().as_str().unwrap(),
             "User custom prompt"

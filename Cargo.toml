@@ -8,6 +8,7 @@
 resolver = "2"
 members = [
     "crates/antigravity-core",
+    "crates/antigravity-shared",
     "src-leptos",
     "src-tauri",
 ]
@@ -19,6 +20,7 @@ license = "CC-BY-NC-SA-4.0"
 authors = ["lbjlaq", "Stranmor"]
 
 [workspace.dependencies]
+antigravity-shared = { path = "crates/antigravity-shared" }
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["sync"] }

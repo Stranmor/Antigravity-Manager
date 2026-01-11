@@ -2,29 +2,23 @@ use super::{quota::QuotaData, token::TokenData};
 use serde::{Deserialize, Serialize};
 
 /// 账号数据结构
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Account {
     pub id: String,
     pub email: String,
     pub name: Option<String>,
     pub token: TokenData,
     pub quota: Option<QuotaData>,
-    /// Disabled accounts are ignored by the proxy token pool (e.g. revoked refresh_token -> invalid_grant).
     #[serde(default)]
     pub disabled: bool,
-    /// Optional human-readable reason for disabling.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disabled_reason: Option<String>,
-    /// Unix timestamp when the account was disabled.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disabled_at: Option<i64>,
-    /// User manually disabled proxy feature (does not affect app usage).
     #[serde(default)]
     pub proxy_disabled: bool,
-    /// Optional human-readable reason for proxy disabling.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proxy_disabled_reason: Option<String>,
-    /// Unix timestamp when the proxy was disabled.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proxy_disabled_at: Option<i64>,
     pub created_at: i64,

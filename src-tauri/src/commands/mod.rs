@@ -348,7 +348,7 @@ pub async fn start_oauth_login(app_handle: tauri::AppHandle) -> Result<Account, 
     modules::logger::log_info(&format!("获取用户信息成功: {}", user_info.email));
 
     // 4. 尝试获取项目ID
-    let project_id = crate::proxy::project_resolver::fetch_project_id(&token_res.access_token)
+    let project_id = super::proxy::project_resolver::fetch_project_id(&token_res.access_token)
         .await
         .ok();
 
@@ -414,7 +414,7 @@ pub async fn complete_oauth_login(app_handle: tauri::AppHandle) -> Result<Accoun
     modules::logger::log_info(&format!("获取用户信息成功: {}", user_info.email));
 
     // 4. 尝试获取项目ID
-    let project_id = crate::proxy::project_resolver::fetch_project_id(&token_res.access_token)
+    let project_id = super::proxy::project_resolver::fetch_project_id(&token_res.access_token)
         .await
         .ok();
 

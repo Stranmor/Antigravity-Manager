@@ -309,7 +309,10 @@ pub async fn handle_chat_completions(
                 let backoff_ms = 1000_u64 * 2_u64.pow(attempt as u32).min(8000);
                 tracing::warn!(
                     "OpenAI Upstream 503 (service unavailable) on {} attempt {}/{}, waiting {}ms (no rotation)",
-                    email, attempt, max_attempts, backoff_ms
+                    email,
+                    attempt,
+                    max_attempts,
+                    backoff_ms
                 );
                 tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
                 skip_rotation = true;
@@ -666,7 +669,7 @@ pub async fn handle_completions(
                 return Err((
                     StatusCode::SERVICE_UNAVAILABLE,
                     format!("Token error: {}", e),
-                ))
+                ));
             }
         };
 
@@ -839,12 +842,7 @@ pub async fn handle_images_generations(
 
     info!(
         "[Images] Received request: model={}, prompt={:.50}..., n={}, size={}, quality={}, style={}",
-        model,
-        prompt,
-        n,
-        size,
-        quality,
-        style
+        model, prompt, n, size, quality, style
     );
 
     // 2. 解析尺寸为宽高比
@@ -879,7 +877,7 @@ pub async fn handle_images_generations(
                 return Err((
                     StatusCode::SERVICE_UNAVAILABLE,
                     format!("Token error: {}", e),
-                ))
+                ));
             }
         };
 
@@ -1129,7 +1127,7 @@ pub async fn handle_images_edits(
                 return Err((
                     StatusCode::SERVICE_UNAVAILABLE,
                     format!("Token error: {}", e),
-                ))
+                ));
             }
         };
 

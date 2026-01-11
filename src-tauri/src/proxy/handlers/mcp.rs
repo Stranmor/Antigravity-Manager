@@ -13,7 +13,7 @@ use tokio_stream::wrappers::IntervalStream;
 use crate::proxy::server::AppState;
 
 fn build_client(
-    upstream_proxy: crate::proxy::config::UpstreamProxyConfig,
+    upstream_proxy: crate::models::UpstreamProxyConfig,
     timeout_secs: u64,
 ) -> Result<reqwest::Client, String> {
     let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(timeout_secs.max(5)));

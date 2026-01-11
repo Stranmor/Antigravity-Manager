@@ -26,4 +26,3 @@ pub fn CollapsibleCard(
         </div>
     }
 }
-

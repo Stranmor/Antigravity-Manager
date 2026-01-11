@@ -582,15 +582,15 @@ pub fn Accounts() -> impl IntoView {
 
                                     let quota_gemini = account.quota.as_ref().map(|q| {
                                         q.models.iter()
-                                            .find(|m| m.model.contains("gemini") || m.model.contains("flash"))
-                                            .map(|m| if m.limit > 0 { (m.limit - m.used) * 100 / m.limit } else { 0 })
+                                            .find(|m| m.name.contains("gemini") || m.name.contains("flash"))
+                                            .map(|m| m.percentage)
                                             .unwrap_or(0)
                                     }).unwrap_or(0);
 
                                     let quota_claude = account.quota.as_ref().map(|q| {
                                         q.models.iter()
-                                            .find(|m| m.model.contains("claude"))
-                                            .map(|m| if m.limit > 0 { (m.limit - m.used) * 100 / m.limit } else { 0 })
+                                            .find(|m| m.name.contains("claude"))
+                                            .map(|m| m.percentage)
                                             .unwrap_or(0)
                                     }).unwrap_or(0);
 

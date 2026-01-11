@@ -266,7 +266,12 @@ pub async fn handle_generate(
 
             // 只有明确包含 "QUOTA_EXHAUSTED" 才停止
             if status_code == 429 && error_text.contains("QUOTA_EXHAUSTED") {
-                error!("Gemini Quota exhausted (429) on account {} attempt {}/{}, stopping to protect pool.", email, attempt + 1, max_attempts);
+                error!(
+                    "Gemini Quota exhausted (429) on account {} attempt {}/{}, stopping to protect pool.",
+                    email,
+                    attempt + 1,
+                    max_attempts
+                );
                 return Err((status, error_text));
             }
 
@@ -392,7 +397,10 @@ pub async fn handle_generate(
                 let backoff_ms = 1000_u64 * 2_u64.pow(attempt as u32).min(8000);
                 tracing::warn!(
                     "Gemini Upstream 503 (service unavailable) on {} attempt {}/{}, waiting {}ms (no rotation)",
-                    email, attempt + 1, max_attempts, backoff_ms
+                    email,
+                    attempt + 1,
+                    max_attempts,
+                    backoff_ms
                 );
                 tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
                 skip_rotation = true;

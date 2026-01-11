@@ -23,26 +23,26 @@ pub struct AppState {
     #[allow(dead_code)]
     pub thought_signature_map: Arc<tokio::sync::Mutex<std::collections::HashMap<String, String>>>, // 思维链签名映射 (ID -> Signature)
     #[allow(dead_code)]
-    pub upstream_proxy: Arc<tokio::sync::RwLock<crate::proxy::config::UpstreamProxyConfig>>,
+    pub upstream_proxy: Arc<tokio::sync::RwLock<crate::models::UpstreamProxyConfig>>,
     pub upstream: Arc<crate::proxy::upstream::client::UpstreamClient>,
     pub zai: Arc<RwLock<crate::proxy::ZaiConfig>>,
     pub provider_rr: Arc<AtomicUsize>,
     pub zai_vision_mcp: Arc<crate::proxy::zai_vision_mcp::ZaiVisionMcpState>,
     pub monitor: Arc<crate::proxy::monitor::ProxyMonitor>,
-    pub experimental: Arc<RwLock<crate::proxy::config::ExperimentalConfig>>,
+    pub experimental: Arc<RwLock<crate::models::ExperimentalConfig>>,
 }
 
 /// Axum 服务器实例
 pub struct AxumServer {
     shutdown_tx: Option<oneshot::Sender<()>>,
     custom_mapping: Arc<tokio::sync::RwLock<std::collections::HashMap<String, String>>>,
-    proxy_state: Arc<tokio::sync::RwLock<crate::proxy::config::UpstreamProxyConfig>>,
+    proxy_state: Arc<tokio::sync::RwLock<crate::models::UpstreamProxyConfig>>,
     security_state: Arc<RwLock<crate::proxy::ProxySecurityConfig>>,
     zai_state: Arc<RwLock<crate::proxy::ZaiConfig>>,
 }
 
 impl AxumServer {
-    pub async fn update_mapping(&self, config: &crate::proxy::config::ProxyConfig) {
+    pub async fn update_mapping(&self, config: &crate::models::ProxyConfig) {
         {
             let mut m = self.custom_mapping.write().await;
             *m = config.custom_mapping.clone();
@@ -51,19 +51,19 @@ impl AxumServer {
     }
 
     /// 更新代理配置
-    pub async fn update_proxy(&self, new_config: crate::proxy::config::UpstreamProxyConfig) {
+    pub async fn update_proxy(&self, new_config: crate::models::UpstreamProxyConfig) {
         let mut proxy = self.proxy_state.write().await;
         *proxy = new_config;
         tracing::info!("上游代理配置已热更新");
     }
 
-    pub async fn update_security(&self, config: &crate::proxy::config::ProxyConfig) {
+    pub async fn update_security(&self, config: &crate::models::ProxyConfig) {
         let mut sec = self.security_state.write().await;
         *sec = crate::proxy::ProxySecurityConfig::from_proxy_config(config);
         tracing::info!("反代服务安全配置已热更新");
     }
 
-    pub async fn update_zai(&self, config: &crate::proxy::config::ProxyConfig) {
+    pub async fn update_zai(&self, config: &crate::models::ProxyConfig) {
         let mut zai = self.zai_state.write().await;
         *zai = config.zai.clone();
         tracing::info!("z.ai 配置已热更新");
@@ -75,11 +75,11 @@ impl AxumServer {
         token_manager: Arc<TokenManager>,
         custom_mapping: std::collections::HashMap<String, String>,
         _request_timeout: u64,
-        upstream_proxy: crate::proxy::config::UpstreamProxyConfig,
+        upstream_proxy: crate::models::UpstreamProxyConfig,
         security_config: crate::proxy::ProxySecurityConfig,
         zai_config: crate::proxy::ZaiConfig,
         monitor: Arc<crate::proxy::monitor::ProxyMonitor>,
-        experimental_config: crate::proxy::config::ExperimentalConfig,
+        experimental_config: crate::models::ExperimentalConfig,
     ) -> Result<(Self, tokio::task::JoinHandle<()>), String> {
         let custom_mapping_state = Arc::new(tokio::sync::RwLock::new(custom_mapping));
         let proxy_state = Arc::new(tokio::sync::RwLock::new(upstream_proxy.clone()));

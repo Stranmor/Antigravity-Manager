@@ -1,7 +1,6 @@
 // proxy 模块 - API 反代服务
 
 // 现有模块 (保留)
-pub mod config;
 pub mod project_resolver;
 pub mod security;
 pub mod server;
@@ -21,12 +20,10 @@ pub mod signature_cache;
 pub mod sticky_config; // 粘性调度配置
 pub mod upstream; // 上游客户端
 pub mod zai_vision_mcp; // Built-in Vision MCP server state
-pub mod zai_vision_tools; // Built-in Vision MCP tools (z.ai vision API) // Signature Cache (v3.3.16)
+pub mod zai_vision_tools; // Built-in Vision MCP tools (z.ai vision API)
 
-pub use config::ProxyAuthMode;
-pub use config::ProxyConfig;
-pub use config::ZaiConfig;
-pub use config::ZaiDispatchMode;
+pub use crate::models::{ProxyAuthMode, ProxyConfig, ZaiConfig, ZaiDispatchMode};
+pub use antigravity_shared::proxy::config;
 pub use security::ProxySecurityConfig;
 pub use server::AxumServer;
 pub use signature_cache::SignatureCache;

@@ -2,11 +2,11 @@
 use dashmap::DashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
+use crate::models::StickySessionConfig;
 use crate::proxy::rate_limit::RateLimitTracker;
-use crate::proxy::sticky_config::StickySessionConfig;
 
 #[derive(Debug, Clone)]
 pub struct ProxyToken {
@@ -261,7 +261,7 @@ impl TokenManager {
             // 模式 A: 粘性会话处理 (CacheFirst 或 Balance 且有 session_id)
             if !rotate
                 && session_id.is_some()
-                && scheduling.mode != SchedulingMode::PerformanceFirst
+                && scheduling.mode != SchedulingMode::PerformanceFirst.to_string()
             {
                 let sid = session_id.unwrap();
 
@@ -272,14 +272,23 @@ impl TokenManager {
                     if reset_sec > 0 {
                         // 【修复 Issue #284】立即解绑并切换账号，不再阻塞等待
                         // 原因：阻塞等待会导致并发请求时客户端 socket 超时 (UND_ERR_SOCKET)
-                        tracing::warn!("Session {} bound account {} is rate-limited ({}s remaining). Unbinding and switching to next available account.", sid, bound_id, reset_sec);
+                        tracing::warn!(
+                            "Session {} bound account {} is rate-limited ({}s remaining). Unbinding and switching to next available account.",
+                            sid,
+                            bound_id,
+                            reset_sec
+                        );
                         self.session_accounts.remove(sid);
                     } else if !attempted.contains(&bound_id) {
                         // 3. 账号可用且未被标记为尝试失败，优先复用
                         if let Some(found) =
                             tokens_snapshot.iter().find(|t| t.account_id == bound_id)
                         {
-                            tracing::debug!("Sticky Session: Successfully reusing bound account {} for session {}", found.email, sid);
+                            tracing::debug!(
+                                "Sticky Session: Successfully reusing bound account {} for session {}",
+                                found.email,
+                                sid
+                            );
                             target_token = Some(found.clone());
                         }
                     }
@@ -325,7 +334,7 @@ impl TokenManager {
 
                         // 如果是会话首次分配且需要粘性，在此建立绑定
                         if let Some(sid) = session_id {
-                            if scheduling.mode != SchedulingMode::PerformanceFirst {
+                            if scheduling.mode != SchedulingMode::PerformanceFirst.to_string() {
                                 self.session_accounts
                                     .insert(sid.to_string(), candidate.account_id.clone());
                                 tracing::debug!(

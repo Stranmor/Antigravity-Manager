@@ -115,7 +115,7 @@ pub mod commands {
     // ========== Quota ==========
 
     /// Fetch quota for single account
-    pub async fn fetch_account_quota(account_id: &str) -> Result<AccountQuota, String> {
+    pub async fn fetch_account_quota(account_id: &str) -> Result<QuotaData, String> {
         tauri_invoke(
             "fetch_account_quota",
             serde_json::json!({ "accountId": account_id }),

@@ -47,7 +47,7 @@ fn join_base_url(base: &str, path: &str) -> Result<String, String> {
 }
 
 fn build_client(
-    upstream_proxy: Option<crate::proxy::config::UpstreamProxyConfig>,
+    upstream_proxy: Option<crate::models::UpstreamProxyConfig>,
     timeout_secs: u64,
 ) -> Result<reqwest::Client, String> {
     let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(timeout_secs.max(5)));

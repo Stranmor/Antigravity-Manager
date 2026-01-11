@@ -4,6 +4,7 @@ version = "3.3.20"
 edition = "2024"
 
 [dependencies]
+antigravity-shared = { workspace = true }
 # Leptos core
 leptos = { version = "0.7", features = ["csr"] }
 leptos_router = { version = "0.7" }
@@ -38,6 +39,7 @@ console_error_panic_hook = "0.1"
 
 # Time
 chrono = { version = "0.4", features = ["wasmbind"] }
+uuid = { version = "1.10", features = ["v4", "serde", "js"] }
 
 [lib]
 crate-type = ["cdylib", "rlib"]

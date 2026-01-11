@@ -85,7 +85,9 @@ pub fn close_tool_loop_for_thinking(messages: &mut Vec<Message>) {
     // Exception: If thinking is NOT enabled for this request, we don't need to do this (handled by other logic).
     // But here we assume we are called because thinking IS enabled.
     if !has_thinking {
-        info!("[Thinking-Recovery] Detected broken tool loop (ToolResult without preceding Thinking). Injecting synthetic messages.");
+        info!(
+            "[Thinking-Recovery] Detected broken tool loop (ToolResult without preceding Thinking). Injecting synthetic messages."
+        );
 
         // Strategy:
         // 1. Inject a "fake" Assistant message saying "Tool execution completed."

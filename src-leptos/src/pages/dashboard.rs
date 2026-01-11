@@ -40,36 +40,12 @@ pub fn Dashboard() -> impl IntoView {
             let quota_a = a
                 .quota
                 .as_ref()
-                .map(|q| {
-                    q.models
-                        .iter()
-                        .map(|m| {
-                            if m.limit > 0 {
-                                (m.limit - m.used) * 100 / m.limit
-                            } else {
-                                0
-                            }
-                        })
-                        .max()
-                        .unwrap_or(0)
-                })
+                .map(|q| q.models.iter().map(|m| m.percentage).max().unwrap_or(0))
                 .unwrap_or(0);
             let quota_b = b
                 .quota
                 .as_ref()
-                .map(|q| {
-                    q.models
-                        .iter()
-                        .map(|m| {
-                            if m.limit > 0 {
-                                (m.limit - m.used) * 100 / m.limit
-                            } else {
-                                0
-                            }
-                        })
-                        .max()
-                        .unwrap_or(0)
-                })
+                .map(|q| q.models.iter().map(|m| m.percentage).max().unwrap_or(0))
                 .unwrap_or(0);
             quota_b.cmp(&quota_a)
         });
@@ -118,12 +94,15 @@ pub fn Dashboard() -> impl IntoView {
             let export_data: Vec<_> = accounts
                 .iter()
                 .filter_map(|acc| {
-                    acc.tokens.as_ref().and_then(|t| t.refresh_token.clone()).map(|rt| {
-                        serde_json::json!({
+                    let rt = acc.token.refresh_token.clone();
+                    if rt.is_empty() {
+                        None
+                    } else {
+                        Some(serde_json::json!({
                             "email": acc.email,
                             "refresh_token": rt,
-                        })
-                    })
+                        }))
+                    }
                 })
                 .collect();
             let content = serde_json::to_string_pretty(&export_data).unwrap_or_default();
@@ -132,7 +111,10 @@ pub fn Dashboard() -> impl IntoView {
             if let Some(window) = web_sys::window() {
                 let clipboard = window.navigator().clipboard();
                 let _ = clipboard.write_text(&content);
-                show_message(format!("Exported {} accounts to clipboard", export_data.len()), false);
+                show_message(
+                    format!("Exported {} accounts to clipboard", export_data.len()),
+                    false,
+                );
             } else {
                 show_message("Export failed: clipboard unavailable".to_string(), true);
             }
@@ -239,15 +221,15 @@ pub fn Dashboard() -> impl IntoView {
                         Some(account) => {
                             let gemini_quota = account.quota.as_ref().map(|q| {
                                 q.models.iter()
-                                    .find(|m| m.model.contains("gemini") || m.model.contains("flash"))
-                                    .map(|m| if m.limit > 0 { (m.limit - m.used) * 100 / m.limit } else { 0 })
+                                    .find(|m| m.name.contains("gemini") || m.name.contains("flash"))
+                                    .map(|m| m.percentage)
                                     .unwrap_or(0)
                             }).unwrap_or(0);
 
                             let claude_quota = account.quota.as_ref().map(|q| {
                                 q.models.iter()
-                                    .find(|m| m.model.contains("claude"))
-                                    .map(|m| if m.limit > 0 { (m.limit - m.used) * 100 / m.limit } else { 0 })
+                                    .find(|m| m.name.contains("claude"))
+                                    .map(|m| m.percentage)
                                     .unwrap_or(0)
                             }).unwrap_or(0);
 
@@ -310,7 +292,7 @@ pub fn Dashboard() -> impl IntoView {
 
                                 let max_quota = account.quota.as_ref().map(|q| {
                                     q.models.iter()
-                                        .map(|m| if m.limit > 0 { (m.limit - m.used) * 100 / m.limit } else { 0 })
+                                        .map(|m| m.percentage)
                                         .max()
                                         .unwrap_or(0)
                                 }).unwrap_or(0);
