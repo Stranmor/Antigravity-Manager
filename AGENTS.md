@@ -82,13 +82,13 @@
 - CollapsibleCard (expandable sections)
 - Select (custom dropdown with search)
 
-## Known Build Issues
+## Build Configuration
 
-### wasm-opt bulk memory error in release builds
-- **Root Cause**: binaryen/wasm-opt version incompatibility with newer Rust
-- **Workaround**: Use `data-no-wasm-opt` attribute in index.html
-- **Impact**: Slightly larger WASM bundle size (no optimization)
-- **Status**: Tracking upstream for fix
+### wasm-opt with bulk memory support ✅
+- **Issue**: Rust 1.82+ generates bulk memory operations by default  
+- **Solution**: Added `data-wasm-opt-params="--enable-bulk-memory --enable-nontrapping-float-to-int"` in index.html
+- **Optimization**: Using `data-wasm-opt="z"` for maximum size reduction
+- **Result**: Release build works, WASM bundle ~1.8MB optimized
 
 ## Architecture Notes
 - Leptos 0.7 with CSR mode
