@@ -5,6 +5,7 @@
   "identifier": "com.lbjlaq.antigravity-tools",
   "build": {
     "beforeDevCommand": "cd ../src-leptos && trunk serve --port 1420",
+    "beforeBuildCommand": "cd ../src-leptos && trunk build --release",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../src-leptos/dist"
   },

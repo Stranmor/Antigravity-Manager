@@ -1,9 +1,13 @@
 name: Release
+
 on:
   push:
     tags:
       - "v*"
   workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   release:
@@ -13,18 +17,27 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macOS builds
           - platform: "macos-latest"
             args: "--target aarch64-apple-darwin"
+            target: aarch64-apple-darwin
           - platform: "macos-latest"
             args: "--target x86_64-apple-darwin"
+            target: x86_64-apple-darwin
           - platform: "macos-latest"
             args: "--target universal-apple-darwin"
+            target: ""
+          # Linux builds
           - platform: "ubuntu-22.04"
             args: ""
+            target: ""
           - platform: "ubuntu-24.04-arm"
             args: ""
+            target: aarch64-unknown-linux-gnu
+          # Windows build
           - platform: "windows-latest"
             args: ""
+            target: ""
 
     runs-on: ${{ matrix.platform }}
 
@@ -32,38 +45,72 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ============ Linux Setup ============
       - name: Install dependencies (Linux)
         if: startsWith(matrix.platform, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf pkg-config libsoup-3.0-dev javascriptcoregtk-4.1 libjavascriptcoregtk-4.1-dev
-          # Tauri 2 可能需要 libnm-dev
-          sudo apt-get install -y libnm-dev xdg-utils
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl wget file \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            pkg-config \
+            libsoup-3.0-dev \
+            javascriptcoregtk-4.1 \
+            libjavascriptcoregtk-4.1-dev \
+            libnm-dev \
+            xdg-utils
 
-      - name: Rust setup
+      # ============ Rust Setup ============
+      - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          # Install both targets for macOS to allow cross-compilation and universal build
-          # And install Linux ARM target if needed
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || (contains(matrix.args, 'aarch64') && 'aarch64-unknown-linux-gnu' || '') }}
+          targets: wasm32-unknown-unknown,${{ matrix.target }}
 
-      - name: Node.js setup
-        uses: actions/setup-node@v4
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
         with:
-          node-version: 20
-          cache: "npm"
+          workspaces: ". -> target"
+          cache-targets: true
 
-      - name: Install frontend dependencies
-        run: npm install
+      # ============ Trunk Setup for Leptos ============
+      - name: Install Trunk
+        run: cargo install trunk --locked
 
-      - name: Build the app
+      - name: Install wasm-bindgen-cli
+        run: cargo install wasm-bindgen-cli --locked
+
+      # ============ Build Frontend (Leptos WASM) ============
+      - name: Build Leptos frontend
+        working-directory: src-leptos
+        run: trunk build --release
+
+      # ============ Build Tauri App ============
+      - name: Build Tauri application
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Antigravity Tools ${{ github.ref_name }}"
-          releaseBody: "See the assets to download this version and install."
+          releaseBody: |
+            ## What's New
+            See [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
+            
+            ## Downloads
+            - **Windows**: `.msi` installer (recommended) or `.exe` portable
+            - **macOS**: `.dmg` disk image (Intel/Apple Silicon/Universal)
+            - **Linux**: `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL), `.AppImage` (portable)
+            
+            ## Installation
+            1. Download the appropriate file for your platform
+            2. Run the installer or extract the archive
+            3. Launch "Antigravity Tools" from your applications
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
