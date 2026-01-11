@@ -249,8 +249,10 @@ pub struct DashboardStats {
 
 impl DashboardStats {
     pub fn from_accounts(accounts: &[Account]) -> Self {
-        let mut stats = Self::default();
-        stats.total_accounts = accounts.len();
+        let mut stats = Self {
+            total_accounts: accounts.len(),
+            ..Default::default()
+        };
 
         if accounts.is_empty() {
             return stats;

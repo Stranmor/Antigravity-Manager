@@ -11,7 +11,7 @@ pub fn Pagination(
     #[prop(into)] on_page_change: Callback<usize>,
     #[prop(into)] on_page_size_change: Callback<usize>,
 ) -> impl IntoView {
-    let page_sizes = vec![10, 20, 50, 100];
+    let page_sizes = [10, 20, 50, 100];
 
     let can_prev = move || current_page.get() > 1;
     let can_next = move || current_page.get() < total_pages.get();

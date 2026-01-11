@@ -79,7 +79,7 @@ pub fn ApiProxy() -> impl IntoView {
     });
 
     // Status shortcut
-    let status = state.proxy_status.clone();
+    let status = state.proxy_status;
 
     // Toggle proxy
     let on_toggle = move || {
@@ -92,11 +92,9 @@ pub fn ApiProxy() -> impl IntoView {
                 commands::start_proxy_service().await.map(|_| ())
             };
 
-            if result.is_ok() {
-                if let Ok(s) = commands::get_proxy_status().await {
-                    let state = expect_context::<AppState>();
-                    state.proxy_status.set(s);
-                }
+            if result.is_ok() && let Ok(s) = commands::get_proxy_status().await {
+                let state = expect_context::<AppState>();
+                state.proxy_status.set(s);
             }
             loading.set(false);
         });
@@ -251,7 +249,7 @@ print(response.text)"#,
         }
     };
 
-    let models = vec![
+    let models = [
         ("gemini-3-flash", "Gemini 3 Flash"),
         ("gemini-3-pro-high", "Gemini 3 Pro"),
         ("claude-sonnet-4-5", "Claude Sonnet 4.5"),
@@ -620,8 +618,8 @@ print(response.text)"#,
                                 text="➕".to_string()
                                 variant=ButtonVariant::Primary
                                 on_click={
-                                    let new_mapping_from = new_mapping_from.clone();
-                                    let new_mapping_to = new_mapping_to.clone();
+                                    let new_mapping_from = new_mapping_from;
+                                    let new_mapping_to = new_mapping_to;
                                     move || {
                                         let from = new_mapping_from.get_untracked();
                                         let to = new_mapping_to.get_untracked();
