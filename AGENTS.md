@@ -5,7 +5,7 @@
 - **Backend**: Tauri (existing, unchanged)
 - **Build**: Trunk → WASM + CSS
 
-## Current Status: ✅ LEPTOS FRONTEND COMPILES & BUILDS
+## Current Status: ✅ LEPTOS FRONTEND FULLY INTEGRATED
 
 ### Completed Phases
 
@@ -17,6 +17,7 @@
 | Trunk WASM Build | ✅ | `274f684d` |
 | Dark Theme CSS | ✅ | Premium design in main.css |
 | Tauri Integration Config | ✅ | Updated tauri.conf.json |
+| **Full Backend Integration** | ✅ | `b81de89a` |
 
 ### src-leptos Structure
 ```
@@ -25,13 +26,13 @@ src-leptos/
 ├── Trunk.toml          # Trunk build config
 ├── index.html          # WASM entry point
 ├── styles/
-│   └── main.css        # Premium dark theme
+│   └── main.css        # Premium dark theme (1000+ lines)
 └── src/
     ├── lib.rs          # Library root
     ├── main.rs         # Entry point
     ├── app.rs          # Router + AppState
-    ├── tauri.rs        # Tauri IPC bindings
-    ├── types.rs        # Shared types
+    ├── tauri.rs        # Tauri IPC bindings (40+ commands)
+    ├── types.rs        # Shared types (Account, Config, Proxy, etc.)
     ├── components/
     │   ├── mod.rs
     │   ├── sidebar.rs
@@ -39,37 +40,70 @@ src-leptos/
     │   └── button.rs
     └── pages/
         ├── mod.rs
-        ├── dashboard.rs
-        ├── accounts.rs
-        ├── proxy.rs
-        ├── settings.rs
-        └── monitor.rs
+        ├── dashboard.rs      # Stats cards, tier breakdown, quick actions
+        ├── accounts.rs       # OAuth login, sync, quotas, batch delete
+        ├── proxy.rs          # Start/stop, config, API key, code examples
+        ├── settings.rs       # All settings, updates check, data folder
+        └── monitor.rs        # Real-time logs, stats, filtering
 ```
 
-## Next Steps
+## Implemented Features
 
-### 1. Run with Tauri (Test Integration)
+### Accounts Page
+- [x] OAuth login flow via `start_oauth_login`
+- [x] Sync from local Antigravity DB
+- [x] Refresh all quotas with progress
+- [x] Switch active account
+- [x] Batch delete accounts
+- [x] Search/filter accounts
+- [x] Quota progress bars (Gemini/Claude)
+- [x] Success/error message banners
+
+### Monitor Page
+- [x] Real-time request logs from backend
+- [x] Stats: total/success/error requests
+- [x] Token usage tracking (input/output)
+- [x] Auto-refresh every 2 seconds
+- [x] Toggle monitoring on/off
+- [x] Quick filters (All/Errors/Gemini/Claude/OpenAI)
+- [x] Proxy status warning banner
+
+### Settings Page
+- [x] Language/Theme selection with two-way binding
+- [x] Auto-launch toggle
+- [x] Quota refresh settings
+- [x] Check for updates with version comparison
+- [x] Open data folder button
+- [x] Clear logs functionality
+
+### Proxy Page
+- [x] Start/Stop with status indicator
+- [x] Port/timeout/auto-start configuration
+- [x] API key generation and copy
+- [x] Quick Start code examples (Python)
+- [x] Link to Monitor page
+
+## Run Commands
+
+### Development
 ```bash
 cd src-tauri && cargo tauri dev
 ```
 
-### 2. Verify Tauri Commands Match
-The Leptos frontend calls these commands via IPC:
-- `load_config` / `save_config`
-- `list_accounts` / `delete_account` / `set_current_account_id`
-- `get_proxy_status` / `start_proxy_service` / `stop_proxy_service`
-- `generate_api_key`
-
-Verify these exist in `src-tauri/src/commands/`.
-
-### 3. Release Build Optimization
+### Build WASM only
 ```bash
 cd src-leptos && trunk build --release
 ```
-Expected: ~500KB-1MB WASM (with wasm-opt z)
 
-### 4. Missing Features (TODO)
-- [ ] OAuth flow for adding accounts
-- [ ] Real-time Monitor (event listeners)
+### Production Build
+```bash
+cd src-tauri && cargo tauri build --release
+```
+
+## TODO / Future Improvements
 - [ ] Model routing configuration UI
-- [ ] Upstream sync
+- [ ] Account import from file
+- [ ] Upstream sync integration
+- [ ] Real-time WebSocket events for logs
+- [ ] Export accounts functionality
+- [ ] Light theme support

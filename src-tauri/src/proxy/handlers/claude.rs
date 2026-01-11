@@ -207,9 +207,13 @@ fn determine_retry_strategy(
             }
         }
 
-        // 503 服务不可用 / 529 服务器过载
-        503 | 529 => {
-            // 指数退避：1s, 2s, 4s, 8s
+        // 529 服务器过载 - 固定 1 秒重试
+        529 => {
+            RetryStrategy::FixedDelay(Duration::from_secs(1))
+        }
+
+        // 503 服务不可用 - 指数退避
+        503 => {
             RetryStrategy::ExponentialBackoff {
                 base_ms: 1000,
                 max_ms: 8000,
@@ -490,7 +494,9 @@ pub async fn handle_messages(
     let token_manager = state.token_manager;
     
     let pool_size = token_manager.len();
-    let max_attempts = MAX_RETRY_ATTEMPTS.min(pool_size).max(1);
+    // max_attempts НЕ ограничен pool_size: при 529/503 мы не ротируем аккаунт,
+    // поэтому даже с 1 аккаунтом можем делать до MAX_RETRY_ATTEMPTS попыток
+    let max_attempts = if pool_size == 0 { 1 } else { MAX_RETRY_ATTEMPTS };
 
     let mut last_error = String::new();
     let mut retried_without_thinking = false;

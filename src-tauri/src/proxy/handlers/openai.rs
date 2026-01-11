@@ -44,7 +44,8 @@ pub async fn handle_chat_completions(
     let upstream = state.upstream.clone();
     let token_manager = state.token_manager;
     let pool_size = token_manager.len();
-    let max_attempts = MAX_RETRY_ATTEMPTS.min(pool_size).max(1);
+    // max_attempts НЕ ограничен pool_size: при 529/503 мы не ротируем аккаунт
+    let max_attempts = if pool_size == 0 { 1 } else { MAX_RETRY_ATTEMPTS };
 
     let mut last_error = String::new();
     let mut skip_rotation = false; // 529/503 时跳过账号轮换
@@ -233,15 +234,26 @@ pub async fn handle_chat_completions(
                 return Err((status, error_text));
             }
 
-            // 3. 关键修复: 529/503 是服务端过载，轮换账号无意义
-            if status_code == 529 || status_code == 503 {
+            // 529 服务器过载 - 固定 1 秒重试
+            if status_code == 529 {
+                tracing::warn!(
+                    "OpenAI Upstream 529 (server overload) on {} attempt {}/{}, waiting 1s (no rotation)",
+                    email, attempt + 1, max_attempts
+                );
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                skip_rotation = true;
+                continue;
+            }
+
+            // 503 服务不可用 - exponential backoff
+            if status_code == 503 {
                 let backoff_ms = 1000_u64 * 2_u64.pow(attempt as u32).min(8000);
                 tracing::warn!(
-                    "OpenAI Upstream {} (server overload) on {} attempt {}/{}, waiting {}ms (no rotation)",
-                    status_code, email, attempt + 1, max_attempts, backoff_ms
+                    "OpenAI Upstream 503 (service unavailable) on {} attempt {}/{}, waiting {}ms (no rotation)",
+                    email, attempt + 1, max_attempts, backoff_ms
                 );
                 tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
-                skip_rotation = true; // 下次迭代不轮换
+                skip_rotation = true;
                 continue;
             }
 
