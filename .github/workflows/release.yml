@@ -5,37 +5,108 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      draft:
+        description: 'Create as draft release'
+        required: false
+        default: true
+        type: boolean
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+  RUST_BACKTRACE: short
 
 jobs:
-  release:
+  # ============================================================
+  # Stage 1: Build Leptos Frontend (shared across all platforms)
+  # ============================================================
+  build-frontend:
+    name: Build Frontend (WASM)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-leptos -> target"
+          cache-on-failure: true
+          shared-key: "leptos-wasm"
+
+      - name: Cache Trunk
+        uses: actions/cache@v4
+        id: trunk-cache
+        with:
+          path: ~/.cargo/bin/trunk
+          key: trunk-${{ runner.os }}-${{ hashFiles('src-leptos/Cargo.lock') }}
+
+      - name: Install Trunk
+        if: steps.trunk-cache.outputs.cache-hit != 'true'
+        run: cargo install trunk --locked
+
+      - name: Build Leptos frontend
+        working-directory: src-leptos
+        run: |
+          trunk build --release
+          echo "Frontend built successfully"
+          ls -lh dist/
+
+      - name: Upload frontend artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: src-leptos/dist/
+          retention-days: 1
+
+  # ============================================================
+  # Stage 2: Build Native Binaries (parallel per platform)
+  # ============================================================
+  build-tauri:
+    name: Build ${{ matrix.name }}
+    needs: build-frontend
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
         include:
-          # macOS builds
-          - platform: "macos-latest"
+          # macOS Apple Silicon
+          - name: macOS (ARM64)
+            platform: macos-latest
             args: "--target aarch64-apple-darwin"
             target: aarch64-apple-darwin
-          - platform: "macos-latest"
+          # macOS Intel
+          - name: macOS (x64)
+            platform: macos-latest
             args: "--target x86_64-apple-darwin"
             target: x86_64-apple-darwin
-          - platform: "macos-latest"
+          # macOS Universal
+          - name: macOS (Universal)
+            platform: macos-latest
             args: "--target universal-apple-darwin"
             target: ""
-          # Linux builds
-          - platform: "ubuntu-22.04"
+          # Linux x64
+          - name: Linux (x64)
+            platform: ubuntu-22.04
             args: ""
             target: ""
-          - platform: "ubuntu-24.04-arm"
+          # Linux ARM64
+          - name: Linux (ARM64)
+            platform: ubuntu-24.04-arm
             args: ""
             target: aarch64-unknown-linux-gnu
-          # Windows build
-          - platform: "windows-latest"
+          # Windows x64
+          - name: Windows (x64)
+            platform: windows-latest
             args: ""
             target: ""
 
@@ -45,7 +116,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ============ Linux Setup ============
+      - name: Download frontend artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: src-leptos/dist/
+
+      # ============ Linux Dependencies ============
       - name: Install dependencies (Linux)
         if: startsWith(matrix.platform, 'ubuntu')
         run: |
@@ -70,47 +147,60 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-unknown-unknown,${{ matrix.target }}
+          targets: ${{ matrix.target }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: ". -> target"
-          cache-targets: true
-
-      # ============ Trunk Setup for Leptos ============
-      - name: Install Trunk
-        run: cargo install trunk --locked
-
-      - name: Install wasm-bindgen-cli
-        run: cargo install wasm-bindgen-cli --locked
-
-      # ============ Build Frontend (Leptos WASM) ============
-      - name: Build Leptos frontend
-        working-directory: src-leptos
-        run: trunk build --release
+          workspaces: "src-tauri -> target"
+          cache-on-failure: true
+          shared-key: "tauri-${{ matrix.platform }}"
 
       # ============ Build Tauri App ============
       - name: Build Tauri application
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Skip frontend build - already done
+          TAURI_CLI_NO_DEV_SERVER_WAIT: true
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Antigravity Tools ${{ github.ref_name }}"
           releaseBody: |
-            ## What's New
+            ## Antigravity Tools ${{ github.ref_name }}
+            
+            ### What's New
             See [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
             
-            ## Downloads
-            - **Windows**: `.msi` installer (recommended) or `.exe` portable
-            - **macOS**: `.dmg` disk image (Intel/Apple Silicon/Universal)
-            - **Linux**: `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL), `.AppImage` (portable)
+            ### Downloads
+            | Platform | File | Notes |
+            |----------|------|-------|
+            | Windows | `.msi` | Recommended installer |
+            | Windows | `.exe` | Portable (no install) |
+            | macOS (Apple Silicon) | `.dmg` | M1/M2/M3 Macs |
+            | macOS (Intel) | `.dmg` | Older Intel Macs |
+            | macOS (Universal) | `.dmg` | Works on both |
+            | Linux (Debian/Ubuntu) | `.deb` | `sudo dpkg -i file.deb` |
+            | Linux (Fedora/RHEL) | `.rpm` | `sudo rpm -i file.rpm` |
+            | Linux (Portable) | `.AppImage` | `chmod +x && ./file.AppImage` |
             
-            ## Installation
-            1. Download the appropriate file for your platform
-            2. Run the installer or extract the archive
-            3. Launch "Antigravity Tools" from your applications
-          releaseDraft: true
+            ### Verification
+            All binaries are built in GitHub Actions. Check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for build logs.
+          releaseDraft: ${{ github.event.inputs.draft || true }}
           prerelease: false
           args: ${{ matrix.args }}
+
+  # ============================================================
+  # Stage 3: Cleanup artifacts after release
+  # ============================================================
+  cleanup:
+    name: Cleanup
+    needs: build-tauri
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Delete frontend artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: frontend-dist
+          failOnError: false

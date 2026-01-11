@@ -1,0 +1,165 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  # ============================================================
+  # Code Quality Checks
+  # ============================================================
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
+            src-leptos -> target
+          shared-key: "lint"
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (src-tauri)
+        run: cargo clippy --package antigravity_tools --all-features -- -D warnings
+
+      - name: Clippy (src-leptos)
+        run: cargo clippy --package antigravity-leptos -- -D warnings
+
+  # ============================================================
+  # Build Tests (ensure compilation works)
+  # ============================================================
+  build-check:
+    name: Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            pkg-config \
+            libsoup-3.0-dev \
+            javascriptcoregtk-4.1 \
+            libjavascriptcoregtk-4.1-dev
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
+            src-leptos -> target
+          shared-key: "build-check"
+
+      - name: Check src-tauri
+        run: cargo check --package antigravity_tools --all-features
+
+      - name: Check src-leptos (WASM)
+        run: cargo check --package antigravity-leptos --target wasm32-unknown-unknown
+
+  # ============================================================
+  # Unit Tests
+  # ============================================================
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            pkg-config \
+            libsoup-3.0-dev \
+            javascriptcoregtk-4.1 \
+            libjavascriptcoregtk-4.1-dev
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+          shared-key: "test"
+
+      - name: Run tests
+        run: cargo test --package antigravity_tools --all-features
+
+  # ============================================================
+  # Frontend Build Test
+  # ============================================================
+  build-frontend:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-leptos -> target"
+          shared-key: "frontend"
+
+      - name: Cache Trunk
+        uses: actions/cache@v4
+        id: trunk-cache
+        with:
+          path: ~/.cargo/bin/trunk
+          key: trunk-${{ runner.os }}-v1
+
+      - name: Install Trunk
+        if: steps.trunk-cache.outputs.cache-hit != 'true'
+        run: cargo install trunk --locked
+
+      - name: Build Leptos frontend
+        working-directory: src-leptos
+        run: trunk build --release
+
+      - name: Verify output
+        run: |
+          test -f src-leptos/dist/index.html
+          test -f src-leptos/dist/*.wasm
+          echo "✅ Frontend build successful"
+          ls -lh src-leptos/dist/
