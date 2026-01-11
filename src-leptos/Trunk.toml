@@ -1,6 +1,8 @@
 [build]
 target = "index.html"
 dist = "dist"
+# Skip wasm-opt due to bulk memory compatibility issues
+no_minification = true
 
 [watch]
 ignore = ["dist"]

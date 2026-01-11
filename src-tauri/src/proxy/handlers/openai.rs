@@ -47,6 +47,7 @@ pub async fn handle_chat_completions(
     let max_attempts = MAX_RETRY_ATTEMPTS.min(pool_size).max(1);
 
     let mut last_error = String::new();
+    let mut skip_rotation = false; // 529/503 时跳过账号轮换
 
     for attempt in 0..max_attempts {
         // 2. 模型路由解析
@@ -69,9 +70,11 @@ pub async fn handle_chat_completions(
         let session_id = SessionManager::extract_openai_session_id(&openai_req);
 
         // 4. 获取 Token (使用准确的 request_type)
-        // 关键：在重试尝试 (attempt > 0) 时强制轮换账号
+        // 关键修复: 529/503 时不轮换账号（服务端问题，轮换无意义）
+        let force_rotate = attempt > 0 && !skip_rotation;
+        skip_rotation = false; // 重置标志
         let (access_token, project_id, email) = match token_manager
-            .get_token(&config.request_type, attempt > 0, Some(&session_id))
+            .get_token(&config.request_type, force_rotate, Some(&session_id))
             .await
         {
             Ok(t) => t,
@@ -199,7 +202,7 @@ pub async fn handle_chat_completions(
             error_text
         );
 
-        // 429/529/503 智能处理
+        // 429/529/503/500 智能处理
         if status_code == 429 || status_code == 529 || status_code == 503 || status_code == 500 {
             // 记录限流信息 (全局同步)
             token_manager.mark_rate_limited(&email, status_code, retry_after.as_deref(), &error_text);
@@ -219,7 +222,7 @@ pub async fn handle_chat_completions(
                 continue;
             }
 
-            // 2. 只有明确包含 "QUOTA_EXHAUSTED" 才停止，避免误判频率提示 (如 "check quota")
+            // 2. 只有明确包含 "QUOTA_EXHAUSTED" 才停止
             if error_text.contains("QUOTA_EXHAUSTED") {
                 error!(
                     "OpenAI Quota exhausted (429) on account {} attempt {}/{}, stopping to protect pool.",
@@ -230,7 +233,19 @@ pub async fn handle_chat_completions(
                 return Err((status, error_text));
             }
 
-            // 3. 其他限流或服务器过载情况，轮换账号
+            // 3. 关键修复: 529/503 是服务端过载，轮换账号无意义
+            if status_code == 529 || status_code == 503 {
+                let backoff_ms = 1000_u64 * 2_u64.pow(attempt as u32).min(8000);
+                tracing::warn!(
+                    "OpenAI Upstream {} (server overload) on {} attempt {}/{}, waiting {}ms (no rotation)",
+                    status_code, email, attempt + 1, max_attempts, backoff_ms
+                );
+                tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
+                skip_rotation = true; // 下次迭代不轮换
+                continue;
+            }
+
+            // 4. 429/500 — 轮换账号
             tracing::warn!(
                 "OpenAI Upstream {} on {} attempt {}/{}, rotating account",
                 status_code,

@@ -288,13 +288,15 @@ async fn apply_retry_strategy(
 }
 
 /// 判断是否应该轮换账号
+/// 529/503 是服务端过载，轮换账号无意义
+/// 429/500/401/403 是账号级别问题，需要轮换
 fn should_rotate_account(status_code: u16) -> bool {
     match status_code {
-        // 这些错误是账号级别的，需要轮换
+        // 账号级别错误 → 轮换
         429 | 401 | 403 | 500 => true,
-        // 这些错误是服务端级别的，轮换账号无意义
-        400 | 503 | 529 => false,
-        // 其他错误默认不轮换
+        // 服务端级别错误 → 不轮换（等待 backoff 后重试同一账号）
+        503 | 529 => false,
+        // 400 等客户端错误 → 不轮换（重试无意义）
         _ => false,
     }
 }
@@ -492,6 +494,7 @@ pub async fn handle_messages(
 
     let mut last_error = String::new();
     let mut retried_without_thinking = false;
+    let mut skip_rotation = false; // 529/503 时跳过账号轮换
     
     for attempt in 0..max_attempts {
         // 2. 模型路由解析
@@ -512,7 +515,9 @@ pub async fn handle_messages(
         let session_id_str = crate::proxy::session_manager::SessionManager::extract_session_id(&request_for_body);
         let session_id = Some(session_id_str.as_str());
 
-        let force_rotate_token = attempt > 0;
+        // 关键修复: 529/503 时不轮换账号（服务端问题，轮换无意义）
+        let force_rotate_token = attempt > 0 && !skip_rotation;
+        skip_rotation = false; // 重置标志
         let (access_token, project_id, email) = match token_manager.get_token(&config.request_type, force_rotate_token, session_id).await {
             Ok(t) => t,
             Err(e) => {
@@ -831,9 +836,10 @@ pub async fn handle_messages(
         
         // 执行退避
         if apply_retry_strategy(strategy, attempt, status_code, &trace_id).await {
-            // 判断是否需要轮换账号
+            // 关键修复: 判断是否需要轮换账号
             if !should_rotate_account(status_code) {
-                debug!("[{}] Keeping same account for status {} (server-side issue)", trace_id, status_code);
+                info!("[{}] ⏸️  Keeping same account for status {} (server-side issue, rotation pointless)", trace_id, status_code);
+                skip_rotation = true; // 下次迭代不轮换
             }
             continue;
         } else {
