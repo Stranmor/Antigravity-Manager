@@ -5,7 +5,7 @@ mod modules;
 mod proxy; // 反代服务模块
 mod utils;
 
-use modules::logger;
+use antigravity_core::modules::logger;
 use tauri::Manager;
 use tracing::{error, info};
 
@@ -54,12 +54,12 @@ pub fn run() {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 // 加载配置
-                if let Ok(config) = modules::config::load_app_config() {
+                if let Ok(config) = antigravity_core::modules::config::load_config() {
                     if config.proxy.auto_start {
                         let state = handle.state::<commands::proxy::ProxyServiceState>();
                         // 尝试启动服务
                         if let Err(e) = commands::proxy::start_proxy_service(
-                            config.proxy,
+                            config.proxy.clone(),
                             state,
                             handle.clone(),
                         )

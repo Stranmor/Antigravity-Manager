@@ -1,2 +1,2 @@
 pub mod http;
-pub mod protobuf;
+// pub mod protobuf; // Moved to core

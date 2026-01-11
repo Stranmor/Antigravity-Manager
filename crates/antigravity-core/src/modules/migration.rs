@@ -1,5 +1,5 @@
 use crate::models::{Account, TokenData};
-use crate::modules::{account, db};
+use crate::modules::{account, vscode};
 use crate::utils::protobuf;
 use base64::{engine::general_purpose, Engine as _};
 use serde_json::Value;
@@ -262,7 +262,7 @@ pub async fn import_from_custom_db_path(path_str: String) -> Result<Account, Str
 
 /// 从默认 IDE 数据库导入当前登录账号
 pub async fn import_from_db() -> Result<Account, String> {
-    let db_path = db::get_db_path()?;
+    let db_path = vscode::get_vscode_db_path()?;
     import_from_custom_db_path(db_path.to_string_lossy().to_string()).await
 }
 
@@ -304,6 +304,6 @@ pub fn extract_refresh_token_from_file(db_path: &PathBuf) -> Result<String, Stri
 
 /// 从默认数据库获取当前 Refresh Token (兼容旧调用)
 pub fn get_refresh_token_from_db() -> Result<String, String> {
-    let db_path = db::get_db_path()?;
+    let db_path = vscode::get_vscode_db_path()?;
     extract_refresh_token_from_file(&db_path)
 }

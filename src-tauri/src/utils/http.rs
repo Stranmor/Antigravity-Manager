@@ -1,10 +1,10 @@
-use crate::modules::config::load_app_config;
+use antigravity_core::modules::config::load_config;
 use reqwest::{Client, Proxy};
 
 /// 创建统一配置的 HTTP 客户端
 /// 自动加载全局配置并应用代理
 pub fn create_client(timeout_secs: u64) -> Client {
-    if let Ok(config) = load_app_config() {
+    if let Ok(config) = load_config() {
         create_client_with_proxy(timeout_secs, Some(config.proxy.upstream_proxy))
     } else {
         create_client_with_proxy(timeout_secs, None)
@@ -14,7 +14,7 @@ pub fn create_client(timeout_secs: u64) -> Client {
 /// 创建带指定代理配置的 HTTP 客户端
 pub fn create_client_with_proxy(
     timeout_secs: u64,
-    proxy_config: Option<crate::models::UpstreamProxyConfig>,
+    proxy_config: Option<antigravity_shared::utils::http::UpstreamProxyConfig>,
 ) -> Client {
     let mut builder = Client::builder().timeout(std::time::Duration::from_secs(timeout_secs));
 

@@ -37,6 +37,8 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
+tracing-log = { workspace = true }
+
 
 # Utilities
 uuid = { workspace = true }

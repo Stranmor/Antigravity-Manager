@@ -349,7 +349,7 @@ pub async fn handle_messages(
             .to_lowercase();
 
     // Decide whether this request should be handled by z.ai (Anthropic passthrough) or the existing Google flow.
-    let zai = state.zai.read().await.clone();
+    let zai: antigravity_shared::proxy::config::ZaiConfig = state.zai.read().await.clone();
     let zai_enabled =
         zai.enabled && !matches!(zai.dispatch_mode, crate::proxy::ZaiDispatchMode::Off);
     let google_accounts = state.token_manager.len();

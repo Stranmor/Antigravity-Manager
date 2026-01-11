@@ -1,4 +1,5 @@
-use crate::modules;
+use crate::modules as tauri_modules;
+use antigravity_core::modules as core_modules;
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
@@ -8,8 +9,8 @@ use tauri::{
 
 pub fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     // 1. 加载配置获取语言设置
-    let config = modules::load_app_config().unwrap_or_default();
-    let texts = modules::i18n::get_tray_texts(&config.language);
+    let config = core_modules::config::load_config().unwrap_or_default();
+    let texts = tauri_modules::i18n::get_tray_texts(&config.language);
 
     // 2. 加载图标（macOS 使用 Template Image）
     let icon_bytes = include_bytes!("../../icons/tray-icon.png");
@@ -89,23 +90,35 @@ pub fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
                 "refresh_curr" => {
                     // 异步执行刷新
                     tauri::async_runtime::spawn(async move {
-                        if let Ok(Some(account_id)) = modules::get_current_account_id() {
+                        if let Ok(Some(account_id)) =
+                            core_modules::account::get_current_account_id()
+                        {
                             // 通知前端开始
                             let _ = app_handle.emit("tray://refresh-current", ());
 
                             // 执行刷新逻辑
-                            if let Ok(mut account) = modules::load_account(&account_id) {
+                            if let Ok(mut account) =
+                                core_modules::account::load_account(&account_id)
+                            {
                                 // 使用 modules::account 中的共享逻辑
-                                match modules::account::fetch_quota_with_retry(&mut account).await {
+                                match core_modules::account::fetch_quota_with_retry(&mut account)
+                                    .await
+                                {
                                     Ok(quota) => {
                                         // 保存
-                                        let _ = modules::update_account_quota(&account.id, quota);
+                                        let _ = core_modules::account::update_account_quota(
+                                            &account.id,
+                                            quota,
+                                        );
                                         // 更新托盘展示
                                         update_tray_menus(&app_handle);
                                     }
                                     Err(e) => {
                                         // 错误处理，可能只记录日志
-                                        modules::logger::log_error(&format!("托盘刷新失败: {}", e));
+                                        core_modules::logger::log_error(&format!(
+                                            "托盘刷新失败: {}",
+                                            e
+                                        ));
                                     }
                                 }
                             }
@@ -115,12 +128,13 @@ pub fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
                 "switch_next" => {
                     tauri::async_runtime::spawn(async move {
                         // 1. 获取所有账号
-                        if let Ok(accounts) = modules::list_accounts() {
+                        if let Ok(accounts) = core_modules::account::list_accounts() {
                             if accounts.is_empty() {
                                 return;
                             }
 
-                            let current_id = modules::get_current_account_id().unwrap_or(None);
+                            let current_id =
+                                core_modules::account::get_current_account_id().unwrap_or(None);
                             let next_account = if let Some(curr) = current_id {
                                 let idx = accounts.iter().position(|a| a.id == curr).unwrap_or(0);
                                 let next_idx = (idx + 1) % accounts.len();
@@ -130,7 +144,9 @@ pub fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
                             };
 
                             // 2. 切换
-                            if let Ok(_) = modules::switch_account(&next_account.id).await {
+                            if let Ok(_) =
+                                core_modules::account::switch_account(&next_account.id).await
+                            {
                                 // 3. 通知前端
                                 let _ = app_handle
                                     .emit("tray://account-switched", next_account.id.clone());
@@ -170,7 +186,7 @@ pub fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     // 监听配置变更事件
     let handle = app.clone();
     app.listen("config://updated", move |_event| {
-        modules::logger::log_info("配置已更新，刷新托盘菜单");
+        core_modules::logger::log_info("配置已更新，刷新托盘菜单");
         update_tray_menus(&handle);
     });
 
@@ -182,17 +198,17 @@ pub fn update_tray_menus<R: Runtime>(app: &tauri::AppHandle<R>) {
     let app_clone = app.clone();
     tauri::async_runtime::spawn(async move {
         // 读取配置获取语言
-        let config = modules::load_app_config().unwrap_or_default();
-        let texts = modules::i18n::get_tray_texts(&config.language);
+        let config = core_modules::config::load_config().unwrap_or_default();
+        let texts = tauri_modules::i18n::get_tray_texts(&config.language);
 
         // 获取当前账号信息
-        let current = modules::get_current_account_id().unwrap_or(None);
+        let current = core_modules::account::get_current_account_id().unwrap_or(None);
 
         let mut menu_lines = Vec::new();
         let mut user_text = format!("{}: {}", texts.current, texts.no_account);
 
         if let Some(id) = current {
-            if let Ok(account) = modules::load_account(&id) {
+            if let Ok(account) = core_modules::account::load_account(&id) {
                 user_text = format!("{}: {}", texts.current, account.email);
 
                 if let Some(q) = account.quota {

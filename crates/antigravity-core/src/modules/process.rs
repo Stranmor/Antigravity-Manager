@@ -22,7 +22,7 @@ pub fn is_antigravity_running() -> bool {
     let current_pid = std::process::id();
 
     // 识别参考 1: 加载手动配置路径（移至循环外以提升性能）
-    let manual_path = crate::modules::config::load_app_config()
+    let manual_path = crate::modules::config::load_config()
         .ok()
         .and_then(|c| c.antigravity_executable)
         .and_then(|p| std::path::PathBuf::from(p).canonicalize().ok());
@@ -87,8 +87,6 @@ pub fn is_antigravity_running() -> bool {
                 }
             }
         }
-
-        // 通用的辅助进程排除逻辑
 
         // 通用的辅助进程排除逻辑
         let args = process.cmd();
@@ -205,7 +203,7 @@ fn get_antigravity_pids() -> Vec<u32> {
     let current_exe = get_current_exe_path();
 
     // 加载手动配置路径作为辅助参考
-    let manual_path = crate::modules::config::load_app_config()
+    let manual_path = crate::modules::config::load_config()
         .ok()
         .and_then(|c| c.antigravity_executable)
         .and_then(|p| std::path::PathBuf::from(p).canonicalize().ok());
@@ -385,14 +383,13 @@ pub fn close_antigravity(timeout_secs: u64) -> Result<(), String> {
         let pids = get_antigravity_pids();
         if !pids.is_empty() {
             // 1. 识别主进程 (PID)
-            // 策略：Electron/Tauri 的主进程没有 `--type` 参数，而 Helper 进程都有 `--type=renderer/gpu/utility` 等
             let mut system = System::new();
             system.refresh_processes(sysinfo::ProcessesToUpdate::All);
 
             let mut main_pid = None;
 
             // 加载手动配置路径作为最高优先级参考
-            let manual_path = crate::modules::config::load_app_config()
+            let manual_path = crate::modules::config::load_config()
                 .ok()
                 .and_then(|c| c.antigravity_executable)
                 .and_then(|p| std::path::PathBuf::from(p).canonicalize().ok());
@@ -530,7 +527,6 @@ pub fn close_antigravity(timeout_secs: u64) -> Result<(), String> {
                             if !result.status.success() {
                                 let error = String::from_utf8_lossy(&result.stderr);
                                 if !error.contains("No such process") {
-                                    // "No matching processes" for killall, "No such process" for kill
                                     crate::modules::logger::log_error(&format!(
                                         "SIGKILL 进程 {} 失败: {}",
                                         pid, error
@@ -552,7 +548,6 @@ pub fn close_antigravity(timeout_secs: u64) -> Result<(), String> {
                 return Ok(());
             }
         } else {
-            // 只有当 pids 为空时才认为没在运行，不要在这里报错，因为可能是已经关闭了
             crate::modules::logger::log_info("Antigravity 未在运行，无需关闭");
             return Ok(());
         }
@@ -569,7 +564,7 @@ pub fn close_antigravity(timeout_secs: u64) -> Result<(), String> {
             let mut main_pid = None;
 
             // 加载手动配置路径作为最高优先级参考
-            let manual_path = crate::modules::config::load_app_config()
+            let manual_path = crate::modules::config::load_config()
                 .ok()
                 .and_then(|c| c.antigravity_executable)
                 .and_then(|p| std::path::PathBuf::from(p).canonicalize().ok());
@@ -685,7 +680,6 @@ pub fn close_antigravity(timeout_secs: u64) -> Result<(), String> {
                 }
             }
         } else {
-            // pids 为空，说明没有检测到进程，或者都被排除逻辑排除了
             crate::modules::logger::log_info(
                 "未找到需要关闭的 Antigravity 进程 (可能已被过滤或未运行)",
             );
@@ -706,7 +700,7 @@ pub fn start_antigravity() -> Result<(), String> {
     crate::modules::logger::log_info("正在启动 Antigravity...");
 
     // 优先从配置项加载手动指定的路径和参数
-    let config = crate::modules::config::load_app_config().ok();
+    let config = crate::modules::config::load_config().ok();
     let manual_path = config
         .as_ref()
         .and_then(|c| c.antigravity_executable.clone());
@@ -714,13 +708,12 @@ pub fn start_antigravity() -> Result<(), String> {
 
     if let Some(path_str) = manual_path {
         // On macOS, we may need to correct the path if it points inside .app
-        // Use shadowing to avoid unused_mut warnings on non-macOS platforms
         #[cfg(target_os = "macos")]
         let (path_str, path) = {
             let mut path_str = path_str;
             let mut path = std::path::PathBuf::from(&path_str);
 
-            // 容错处理：如果指定的路径位于 .app 内部（比如误选了 Helper），则自动修正为 .app 目录
+            // 容错处理
             if let Some(app_idx) = path_str.find(".app") {
                 let corrected_app = &path_str[..app_idx + 4];
                 if corrected_app != path_str {
@@ -748,7 +741,6 @@ pub fn start_antigravity() -> Result<(), String> {
                     let mut cmd = Command::new("open");
                     cmd.arg("-a").arg(&path_str);
 
-                    // 添加启动参数
                     if let Some(ref args) = args {
                         for arg in args {
                             cmd.arg(arg);
@@ -759,7 +751,6 @@ pub fn start_antigravity() -> Result<(), String> {
                 } else {
                     let mut cmd = Command::new(&path_str);
 
-                    // 添加启动参数
                     if let Some(ref args) = args {
                         for arg in args {
                             cmd.arg(arg);
@@ -775,7 +766,6 @@ pub fn start_antigravity() -> Result<(), String> {
             {
                 let mut cmd = Command::new(&path_str);
 
-                // 添加启动参数
                 if let Some(ref args) = args {
                     for arg in args {
                         cmd.arg(arg);
@@ -785,10 +775,6 @@ pub fn start_antigravity() -> Result<(), String> {
                 cmd.spawn().map_err(|e| format!("启动失败: {}", e))?;
             }
 
-            crate::modules::logger::log_info(&format!(
-                "Antigravity 启动命令已发送 (手动路径: {}, 参数: {:?})",
-                path_str, args
-            ));
             return Ok(());
         } else {
             crate::modules::logger::log_warn(&format!(
@@ -800,11 +786,9 @@ pub fn start_antigravity() -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        // 改进：使用 output() 等待 open 命令完成，以捕获"应用未找到"错误
         let mut cmd = Command::new("open");
         cmd.args(["-a", "Antigravity"]);
 
-        // 添加启动参数
         if let Some(ref args) = args {
             for arg in args {
                 cmd.arg(arg);
@@ -826,11 +810,9 @@ pub fn start_antigravity() -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        // 尝试通过注册表或默认路径启动
         let mut cmd = Command::new("cmd");
         cmd.args(["/C", "start", "antigravity://"]);
 
-        // 添加启动参数
         if let Some(ref args) = args {
             for arg in args {
                 cmd.arg(arg);
@@ -838,7 +820,6 @@ pub fn start_antigravity() -> Result<(), String> {
         }
 
         let result = cmd.spawn();
-
         if result.is_err() {
             return Err("启动失败，请手动打开 Antigravity".to_string());
         }
@@ -848,7 +829,6 @@ pub fn start_antigravity() -> Result<(), String> {
     {
         let mut cmd = Command::new("antigravity");
 
-        // 添加启动参数
         if let Some(ref args) = args {
             for arg in args {
                 cmd.arg(arg);
@@ -858,16 +838,10 @@ pub fn start_antigravity() -> Result<(), String> {
         cmd.spawn().map_err(|e| format!("启动失败: {}", e))?;
     }
 
-    crate::modules::logger::log_info(&format!(
-        "Antigravity 启动命令已发送 (默认检测, 参数: {:?})",
-        args
-    ));
     Ok(())
 }
 
 /// 从运行中的进程获取 Antigravity 可执行文件路径和启动参数
-///
-/// 这是最可靠的方法，可以找到任意位置的安装和启动参数
 fn get_process_info() -> (Option<std::path::PathBuf>, Option<Vec<String>>) {
     let mut system = System::new_all();
     system.refresh_all();
@@ -881,7 +855,6 @@ fn get_process_info() -> (Option<std::path::PathBuf>, Option<Vec<String>>) {
             continue;
         }
 
-        // 排除管理器自身进程
         if let (Some(ref my_path), Some(p_exe)) = (&current_exe, process.exe()) {
             if let Ok(p_path) = p_exe.canonicalize() {
                 if my_path == &p_path {
@@ -892,7 +865,6 @@ fn get_process_info() -> (Option<std::path::PathBuf>, Option<Vec<String>>) {
 
         let name = process.name().to_string_lossy().to_lowercase();
 
-        // 获取可执行文件路径和命令行参数
         if let Some(exe) = process.exe() {
             let mut args = process.cmd().iter();
             let exe_path = args
@@ -900,14 +872,12 @@ fn get_process_info() -> (Option<std::path::PathBuf>, Option<Vec<String>>) {
                 .map_or(exe.to_string_lossy(), |arg| arg.to_string_lossy())
                 .to_lowercase();
 
-            // 从命令行参数中提取真正的参数（跳过可执行文件路径）
             let args = args
                 .map(|arg| arg.to_string_lossy().to_lowercase())
                 .collect::<Vec<String>>();
 
             let args_str = args.join(" ");
 
-            // 通用的辅助进程排除逻辑
             let is_helper = args_str.contains("--type=")
                 || args_str.contains("node-ipc")
                 || args_str.contains("nodeipc")
@@ -927,12 +897,10 @@ fn get_process_info() -> (Option<std::path::PathBuf>, Option<Vec<String>>) {
             let args = Some(args);
             #[cfg(target_os = "macos")]
             {
-                // macOS: 排除辅助进程,只匹配主程序,并检查 Frameworks
                 if exe_path.contains("antigravity.app")
                     && !is_helper
                     && !exe_path.contains("frameworks")
                 {
-                    // 尝试提取 .app 路径以便更好地支持 open 命令
                     if let Some(app_idx) = exe_path.find(".app") {
                         let app_path_str = &exe.to_string_lossy()[..app_idx + 4];
                         let path = Some(std::path::PathBuf::from(app_path_str));
@@ -944,7 +912,6 @@ fn get_process_info() -> (Option<std::path::PathBuf>, Option<Vec<String>>) {
 
             #[cfg(target_os = "windows")]
             {
-                // Windows: 严格匹配进程名且排除辅助进程
                 if name == "antigravity.exe" && !is_helper {
                     return (path, args);
                 }
@@ -952,7 +919,6 @@ fn get_process_info() -> (Option<std::path::PathBuf>, Option<Vec<String>>) {
 
             #[cfg(target_os = "linux")]
             {
-                // Linux: 检查进程名或路径包含 antigravity，排除辅助进程和管理器
                 if (name == "antigravity" || exe_path.contains("/antigravity"))
                     && !name.contains("tools")
                     && !is_helper
@@ -966,8 +932,6 @@ fn get_process_info() -> (Option<std::path::PathBuf>, Option<Vec<String>>) {
 }
 
 /// 从运行中的进程获取 Antigravity 可执行文件路径
-///
-/// 这是最可靠的方法，可以找到任意位置的安装
 pub fn get_path_from_running_process() -> Option<std::path::PathBuf> {
     let (path, _) = get_process_info();
     path
@@ -981,19 +945,15 @@ pub fn get_args_from_running_process() -> Option<Vec<String>> {
 
 /// 获取 --user-data-dir 参数值（如果存在）
 pub fn get_user_data_dir_from_process() -> Option<std::path::PathBuf> {
-    // 优先从配置中获取启动参数
-    if let Ok(config) = crate::modules::config::load_app_config() {
+    if let Ok(config) = crate::modules::config::load_config() {
         if let Some(args) = config.antigravity_args {
-            // 检查配置中的参数
             for i in 0..args.len() {
                 if args[i] == "--user-data-dir" && i + 1 < args.len() {
-                    // 下一个参数是路径
                     let path = std::path::PathBuf::from(&args[i + 1]);
                     if path.exists() {
                         return Some(path);
                     }
                 } else if args[i].starts_with("--user-data-dir=") {
-                    // 参数和值在同一个字符串中，如 --user-data-dir=/path/to/data
                     let parts: Vec<&str> = args[i].splitn(2, '=').collect();
                     if parts.len() == 2 {
                         let path_str = parts[1];
@@ -1007,17 +967,14 @@ pub fn get_user_data_dir_from_process() -> Option<std::path::PathBuf> {
         }
     }
 
-    // 如果配置中没有，从运行中的进程获取参数
     if let Some(args) = get_args_from_running_process() {
         for i in 0..args.len() {
             if args[i] == "--user-data-dir" && i + 1 < args.len() {
-                // 下一个参数是路径
                 let path = std::path::PathBuf::from(&args[i + 1]);
                 if path.exists() {
                     return Some(path);
                 }
             } else if args[i].starts_with("--user-data-dir=") {
-                // 参数和值在同一个字符串中，如 --user-data-dir=/path/to/data
                 let parts: Vec<&str> = args[i].splitn(2, '=').collect();
                 if parts.len() == 2 {
                     let path_str = parts[1];
@@ -1034,18 +991,10 @@ pub fn get_user_data_dir_from_process() -> Option<std::path::PathBuf> {
 }
 
 /// 获取 Antigravity 可执行文件路径（跨平台）
-///
-/// 查找策略（优先级从高到低）：
-/// 1. 从运行中的进程获取路径（最可靠，支持任意安装位置）
-/// 2. 遍历标准安装位置
-/// 3. 返回 None
 pub fn get_antigravity_executable_path() -> Option<std::path::PathBuf> {
-    // 策略1: 从运行进程获取（支持任意位置）
     if let Some(path) = get_path_from_running_process() {
         return Some(path);
     }
-
-    // 策略2: 检查标准安装位置
     check_standard_locations()
 }
 
@@ -1062,8 +1011,6 @@ fn check_standard_locations() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "windows")]
     {
         use std::env;
-
-        // 获取环境变量
         let local_appdata = env::var("LOCALAPPDATA").ok();
         let program_files =
             env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
@@ -1072,7 +1019,6 @@ fn check_standard_locations() -> Option<std::path::PathBuf> {
 
         let mut possible_paths = Vec::new();
 
-        // 用户安装位置（优先）
         if let Some(local) = local_appdata {
             possible_paths.push(
                 std::path::PathBuf::from(&local)
@@ -1082,21 +1028,18 @@ fn check_standard_locations() -> Option<std::path::PathBuf> {
             );
         }
 
-        // 系统安装位置
         possible_paths.push(
             std::path::PathBuf::from(&program_files)
                 .join("Antigravity")
                 .join("Antigravity.exe"),
         );
 
-        // 32位兼容位置
         possible_paths.push(
             std::path::PathBuf::from(&program_files_x86)
                 .join("Antigravity")
                 .join("Antigravity.exe"),
         );
 
-        // 返回第一个存在的路径
         for path in possible_paths {
             if path.exists() {
                 return Some(path);
@@ -1112,7 +1055,6 @@ fn check_standard_locations() -> Option<std::path::PathBuf> {
             std::path::PathBuf::from("/usr/share/antigravity/antigravity"),
         ];
 
-        // 用户本地安装
         if let Some(home) = dirs::home_dir() {
             let user_local = home.join(".local/bin/antigravity");
             if user_local.exists() {

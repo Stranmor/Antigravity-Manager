@@ -1,4 +1,4 @@
-use antigravity_core::proxy::monitor::{ProxyEventBus, ProxyMonitor as CoreProxyMonitor};
+use antigravity_core::proxy::monitor::ProxyEventBus;
 use antigravity_shared::models::ProxyRequestLog;
 use tauri::{AppHandle, Emitter};
 

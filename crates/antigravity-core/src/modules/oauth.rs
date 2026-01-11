@@ -111,9 +111,9 @@ pub async fn exchange_code(code: &str, redirect_uri: &str) -> Result<TokenRespon
         // 如果缺少 refresh_token,记录警告
         if token_res.refresh_token.is_none() {
             crate::modules::logger::log_warn(
-                "警告: Google 未返回 refresh_token。可能原因:\n\
-                 1. 用户之前已授权过此应用\n\
-                 2. 需要在 Google Cloud Console 撤销授权后重试\n\
+                r"警告: Google 未返回 refresh_token。可能原因:
+                 1. 用户之前已授权过此应用
+                 2. 需要在 Google Cloud Console 撤销授权后重试
                  3. OAuth 参数配置问题",
             );
         }

@@ -1,3 +1,4 @@
+use antigravity_core::modules::{oauth, quota};
 // 移除冗余的顶层导入，因为这些在代码中已由 full path 或局部导入处理
 use dashmap::DashMap;
 use std::collections::HashSet;
@@ -5,8 +6,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use crate::models::StickySessionConfig;
 use crate::proxy::rate_limit::RateLimitTracker;
+use antigravity_shared::proxy::config::StickySessionConfig;
 
 #[derive(Debug, Clone)]
 pub struct ProxyToken {
@@ -454,7 +455,7 @@ impl TokenManager {
                 tracing::debug!("账号 {} 的 token 即将过期，正在刷新...", token.email);
 
                 // 调用 OAuth 刷新 token
-                match crate::modules::oauth::refresh_access_token(&token.refresh_token).await {
+                match oauth::refresh_access_token(&token.refresh_token).await {
                     Ok(token_response) => {
                         tracing::debug!("Token 刷新成功！");
 
@@ -615,7 +616,7 @@ impl TokenManager {
     async fn save_refreshed_token(
         &self,
         account_id: &str,
-        token_response: &crate::modules::oauth::TokenResponse,
+        token_response: &oauth::TokenResponse,
     ) -> Result<(), String> {
         let entry = self.tokens.get(account_id).ok_or("账号不存在")?;
 
@@ -801,7 +802,7 @@ impl TokenManager {
 
         // 2. 调用配额刷新 API
         tracing::info!("账号 {} 正在实时刷新配额...", email);
-        match crate::modules::quota::fetch_quota(&access_token, email).await {
+        match quota::fetch_quota(&access_token, email).await {
             Ok((quota_data, _project_id)) => {
                 // 3. 从最新配额中提取 reset_time
                 let earliest_reset = quota_data

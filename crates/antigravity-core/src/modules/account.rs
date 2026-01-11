@@ -1,7 +1,4 @@
 //! Account management module.
-//!
-//! This module handles account storage, indexing, and CRUD operations.
-//! It uses JSON files for persistence.
 
 use std::fs;
 use std::path::PathBuf;
@@ -403,4 +400,254 @@ pub fn update_account_quota(account_id: &str, quota: QuotaData) -> Result<(), St
     let mut account = load_account(account_id)?;
     account.update_quota(quota);
     save_account(&account)
+}
+
+/// Switch current account.
+/// This involves refreshing token, stopping/starting process, and injecting token to VSCode DB.
+pub async fn switch_account(account_id: &str) -> Result<(), String> {
+    use crate::modules::{oauth, process, vscode};
+
+    let index = {
+        let _lock = ACCOUNT_INDEX_LOCK
+            .lock()
+            .map_err(|e| format!("Lock error: {}", e))?;
+        load_account_index()?
+    };
+
+    // 1. Verify account exists
+    if !index.accounts.iter().any(|s| s.id == account_id) {
+        return Err(format!("Account not found: {}", account_id));
+    }
+
+    let mut account = load_account(account_id)?;
+    logger::log_info(&format!(
+        "Switching to account: {} (ID: {})",
+        account.email, account.id
+    ));
+
+    // 2. Ensure token is fresh
+    let fresh_token = oauth::ensure_fresh_token(&account.token)
+        .await
+        .map_err(|e| format!("Token refresh failed: {}", e))?;
+
+    if fresh_token.access_token != account.token.access_token {
+        account.token = fresh_token.clone();
+        save_account(&account)?;
+    }
+
+    // 3. Close Antigravity (timeout 20s)
+    if process::is_antigravity_running() {
+        process::close_antigravity(20)?;
+    }
+
+    // 4. Backup and Inject DB
+    let db_path = vscode::get_vscode_db_path()?;
+    if db_path.exists() {
+        let backup_path = db_path.with_extension("vscdb.backup");
+        fs::copy(&db_path, &backup_path).map_err(|e| format!("Backup DB failed: {}", e))?;
+    } else {
+        logger::log_info("DB not found, skipping backup");
+    }
+
+    logger::log_info("Injecting token to DB...");
+    vscode::inject_token(
+        &db_path,
+        &account.token.access_token,
+        &account.token.refresh_token,
+        account.token.expiry_timestamp,
+    )?;
+
+    // 5. Update internal state
+    {
+        let _lock = ACCOUNT_INDEX_LOCK
+            .lock()
+            .map_err(|e| format!("Lock error: {}", e))?;
+        let mut index = load_account_index()?;
+        index.current_account_id = Some(account_id.to_string());
+        save_account_index(&index)?;
+    }
+
+    account.update_last_used();
+    save_account(&account)?;
+
+    // 6. Restart Antigravity
+    process::start_antigravity()?;
+    logger::log_info(&format!("Account switch complete: {}", account.email));
+
+    Ok(())
+}
+
+/// Fetch quota with retry logic.
+pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppResult<QuotaData> {
+    use crate::error::AppError;
+    use crate::modules::{oauth, quota};
+    use reqwest::StatusCode;
+
+    // 1. Time-based check
+    let token = match oauth::ensure_fresh_token(&account.token).await {
+        Ok(t) => t,
+        Err(e) => {
+            if e.contains("invalid_grant") {
+                logger::log_error(&format!(
+                    "Disabling account {} due to invalid_grant during token refresh (quota check)",
+                    account.email
+                ));
+                account.disabled = true;
+                account.disabled_at = Some(chrono::Utc::now().timestamp());
+                account.disabled_reason = Some(format!("invalid_grant: {}", e));
+                let _ = save_account(account);
+            }
+            return Err(AppError::OAuth(e));
+        }
+    };
+
+    if token.access_token != account.token.access_token {
+        logger::log_info(&format!("Time-based token refresh: {}", account.email));
+        account.token = token.clone();
+
+        let name = if account.name.is_none()
+            || account.name.as_ref().map_or(false, |n| n.trim().is_empty())
+        {
+            match oauth::get_user_info(&token.access_token).await {
+                Ok(user_info) => user_info.get_display_name(),
+                Err(_) => None,
+            }
+        } else {
+            account.name.clone()
+        };
+
+        account.name = name.clone();
+        upsert_account(account.email.clone(), name, token.clone()).map_err(AppError::Account)?;
+    }
+
+    // 0. Fill missing username
+    if account.name.is_none() || account.name.as_ref().map_or(false, |n| n.trim().is_empty()) {
+        logger::log_info(&format!(
+            "Account {} missing name, fetching...",
+            account.email
+        ));
+        match oauth::get_user_info(&account.token.access_token).await {
+            Ok(user_info) => {
+                let display_name = user_info.get_display_name();
+                logger::log_info(&format!("Got name: {:?}", display_name));
+                account.name = display_name.clone();
+                if let Err(e) =
+                    upsert_account(account.email.clone(), display_name, account.token.clone())
+                {
+                    logger::log_warn(&format!("Failed to save name: {}", e));
+                }
+            }
+            Err(e) => {
+                logger::log_warn(&format!("Failed to get name: {}", e));
+            }
+        }
+    }
+
+    // 2. Fetch quota
+    let result = quota::fetch_quota(&account.token.access_token, &account.email).await;
+
+    // Update project_id if changed
+    if let Ok((ref _q, ref project_id)) = result {
+        if project_id.is_some() && *project_id != account.token.project_id {
+            logger::log_info(&format!(
+                "Project ID updated ({}), saving...",
+                account.email
+            ));
+            account.token.project_id = project_id.clone();
+            if let Err(e) = upsert_account(
+                account.email.clone(),
+                account.name.clone(),
+                account.token.clone(),
+            ) {
+                logger::log_warn(&format!("Failed to save project_id: {}", e));
+            }
+        }
+    }
+
+    // 3. Handle 401
+    if let Err(AppError::Network(ref e)) = result {
+        if let Some(status) = e.status() {
+            if status == StatusCode::UNAUTHORIZED {
+                logger::log_warn(&format!(
+                    "401 Unauthorized for {}, forcing refresh...",
+                    account.email
+                ));
+
+                let token_res =
+                    match oauth::refresh_access_token(&account.token.refresh_token).await {
+                        Ok(t) => t,
+                        Err(e) => {
+                            if e.contains("invalid_grant") {
+                                logger::log_error(&format!(
+                                "Disabling account {} due to invalid_grant during forced refresh",
+                                account.email
+                            ));
+                                account.disabled = true;
+                                account.disabled_at = Some(chrono::Utc::now().timestamp());
+                                account.disabled_reason = Some(format!("invalid_grant: {}", e));
+                                let _ = save_account(account);
+                            }
+                            return Err(AppError::OAuth(e));
+                        }
+                    };
+
+                let new_token = TokenData::new(
+                    token_res.access_token.clone(),
+                    account.token.refresh_token.clone(),
+                    token_res.expires_in,
+                    account.token.email.clone(),
+                    account.token.project_id.clone(),
+                    None,
+                );
+
+                let name = if account.name.is_none()
+                    || account.name.as_ref().map_or(false, |n| n.trim().is_empty())
+                {
+                    match oauth::get_user_info(&token_res.access_token).await {
+                        Ok(user_info) => user_info.get_display_name(),
+                        Err(_) => None,
+                    }
+                } else {
+                    account.name.clone()
+                };
+
+                account.token = new_token.clone();
+                account.name = name.clone();
+                upsert_account(account.email.clone(), name, new_token.clone())
+                    .map_err(AppError::Account)?;
+
+                // Retry
+                let retry_result =
+                    quota::fetch_quota(&new_token.access_token, &account.email).await;
+
+                if let Ok((ref _q, ref project_id)) = retry_result {
+                    if project_id.is_some() && *project_id != account.token.project_id {
+                        logger::log_info(&format!(
+                            "Project ID updated after retry ({}), saving...",
+                            account.email
+                        ));
+                        account.token.project_id = project_id.clone();
+                        let _ = upsert_account(
+                            account.email.clone(),
+                            account.name.clone(),
+                            account.token.clone(),
+                        );
+                    }
+                }
+
+                if let Err(AppError::Network(ref e)) = retry_result {
+                    if let Some(s) = e.status() {
+                        if s == StatusCode::FORBIDDEN {
+                            let mut q = QuotaData::new();
+                            q.is_forbidden = true;
+                            return Ok(q);
+                        }
+                    }
+                }
+                return retry_result.map(|(q, _)| q);
+            }
+        }
+    }
+
+    result.map(|(q, _)| q)
 }

@@ -22,8 +22,8 @@ pub mod upstream; // 上游客户端
 pub mod zai_vision_mcp; // Built-in Vision MCP server state
 pub mod zai_vision_tools; // Built-in Vision MCP tools (z.ai vision API)
 
-pub use crate::models::{ProxyAuthMode, ProxyConfig, ZaiConfig, ZaiDispatchMode};
 pub use antigravity_shared::proxy::config;
+pub use antigravity_shared::proxy::config::{ProxyAuthMode, ZaiConfig, ZaiDispatchMode};
 pub use security::ProxySecurityConfig;
 pub use server::AxumServer;
 pub use signature_cache::SignatureCache;

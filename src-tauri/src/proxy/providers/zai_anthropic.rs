@@ -10,7 +10,10 @@ use tokio::time::Duration;
 
 use crate::proxy::server::AppState;
 
-fn map_model_for_zai(original: &str, state: &crate::proxy::ZaiConfig) -> String {
+fn map_model_for_zai(
+    original: &str,
+    state: &antigravity_shared::proxy::config::ZaiConfig,
+) -> String {
     let m = original.to_lowercase();
     if let Some(mapped) = state.model_mapping.get(original) {
         return mapped.clone();
@@ -47,7 +50,7 @@ fn join_base_url(base: &str, path: &str) -> Result<String, String> {
 }
 
 fn build_client(
-    upstream_proxy: Option<crate::models::UpstreamProxyConfig>,
+    upstream_proxy: Option<antigravity_shared::utils::http::UpstreamProxyConfig>,
     timeout_secs: u64,
 ) -> Result<reqwest::Client, String> {
     let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(timeout_secs.max(5)));
@@ -154,7 +157,7 @@ pub async fn forward_anthropic_json(
     };
 
     let timeout_secs = state.request_timeout.max(5);
-    let upstream_proxy: crate::models::UpstreamProxyConfig =
+    let upstream_proxy: antigravity_shared::utils::http::UpstreamProxyConfig =
         state.upstream_proxy.read().await.clone();
     let client = match build_client(Some(upstream_proxy), timeout_secs) {
         Ok(c) => c,

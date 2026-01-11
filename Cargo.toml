@@ -50,6 +50,7 @@ anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "time"] }
 tracing-appender = "0.2"
+tracing-log = "0.2"
 
 # Utilities
 uuid = { version = "1.10", features = ["v4", "serde"] }

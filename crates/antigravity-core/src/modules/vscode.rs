@@ -4,7 +4,7 @@ use rusqlite::Connection;
 use std::path::PathBuf;
 
 fn get_antigravity_path() -> Option<PathBuf> {
-    if let Ok(config) = crate::modules::config::load_app_config() {
+    if let Ok(config) = crate::modules::config::load_config() {
         if let Some(path_str) = config.antigravity_executable {
             let path = PathBuf::from(path_str);
             if path.exists() {
@@ -16,7 +16,7 @@ fn get_antigravity_path() -> Option<PathBuf> {
 }
 
 /// 获取 Antigravity 数据库路径（跨平台）
-pub fn get_db_path() -> Result<PathBuf, String> {
+pub fn get_vscode_db_path() -> Result<PathBuf, String> {
     // 优先检查 --user-data-dir 参数指定的路径
     if let Some(user_data_dir) = crate::modules::process::get_user_data_dir_from_process() {
         let custom_db_path = user_data_dir

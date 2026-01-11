@@ -154,9 +154,17 @@ just frontend-release  # Build Leptos only
 just build-deb    # Linux .deb package
 ```
 
-## 2026-01-11 - Architectural Refactoring
-- **Status:** Completed
-- **Action:** Extracted shared types and models into new crate `antigravity-shared`.
-- **Scope:** `src-tauri`, `src-leptos`, `antigravity-core`.
-- **Benefit:** Eliminated code duplication, resolved circular dependencies, and unified type definitions between frontend and backend.
-- **Verification:** `cargo check --workspace` passes with 0 errors.
+## 2026-01-11 - Architectural Refactoring (Backend)
+- **Status:** Completed ✅
+- **Action:** Migrated core business logic from `src-tauri` to `antigravity-core`.
+- **Scope:**
+  - Moved `account`, `config`, `logger`, `process`, `quota`, `oauth`, `migration` modules to `core`.
+  - Renamed `db.rs` to `vscode.rs` in `core` (VSCode token injection logic).
+  - Consolidated `account.rs` logic (CRUD + Switch/Quota logic).
+  - Updated `src-tauri` commands to use `antigravity_core` modules.
+  - Removed duplicated code in `src-tauri`.
+- **Benefit:** 
+  - Clean Architecture: Business logic is now UI-agnostic.
+  - Better testability of core modules.
+  - Reduced coupling between Tauri and Core.
+- **Verification:** `cargo check --workspace` passes.

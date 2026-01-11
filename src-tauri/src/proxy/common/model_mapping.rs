@@ -155,7 +155,7 @@ pub fn resolve_model_route(
 ) -> String {
     // 1. 精确匹配 (最高优先级)
     if let Some(target) = custom_mapping.get(original_model) {
-        crate::modules::logger::log_info(&format!(
+        antigravity_core::modules::logger::log_info(&format!(
             "[Router] 精确映射: {} -> {}",
             original_model, target
         ));
@@ -165,7 +165,7 @@ pub fn resolve_model_route(
     // 2. 通配符匹配
     for (pattern, target) in custom_mapping.iter() {
         if pattern.contains('*') && wildcard_match(pattern, original_model) {
-            crate::modules::logger::log_info(&format!(
+            antigravity_core::modules::logger::log_info(&format!(
                 "[Router] 通配符映射: {} -> {} (规则: {})",
                 original_model, target, pattern
             ));
@@ -176,7 +176,7 @@ pub fn resolve_model_route(
     // 3. 系统默认映射
     let result = map_claude_model_to_gemini(original_model);
     if result != original_model {
-        crate::modules::logger::log_info(&format!(
+        antigravity_core::modules::logger::log_info(&format!(
             "[Router] 系统默认映射: {} -> {}",
             original_model, result
         ));

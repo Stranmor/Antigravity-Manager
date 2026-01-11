@@ -1,3 +1,4 @@
+use crate::proxy::server::AppState;
 use axum::{
     body::{to_bytes, Body},
     extract::State,
@@ -10,10 +11,8 @@ use serde_json::{json, Value};
 use tokio::time::Duration;
 use tokio_stream::wrappers::IntervalStream;
 
-use crate::proxy::server::AppState;
-
 fn build_client(
-    upstream_proxy: crate::models::UpstreamProxyConfig,
+    upstream_proxy: antigravity_shared::utils::http::UpstreamProxyConfig,
     timeout_secs: u64,
 ) -> Result<reqwest::Client, String> {
     let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(timeout_secs.max(5)));
@@ -59,7 +58,8 @@ async fn forward_mcp(
         return StatusCode::NOT_FOUND.into_response();
     }
 
-    let upstream_proxy = state.upstream_proxy.read().await.clone();
+    let upstream_proxy: antigravity_shared::utils::http::UpstreamProxyConfig =
+        state.upstream_proxy.read().await.clone();
     let client = match build_client(upstream_proxy, state.request_timeout) {
         Ok(c) => c,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
@@ -279,7 +279,7 @@ async fn handle_vision_post(state: AppState, headers: HeaderMap, body: Body) -> 
     }
 
     if is_initialize_request(&request_json) {
-        let session_id = state.zai_vision_mcp.create_session().await;
+        let session_id: String = state.zai_vision_mcp.create_session().await;
         let requested_protocol = request_json
             .get("params")
             .and_then(|p| p.get("protocolVersion"))
@@ -353,8 +353,8 @@ async fn handle_vision_post(state: AppState, headers: HeaderMap, body: Body) -> 
                 .cloned()
                 .unwrap_or(Value::Object(Default::default()));
 
-            let zai = state.zai.read().await.clone();
-            let upstream_proxy: crate::models::UpstreamProxyConfig =
+            let zai: antigravity_shared::proxy::config::ZaiConfig = state.zai.read().await.clone();
+            let upstream_proxy: antigravity_shared::utils::http::UpstreamProxyConfig =
                 state.upstream_proxy.read().await.clone();
             let timeout = state.request_timeout;
 

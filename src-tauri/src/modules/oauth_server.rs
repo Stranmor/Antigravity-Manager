@@ -1,4 +1,4 @@
-use crate::modules::oauth;
+use antigravity_core::modules::oauth;
 use std::sync::{Mutex, OnceLock};
 use tauri::Url;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -71,7 +71,7 @@ async fn ensure_oauth_flow_prepared(app_handle: &tauri::AppHandle) -> Result<Str
             match TcpListener::bind(format!("127.0.0.1:{}", port)).await {
                 Ok(l4) => ipv4_listener = Some(l4),
                 Err(e) => {
-                    crate::modules::logger::log_warn(&format!(
+                    antigravity_core::modules::logger::log_warn(&format!(
                         "无法绑定 IPv4 回调端口 127.0.0.1:{} (将仅监听 IPv6): {}",
                         port, e
                     ));
@@ -91,7 +91,7 @@ async fn ensure_oauth_flow_prepared(app_handle: &tauri::AppHandle) -> Result<Str
             match TcpListener::bind(format!("[::1]:{}", port)).await {
                 Ok(l6) => ipv6_listener = Some(l6),
                 Err(e) => {
-                    crate::modules::logger::log_warn(&format!(
+                    antigravity_core::modules::logger::log_warn(&format!(
                         "无法绑定 IPv6 回调端口 [::1]:{} (将仅监听 IPv4): {}",
                         port, e
                     ));
@@ -233,7 +233,7 @@ pub fn cancel_oauth_flow() {
     if let Ok(mut state) = get_oauth_flow_state().lock() {
         if let Some(s) = state.take() {
             let _ = s.cancel_tx.send(true);
-            crate::modules::logger::log_info("已发送 OAuth 取消信号");
+            antigravity_core::modules::logger::log_info("已发送 OAuth 取消信号");
         }
     }
 }

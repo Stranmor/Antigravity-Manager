@@ -29,7 +29,7 @@ pub async fn handle_generate(
         (model_action, "generateContent".to_string())
     };
 
-    crate::modules::logger::log_info(&format!(
+    antigravity_core::modules::logger::log_info(&format!(
         "Received Gemini request: {}/{}",
         model_name, method
     ));

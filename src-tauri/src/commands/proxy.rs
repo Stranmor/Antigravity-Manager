@@ -1,9 +1,9 @@
 use crate::models::ProxyRequestLog;
-use crate::models::{
-    ExperimentalConfig, ProxyConfig, StickySessionConfig, UpstreamProxyConfig, ZaiDispatchMode,
-};
 use crate::proxy::monitor::{ProxyMonitor, ProxyStats, TauriEventBus};
-use crate::proxy::{security::ProxySecurityConfig, AxumServer, TokenManager};
+use crate::proxy::{security::ProxySecurityConfig, TokenManager};
+use antigravity_shared::proxy::config::{
+    ProxyConfig, StickySessionConfig, UpstreamProxyConfig, ZaiDispatchMode,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::State;
@@ -74,9 +74,9 @@ pub async fn start_proxy_service(
     let monitor = state.monitor.read().await.as_ref().unwrap().clone();
 
     // 2. 初始化 Token 管理器
-    let app_data_dir = crate::modules::account::get_data_dir()?;
+    let app_data_dir = antigravity_core::modules::account::get_data_dir()?;
     // Ensure accounts dir exists even if the user will only use non-Google providers (e.g. z.ai).
-    let _ = crate::modules::account::get_accounts_dir()?;
+    let _ = antigravity_core::modules::account::get_accounts_dir()?;
     let accounts_dir = app_data_dir.clone();
 
     let token_manager = Arc::new(TokenManager::new(accounts_dir));
@@ -129,9 +129,9 @@ pub async fn start_proxy_service(
     *instance_lock = Some(instance);
 
     // 保存配置到全局 AppConfig
-    let mut app_config = crate::modules::config::load_app_config().map_err(|e| e)?;
+    let mut app_config = antigravity_core::modules::config::load_config().map_err(|e| e)?;
     app_config.proxy = config.clone();
-    crate::modules::config::save_app_config(&app_config).map_err(|e| e)?;
+    antigravity_core::modules::config::save_config(&app_config).map_err(|e| e)?;
 
     Ok(ProxyStatus {
         running: true,
@@ -269,9 +269,9 @@ pub async fn update_model_mapping(
     }
 
     // 2. 无论是否运行，都保存到全局配置持久化
-    let mut app_config = crate::modules::config::load_app_config().map_err(|e| e)?;
+    let mut app_config = antigravity_core::modules::config::load_config().map_err(|e| e)?;
     app_config.proxy.custom_mapping = config.custom_mapping;
-    crate::modules::config::save_app_config(&app_config).map_err(|e| e)?;
+    antigravity_core::modules::config::save_config(&app_config).map_err(|e| e)?;
 
     Ok(())
 }
