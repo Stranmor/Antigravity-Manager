@@ -35,12 +35,15 @@ pub fn Settings() -> impl IntoView {
         });
     };
 
+    // Clone state for action closures
+    let state_for_save = state.clone();
+
     // Save settings
     let on_save = move || {
         saving.set(true);
+        let s = state_for_save.clone();
         spawn_local(async move {
-            let state = expect_context::<AppState>();
-            if let Some(config) = state.config.get() {
+            if let Some(config) = s.config.get() {
                 match commands::save_config(&config).await {
                     Ok(()) => show_message("Settings saved".to_string(), false),
                     Err(e) => show_message(format!("Save failed: {}", e), true),

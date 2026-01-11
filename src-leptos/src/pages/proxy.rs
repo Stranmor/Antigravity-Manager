@@ -81,9 +81,13 @@ pub fn ApiProxy() -> impl IntoView {
     // Status shortcut
     let status = state.proxy_status;
 
+    // Clone state for action closures
+    let state_toggle = state.clone();
+
     // Toggle proxy
     let on_toggle = move || {
         loading.set(true);
+        let s = state_toggle.clone();
         spawn_local(async move {
             let current = status.get();
             let result = if current.running {
@@ -92,9 +96,8 @@ pub fn ApiProxy() -> impl IntoView {
                 commands::start_proxy_service().await.map(|_| ())
             };
 
-            if result.is_ok() && let Ok(s) = commands::get_proxy_status().await {
-                let state = expect_context::<AppState>();
-                state.proxy_status.set(s);
+            if result.is_ok() && let Ok(new_status) = commands::get_proxy_status().await {
+                s.proxy_status.set(new_status);
             }
             loading.set(false);
         });

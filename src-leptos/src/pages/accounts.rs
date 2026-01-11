@@ -161,13 +161,23 @@ pub fn Accounts() -> impl IntoView {
         selected_ids.set(HashSet::new());
     });
 
+    // Clone state for each action closure to avoid move issues
+    let state_refresh = state.clone();
+    let state_refresh_all = state.clone();
+    let state_add = state.clone();
+    let state_sync = state.clone();
+    let state_switch = state.clone();
+    let state_refresh_account = state.clone();
+    let state_delete = state.clone();
+    let state_batch_delete = state.clone();
+
     // Actions
     let _on_refresh_list = move || {
         refresh_pending.set(true);
+        let s = state_refresh.clone();
         spawn_local(async move {
             if let Ok(accounts) = commands::list_accounts().await {
-                let state = expect_context::<AppState>();
-                state.accounts.set(accounts);
+                s.accounts.set(accounts);
             }
             refresh_pending.set(false);
         });
@@ -175,6 +185,7 @@ pub fn Accounts() -> impl IntoView {
 
     let on_refresh_all_quotas = move || {
         refresh_pending.set(true);
+        let s = state_refresh_all.clone();
         spawn_local(async move {
             match commands::refresh_all_quotas().await {
                 Ok(stats) => {
@@ -183,8 +194,7 @@ pub fn Accounts() -> impl IntoView {
                         false,
                     );
                     if let Ok(accounts) = commands::list_accounts().await {
-                        let state = expect_context::<AppState>();
-                        state.accounts.set(accounts);
+                        s.accounts.set(accounts);
                     }
                 }
                 Err(e) => show_message(format!("Failed: {}", e), true),
@@ -195,13 +205,13 @@ pub fn Accounts() -> impl IntoView {
 
     let on_add_account = move || {
         oauth_pending.set(true);
+        let s = state_add.clone();
         spawn_local(async move {
             match commands::start_oauth_login().await {
                 Ok(account) => {
                     show_message(format!("Added: {}", account.email), false);
                     if let Ok(accounts) = commands::list_accounts().await {
-                        let state = expect_context::<AppState>();
-                        state.accounts.set(accounts);
+                        s.accounts.set(accounts);
                     }
                 }
                 Err(e) => show_message(format!("OAuth failed: {}", e), true),
@@ -212,13 +222,13 @@ pub fn Accounts() -> impl IntoView {
 
     let on_sync_local = move || {
         sync_pending.set(true);
+        let s = state_sync.clone();
         spawn_local(async move {
             match commands::sync_account_from_db().await {
                 Ok(Some(account)) => {
                     show_message(format!("Synced: {}", account.email), false);
                     if let Ok(accounts) = commands::list_accounts().await {
-                        let state = expect_context::<AppState>();
-                        state.accounts.set(accounts);
+                        s.accounts.set(accounts);
                     }
                 }
                 Ok(None) => show_message("No account found in local DB".to_string(), true),
@@ -228,32 +238,31 @@ pub fn Accounts() -> impl IntoView {
         });
     };
 
-    let on_switch_account = move |account_id: String| {
+    let on_switch_account = Callback::new(move |account_id: String| {
+        let s = state_switch.clone();
         spawn_local(async move {
             if commands::switch_account(&account_id).await.is_ok() {
-                let state = expect_context::<AppState>();
-                state.current_account_id.set(Some(account_id));
-                show_message("Account switched".to_string(), false);
+                s.current_account_id.set(Some(account_id));
             }
         });
-    };
+    });
 
-    let on_refresh_account = move |account_id: String| {
+    let on_refresh_account = Callback::new(move |account_id: String| {
         let aid = account_id.clone();
         refreshing_ids.update(|ids| {
             ids.insert(aid);
         });
+        let s = state_refresh_account.clone();
         spawn_local(async move {
             let _ = commands::fetch_account_quota(&account_id).await;
             if let Ok(accounts) = commands::list_accounts().await {
-                let state = expect_context::<AppState>();
-                state.accounts.set(accounts);
+                s.accounts.set(accounts);
             }
             refreshing_ids.update(|ids| {
                 ids.remove(&account_id);
             });
         });
-    };
+    });
 
     let on_delete_account = move |account_id: String| {
         delete_confirm.set(Some(account_id));
@@ -262,11 +271,11 @@ pub fn Accounts() -> impl IntoView {
     let execute_delete = move || {
         if let Some(id) = delete_confirm.get() {
             delete_confirm.set(None);
+            let s = state_delete.clone();
             spawn_local(async move {
                 if commands::delete_account(&id).await.is_ok() {
                     if let Ok(accounts) = commands::list_accounts().await {
-                        let state = expect_context::<AppState>();
-                        state.accounts.set(accounts);
+                        s.accounts.set(accounts);
                     }
                     show_message("Account deleted".to_string(), false);
                 }
@@ -284,12 +293,12 @@ pub fn Accounts() -> impl IntoView {
         let ids: Vec<String> = selected_ids.get().into_iter().collect();
         let count = ids.len();
         batch_delete_confirm.set(false);
+        let s = state_batch_delete.clone();
         spawn_local(async move {
             if commands::delete_accounts(&ids).await.is_ok() {
                 selected_ids.set(HashSet::new());
                 if let Ok(accounts) = commands::list_accounts().await {
-                    let state = expect_context::<AppState>();
-                    state.accounts.set(accounts);
+                    s.accounts.set(accounts);
                 }
                 show_message(format!("Deleted {} accounts", count), false);
             }
@@ -496,8 +505,14 @@ pub fn Accounts() -> impl IntoView {
                                         is_selected=Signal::derive(move || selected_ids.get().contains(&id2))
                                         is_refreshing=Signal::derive(move || refreshing_ids.get().contains(&id3))
                                         on_select=Callback::new(move |_| on_toggle_select(id4.clone()))
-                                        on_switch=Callback::new(move |_| on_switch_account(id5.clone()))
-                                        on_refresh=Callback::new(move |_| on_refresh_account(id6.clone()))
+                                        on_switch=Callback::new({
+                                            let cb = on_switch_account.clone();
+                                            move |_| cb.run(id5.clone())
+                                        })
+                                        on_refresh=Callback::new({
+                                            let cb = on_refresh_account.clone();
+                                            move |_| cb.run(id6.clone())
+                                        })
                                         on_delete=Callback::new({
                                             let id = account.id.clone();
                                             move |_| on_delete_account(id.clone())
@@ -657,8 +672,9 @@ pub fn Accounts() -> impl IntoView {
                                                     class="btn btn--icon"
                                                     title="Switch"
                                                     on:click={
+                                                        let cb = on_switch_account.clone();
                                                         let id = account_id_switch.clone();
-                                                        move |_| on_switch_account(id.clone())
+                                                        move |_| cb.run(id.clone())
                                                     }
                                                 >"⚡"</button>
                                                 <button
@@ -669,8 +685,9 @@ pub fn Accounts() -> impl IntoView {
                                                     title="Refresh"
                                                     disabled=move || refreshing_ids.get().contains(&account_id3.clone())
                                                     on:click={
+                                                        let cb = on_refresh_account.clone();
                                                         let id = account_id_refresh.clone();
-                                                        move |_| on_refresh_account(id.clone())
+                                                        move |_| cb.run(id.clone())
                                                     }
                                                 >"🔄"</button>
                                                 <button

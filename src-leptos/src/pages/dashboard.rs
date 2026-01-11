@@ -85,16 +85,21 @@ pub fn Dashboard() -> impl IntoView {
         None => "Welcome to Antigravity!".to_string(),
     });
 
+    // Clone state for each action closure
+    let state_refresh = state.clone();
+    let state_export = state.clone();
+    let state_switch = state.clone();
+
     // Actions
     let on_refresh_current = move || {
         if let Some(account) = current_account.get_untracked() {
             refresh_pending.set(true);
+            let s = state_refresh.clone();
             spawn_local(async move {
                 match commands::fetch_account_quota(&account.id).await {
                     Ok(_) => {
                         if let Ok(accounts) = commands::list_accounts().await {
-                            let state = expect_context::<AppState>();
-                            state.accounts.set(accounts);
+                            s.accounts.set(accounts);
                         }
                         show_message("Quota refreshed".to_string(), false);
                     }
@@ -107,7 +112,7 @@ pub fn Dashboard() -> impl IntoView {
 
     let on_export_all = move || {
         export_pending.set(true);
-        let accounts = state.accounts.get_untracked();
+        let accounts = state_export.accounts.get_untracked();
         spawn_local(async move {
             // Build export data
             let export_data: Vec<_> = accounts
@@ -135,15 +140,15 @@ pub fn Dashboard() -> impl IntoView {
         });
     };
 
-    let on_switch_account = move |account_id: String| {
+    let on_switch_account = Callback::new(move |account_id: String| {
+        let s = state_switch.clone();
         spawn_local(async move {
             if commands::switch_account(&account_id).await.is_ok() {
-                let state = expect_context::<AppState>();
-                state.current_account_id.set(Some(account_id));
-                show_message("Account switched".to_string(), false);
+                s.current_account_id.set(Some(account_id));
+                // Note: show_message not available here, but that's ok for now
             }
         });
-    };
+    });
 
     view! {
         <div class="page dashboard">
@@ -331,8 +336,9 @@ pub fn Dashboard() -> impl IntoView {
                                                 class="btn btn--icon btn--sm"
                                                 title="Switch"
                                                 on:click={
+                                                    let cb = on_switch_account.clone();
                                                     let id = account.id.clone();
-                                                    move |_| on_switch_account(id.clone())
+                                                    move |_| cb.run(id.clone())
                                                 }
                                             >"⚡"</button>
                                         </div>

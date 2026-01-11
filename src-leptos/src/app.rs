@@ -43,9 +43,11 @@ pub fn App() -> impl IntoView {
     provide_context(state.clone());
 
     // Load initial data
+    let init_state = state.clone();
     Effect::new(move |_| {
+        let s = init_state.clone();
         spawn_local(async move {
-            load_initial_data().await;
+            load_initial_data(s).await;
         });
     });
 
@@ -68,8 +70,7 @@ pub fn App() -> impl IntoView {
 }
 
 /// Load initial application data from Tauri backend
-async fn load_initial_data() {
-    let state = expect_context::<AppState>();
+async fn load_initial_data(state: AppState) {
     state.loading.set(true);
 
     // Load accounts

@@ -106,3 +106,50 @@
 - ✅ API Proxy page shows configuration, routing, scheduling
 - ✅ Settings page shows all preferences
 - ✅ Navigation sidebar works correctly
+
+## CI/CD Pipeline ✅
+
+### Release Workflow (`.github/workflows/release.yml`)
+2-stage optimized pipeline:
+
+```
+Stage 1: Build Frontend (WASM)
+├── Cache Trunk binary
+├── Cache Rust dependencies (shared-key: leptos-wasm)
+├── trunk build --release
+└── Upload dist/ as artifact
+
+Stage 2: Build Native (parallel per platform)
+├── Download frontend artifact
+├── Cache Rust dependencies (per-platform keys)
+└── tauri-apps/tauri-action → GitHub Release
+    ├── macOS (ARM64, x64, Universal)
+    ├── Linux (x64, ARM64) → .deb, .rpm, .AppImage
+    └── Windows (x64) → .msi, .exe
+
+Stage 3: Cleanup
+└── Delete temporary artifacts
+```
+
+**Triggers:** `v*` tags, manual workflow_dispatch
+
+### CI Workflow (`.github/workflows/ci.yml`)
+Parallel quality checks on every PR/push:
+- **lint**: rustfmt + clippy (src-tauri + src-leptos)
+- **build-check**: cargo check for all packages
+- **test**: cargo test for src-tauri
+- **build-frontend**: trunk build verification
+
+### Dependabot (`.github/dependabot.yml`)
+- Weekly Cargo updates (minor/patch grouped)
+- Weekly GitHub Actions updates
+
+### Local Build Commands (`justfile`)
+```bash
+just dev          # Start development server
+just build        # Production build
+just lint         # Clippy checks
+just test         # Run tests
+just frontend-release  # Build Leptos only
+just build-deb    # Linux .deb package
+```
