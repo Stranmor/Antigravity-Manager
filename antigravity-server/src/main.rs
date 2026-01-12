@@ -14,7 +14,7 @@ use axum::{
 use std::net::SocketAddr;
 use tower_http::{
     cors::{Any, CorsLayer},
-    services::ServeDir,
+    services::{ServeDir, ServeFile},
     trace::TraceLayer,
 };
 use tracing::{info, Level};
@@ -77,11 +77,19 @@ fn build_router(state: AppState) -> Router {
         .route("/healthz", get(health_check))
         .with_state(state);
 
-    // Combine: API routes + Proxy routes + Static files fallback
-    // Both api_routes and proxy_router are Router<()> after with_state()
+    // SPA fallback: when a file is not found, serve index.html
+    // This is the standard pattern for all SPA frameworks (React, Vue, Angular, Leptos, etc.)
+    // Direct URL access to /monitor, /accounts, /proxy, /settings will serve index.html
+    // and let Leptos Router handle the client-side routing
+    let index_path = format!("{}/index.html", static_dir);
+    let spa_service = ServeDir::new(&static_dir)
+        .append_index_html_on_directories(true)
+        .not_found_service(ServeFile::new(&index_path));
+
+    // Combine: API routes + Proxy routes + SPA fallback
     api_routes
         .merge(proxy_router)
-        .fallback_service(ServeDir::new(&static_dir).append_index_html_on_directories(true))
+        .fallback_service(spa_service)
         .layer(DefaultBodyLimit::max(100 * 1024 * 1024))
         .layer(TraceLayer::new_for_http())
         .layer(

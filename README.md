@@ -216,9 +216,15 @@ systemctl --user enable --now antigravity
 
 ## 📸 Screenshots
 
-| Dashboard | Accounts | Proxy Settings |
-|-----------|----------|----------------|
-| ![Dashboard](docs/images/dashboard-light.png) | ![Accounts](docs/images/accounts-light.png) | ![Proxy](docs/images/v3/proxy-settings.png) |
+> **Leptos UI** — Our Pure Rust WASM frontend
+
+| Dashboard | Accounts |
+|-----------|----------|
+| ![Dashboard](docs/images/dashboard-leptos.png) | ![Accounts](docs/images/accounts-leptos.png) |
+
+| API Proxy | Request Monitor |
+|-----------|-----------------|
+| ![Proxy](docs/images/proxy-leptos.png) | ![Monitor](docs/images/monitor-leptos.png) |
 
 ---
 
