@@ -506,11 +506,11 @@ pub fn Accounts() -> impl IntoView {
                                         is_refreshing=Signal::derive(move || refreshing_ids.get().contains(&id3))
                                         on_select=Callback::new(move |_| on_toggle_select(id4.clone()))
                                         on_switch=Callback::new({
-                                            let cb = on_switch_account.clone();
+                                                      let cb = on_switch_account;
                                             move |_| cb.run(id5.clone())
                                         })
                                         on_refresh=Callback::new({
-                                            let cb = on_refresh_account.clone();
+                                                      let cb = on_refresh_account;
                                             move |_| cb.run(id6.clone())
                                         })
                                         on_delete=Callback::new({
@@ -672,7 +672,7 @@ pub fn Accounts() -> impl IntoView {
                                                     class="btn btn--icon"
                                                     title="Switch"
                                                     on:click={
-                                                        let cb = on_switch_account.clone();
+                                          let cb = on_switch_account;
                                                         let id = account_id_switch.clone();
                                                         move |_| cb.run(id.clone())
                                                     }
@@ -685,7 +685,7 @@ pub fn Accounts() -> impl IntoView {
                                                     title="Refresh"
                                                     disabled=move || refreshing_ids.get().contains(&account_id3.clone())
                                                     on:click={
-                                                        let cb = on_refresh_account.clone();
+                                          let cb = on_refresh_account;
                                                         let id = account_id_refresh.clone();
                                                         move |_| cb.run(id.clone())
                                                     }

@@ -15,12 +15,7 @@ pub fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     // 2. 加载图标（macOS 使用 Template Image）
     let icon_bytes = include_bytes!("../../icons/tray-icon.png");
     let img = image::load_from_memory(icon_bytes)
-        .map_err(|e| {
-            tauri::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                e.to_string(),
-            ))
-        })?
+        .map_err(|e| tauri::Error::Io(std::io::Error::other(e.to_string())))?
         .to_rgba8();
     let (width, height) = img.dimensions();
     let icon = Image::new_owned(img.into_raw(), width, height);
@@ -144,8 +139,9 @@ pub fn create_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
                             };
 
                             // 2. 切换
-                            if let Ok(_) =
-                                core_modules::account::switch_account(&next_account.id).await
+                            if core_modules::account::switch_account(&next_account.id)
+                                .await
+                                .is_ok()
                             {
                                 // 3. 通知前端
                                 let _ = app_handle

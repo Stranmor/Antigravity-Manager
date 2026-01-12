@@ -5,6 +5,7 @@ use tracing::{Level, info};
 use tracing_subscriber::FmtSubscriber;
 
 mod ssh_client;
+#[allow(unused_imports)] // SshSession is used as a return type for SshClientFactory::connect
 use ssh_client::{SshClientFactory, SshSession};
 
 #[derive(Parser, Debug)]

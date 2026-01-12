@@ -100,33 +100,31 @@ pub fn cleanup_old_logs(days_to_keep: u64) -> Result<(), String> {
 
     let entries = fs::read_dir(&log_dir).map_err(|e| format!("读取日志目录失败: {}", e))?;
 
-    for entry in entries {
-        if let Ok(entry) = entry {
-            let path = entry.path();
+    for entry in entries.flatten() {
+        let path = entry.path();
 
-            // 只处理文件，跳过目录
-            if !path.is_file() {
-                continue;
-            }
+        // 只处理文件，跳过目录
+        if !path.is_file() {
+            continue;
+        }
 
-            // 获取文件修改时间
-            if let Ok(metadata) = fs::metadata(&path) {
-                if let Ok(modified) = metadata.modified() {
-                    let modified_secs = modified
-                        .duration_since(UNIX_EPOCH)
-                        .map(|d| d.as_secs())
-                        .unwrap_or(0);
+        // 获取文件修改时间
+        if let Ok(metadata) = fs::metadata(&path) {
+            if let Ok(modified) = metadata.modified() {
+                let modified_secs = modified
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
 
-                    // 如果文件早于截止时间，删除它
-                    if modified_secs < cutoff_time {
-                        let file_size = metadata.len();
-                        if let Err(e) = fs::remove_file(&path) {
-                            warn!("删除旧日志文件失败 {:?}: {}", path, e);
-                        } else {
-                            deleted_count += 1;
-                            total_size_freed += file_size;
-                            info!("已删除旧日志文件: {:?}", path.file_name());
-                        }
+                // 如果文件早于截止时间，删除它
+                if modified_secs < cutoff_time {
+                    let file_size = metadata.len();
+                    if let Err(e) = fs::remove_file(&path) {
+                        warn!("删除旧日志文件失败 {:?}: {}", path, e);
+                    } else {
+                        deleted_count += 1;
+                        total_size_freed += file_size;
+                        info!("已删除旧日志文件: {:?}", path.file_name());
                     }
                 }
             }
@@ -150,13 +148,11 @@ pub fn clear_logs() -> Result<(), String> {
     if log_dir.exists() {
         // 遍历目录下的所有文件并截断，而不是删除目录
         let entries = fs::read_dir(&log_dir).map_err(|e| format!("读取日志目录失败: {}", e))?;
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.is_file() {
-                    // 使用截断模式打开文件，将大小设为 0
-                    let _ = fs::OpenOptions::new().write(true).truncate(true).open(path);
-                }
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                // 使用截断模式打开文件，将大小设为 0
+                let _ = fs::OpenOptions::new().write(true).truncate(true).open(path);
             }
         }
     }

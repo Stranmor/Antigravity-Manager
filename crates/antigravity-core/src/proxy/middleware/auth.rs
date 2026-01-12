@@ -71,13 +71,5 @@ pub async fn auth_middleware(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    // 移除未使用的 use super::*;
-
-    #[test]
-    fn test_auth_placeholder() {
-        // Placeholder test
-        assert!(true);
-    }
-}
+// Tests for auth_middleware require async runtime setup.
+// Real integration tests are in tests/integration/.

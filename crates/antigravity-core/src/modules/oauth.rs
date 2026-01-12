@@ -49,7 +49,7 @@ impl UserInfo {
 
 /// 生成 OAuth 授权 URL
 pub fn get_auth_url(redirect_uri: &str) -> String {
-    let scopes = vec![
+    let scopes = [
         "https://www.googleapis.com/auth/cloud-platform",
         "https://www.googleapis.com/auth/userinfo.email",
         "https://www.googleapis.com/auth/userinfo.profile",

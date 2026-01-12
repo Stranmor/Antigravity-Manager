@@ -228,6 +228,20 @@ systemctl --user enable --now antigravity
 
 ---
 
+## 🛠️ Development
+
+### Setup Git Hooks
+```bash
+# First-time setup (enables cargo fmt & clippy checks on commit)
+./scripts/install-hooks.sh
+```
+
+The pre-commit hook enforces:
+- **`cargo fmt --check`** — Code formatting
+- **`cargo clippy -- -D warnings`** — Zero warnings policy
+
+---
+
 ## 🔗 Upstream
 
 This project is a fork of [lbjlaq/Antigravity-Manager](https://github.com/lbjlaq/Antigravity-Manager). Full credit to the original authors for the core concept and initial implementation.

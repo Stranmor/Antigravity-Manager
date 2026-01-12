@@ -99,23 +99,23 @@ pub async fn start_proxy_service(
     }
 
     // 启动 Axum 服务器
-    let (axum_server, server_handle) = match crate::proxy::AxumServer::start(
-        config.get_bind_address().to_string(),
-        config.port,
-        token_manager.clone(),
-        config.custom_mapping.clone(),
-        config.request_timeout,
-        config.upstream_proxy.clone(),
-        ProxySecurityConfig::from_proxy_config(&config),
-        config.zai.clone(),
-        monitor.clone(),
-        config.experimental.clone(),
-    )
-    .await
-    {
-        Ok((server, handle)) => (server, handle),
-        Err(e) => return Err(format!("启动 Axum 服务器失败: {}", e)),
-    };
+    let (axum_server, server_handle) =
+        match crate::proxy::AxumServer::start(crate::proxy::ServerStartConfig {
+            host: config.get_bind_address().to_string(),
+            port: config.port,
+            token_manager: token_manager.clone(),
+            custom_mapping: config.custom_mapping.clone(),
+            upstream_proxy: config.upstream_proxy.clone(),
+            security_config: ProxySecurityConfig::from_proxy_config(&config),
+            zai_config: config.zai.clone(),
+            monitor: monitor.clone(),
+            experimental_config: config.experimental.clone(),
+        })
+        .await
+        {
+            Ok((server, handle)) => (server, handle),
+            Err(e) => return Err(format!("启动 Axum 服务器失败: {}", e)),
+        };
 
     // 创建服务实例
     let instance = ProxyServiceInstance {
@@ -128,9 +128,9 @@ pub async fn start_proxy_service(
     *instance_lock = Some(instance);
 
     // 保存配置到全局 AppConfig
-    let mut app_config = antigravity_core::modules::config::load_config().map_err(|e| e)?;
+    let mut app_config = antigravity_core::modules::config::load_config()?;
     app_config.proxy = config.clone();
-    antigravity_core::modules::config::save_config(&app_config).map_err(|e| e)?;
+    antigravity_core::modules::config::save_config(&app_config)?;
 
     Ok(ProxyStatus {
         running: true,
@@ -268,9 +268,9 @@ pub async fn update_model_mapping(
     }
 
     // 2. 无论是否运行，都保存到全局配置持久化
-    let mut app_config = antigravity_core::modules::config::load_config().map_err(|e| e)?;
+    let mut app_config = antigravity_core::modules::config::load_config()?;
     app_config.proxy.custom_mapping = config.custom_mapping;
-    antigravity_core::modules::config::save_config(&app_config).map_err(|e| e)?;
+    antigravity_core::modules::config::save_config(&app_config)?;
 
     Ok(())
 }
@@ -309,11 +309,9 @@ fn extract_model_ids(value: &serde_json::Value) -> Vec<String> {
             }
         }
         serde_json::Value::Object(map) => {
-            if let Some(data) = map.get("data") {
-                if let serde_json::Value::Array(arr) = data {
-                    for item in arr {
-                        push_from_item(&mut out, item);
-                    }
+            if let Some(serde_json::Value::Array(arr)) = map.get("data") {
+                for item in arr {
+                    push_from_item(&mut out, item);
                 }
             }
             if let Some(models) = map.get("models") {

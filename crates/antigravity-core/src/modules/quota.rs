@@ -152,14 +152,14 @@ pub async fn fetch_quota_inner(
         {
             Ok(response) => {
                 // 将 HTTP 错误状态转换为 AppError
-                if let Err(_) = response.error_for_status_ref() {
+                if response.error_for_status_ref().is_err() {
                     let status = response.status();
 
                     // ✅ 特殊处理 403 Forbidden - 直接返回,不重试
                     if status == reqwest::StatusCode::FORBIDDEN {
-                        crate::modules::logger::log_warn(&format!(
-                            "账号无权限 (403 Forbidden),标记为 forbidden 状态"
-                        ));
+                        crate::modules::logger::log_warn(
+                            "账号无权限 (403 Forbidden),标记为 forbidden 状态",
+                        );
                         let mut q = QuotaData::new();
                         q.is_forbidden = true;
                         q.subscription_tier = subscription_tier.clone();
@@ -186,7 +186,7 @@ pub async fn fetch_quota_inner(
                 }
 
                 let quota_response: QuotaResponse =
-                    response.json().await.map_err(|e| AppError::Network(e))?;
+                    response.json().await.map_err(AppError::Network)?;
 
                 let mut quota_data = QuotaData::new();
 

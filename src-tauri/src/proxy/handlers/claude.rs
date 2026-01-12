@@ -52,7 +52,7 @@ fn has_valid_signature(block: &ContentBlock) -> bool {
             // 有内容 + 足够长度的 signature = 有效
             signature
                 .as_ref()
-                .map_or(false, |s| s.len() >= MIN_SIGNATURE_LENGTH)
+                .is_some_and(|s| s.len() >= MIN_SIGNATURE_LENGTH)
         }
         _ => true, // 非 thinking 块默认有效
     }
@@ -78,7 +78,7 @@ fn sanitize_thinking_block(block: ContentBlock) -> ContentBlock {
 }
 
 /// 过滤消息中的无效 thinking 块
-fn filter_invalid_thinking_blocks(messages: &mut Vec<Message>) {
+fn filter_invalid_thinking_blocks(messages: &mut [Message]) {
     let mut total_filtered = 0;
 
     for msg in messages.iter_mut() {
@@ -638,7 +638,7 @@ pub async fn handle_messages(
             break;
         }
         // 如果正在 529 重试中，检查 529 重试限制
-        if retry_529_count > 0 && retry_529_count >= MAX_529_RETRY_ATTEMPTS {
+        if retry_529_count >= MAX_529_RETRY_ATTEMPTS {
             break;
         }
 
@@ -729,7 +729,7 @@ pub async fn handle_messages(
                     &mut msg.content
                 {
                     blocks.retain(|b| {
-                        !matches!(b, 
+                        !matches!(b,
                         crate::proxy::mappers::claude::models::ContentBlock::Thinking { .. } |
                         crate::proxy::mappers::claude::models::ContentBlock::RedactedThinking { .. }
                     )
@@ -1038,7 +1038,7 @@ pub async fn handle_messages(
                     &mut msg.content
                 {
                     blocks.retain(|b| {
-                        !matches!(b, 
+                        !matches!(b,
                         crate::proxy::mappers::claude::models::ContentBlock::Thinking { .. } |
                         crate::proxy::mappers::claude::models::ContentBlock::RedactedThinking { .. }
                     )

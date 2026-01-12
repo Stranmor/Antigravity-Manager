@@ -506,7 +506,7 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
         account.token = token.clone();
 
         let name = if account.name.is_none()
-            || account.name.as_ref().map_or(false, |n| n.trim().is_empty())
+            || account.name.as_ref().is_some_and(|n| n.trim().is_empty())
         {
             match oauth::get_user_info(&token.access_token).await {
                 Ok(user_info) => user_info.get_display_name(),
@@ -521,7 +521,7 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
     }
 
     // 0. Fill missing username
-    if account.name.is_none() || account.name.as_ref().map_or(false, |n| n.trim().is_empty()) {
+    if account.name.is_none() || account.name.as_ref().is_some_and(|n| n.trim().is_empty()) {
         logger::log_info(&format!(
             "Account {} missing name, fetching...",
             account.email
@@ -601,7 +601,7 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
                 );
 
                 let name = if account.name.is_none()
-                    || account.name.as_ref().map_or(false, |n| n.trim().is_empty())
+                    || account.name.as_ref().is_some_and(|n| n.trim().is_empty())
                 {
                     match oauth::get_user_info(&token_res.access_token).await {
                         Ok(user_info) => user_info.get_display_name(),

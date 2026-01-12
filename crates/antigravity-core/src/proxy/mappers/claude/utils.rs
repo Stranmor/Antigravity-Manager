@@ -2,10 +2,6 @@
 // JSON Schema 清理、签名处理等
 // 已移除未使用的 Value 导入
 
-/// 将 JSON Schema 中的类型名称转为大写 (Gemini 要求)
-/// 例如: "string" -> "STRING", "integer" -> "INTEGER"
-// 已移除未使用的 uppercase_schema_types 函数
-
 /// 从 Gemini UsageMetadata 转换为 Claude Usage
 pub fn to_claude_usage(usage_metadata: &super::models::UsageMetadata) -> super::models::Usage {
     let prompt_tokens = usage_metadata.prompt_token_count.unwrap_or(0);
@@ -25,9 +21,6 @@ pub fn to_claude_usage(usage_metadata: &super::models::UsageMetadata) -> super::
         server_tool_use: None,
     }
 }
-
-/// 提取 thoughtSignature
-// 已移除未使用的 extract_thought_signature 函数
 
 #[cfg(test)]
 mod tests {

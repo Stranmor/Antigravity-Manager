@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use async_ssh2_lite::{AsyncChannel, AsyncSession, SessionConfiguration};
+use async_ssh2_lite::{AsyncSession, SessionConfiguration};
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::io::AsyncReadExt;
@@ -44,7 +44,7 @@ impl SshSession {
 
     pub async fn upload_file(
         &mut self,
-        _remote_host: &str, // This is unused in current scp_send implementation
+        _remote_host: &str,
         local_path: &PathBuf,
         remote_path: &str,
     ) -> Result<()> {
@@ -72,7 +72,7 @@ impl SshSession {
 
     pub async fn download_file(
         &mut self,
-        _remote_host: &str, // This is unused in current scp_recv implementation
+        _remote_host: &str,
         remote_path: &str,
         local_path: &PathBuf,
     ) -> Result<()> {

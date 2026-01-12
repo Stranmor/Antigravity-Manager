@@ -5,7 +5,7 @@ use reqwest::{header, Client, Response, StatusCode};
 use serde_json::Value;
 use tokio::time::Duration;
 
-// Cloud Code v1internal endpoints (fallback order: prod → daily)
+// Cloud Code v1internal API (fallback order: prod → daily)
 // 优先使用稳定的 prod 端点，避免影响缓存命中率
 const V1_INTERNAL_BASE_URL_PROD: &str = "https://cloudcode-pa.googleapis.com/v1internal";
 const V1_INTERNAL_BASE_URL_DAILY: &str =
@@ -163,13 +163,6 @@ impl UpstreamClient {
 
         Err(last_err.unwrap_or_else(|| "All endpoints failed".to_string()))
     }
-
-    /// 调用 v1internal API（带 429 重试,支持闭包）
-    // 已移除弃用的重试方法 (call_v1_internal_with_retry)
-
-    // 已移除弃用的辅助方法 (parse_retry_delay)
-
-    // 已移除弃用的辅助方法 (parse_duration_ms)
 
     /// 获取可用模型列表
     ///

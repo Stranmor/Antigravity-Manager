@@ -33,6 +33,19 @@ pub struct AppState {
     pub experimental: Arc<RwLock<antigravity_shared::proxy::config::ExperimentalConfig>>,
 }
 
+/// Configuration for starting the Axum server
+pub struct ServerStartConfig {
+    pub host: String,
+    pub port: u16,
+    pub token_manager: Arc<TokenManager>,
+    pub custom_mapping: std::collections::HashMap<String, String>,
+    pub upstream_proxy: antigravity_shared::utils::http::UpstreamProxyConfig,
+    pub security_config: crate::proxy::ProxySecurityConfig,
+    pub zai_config: antigravity_shared::proxy::config::ZaiConfig,
+    pub monitor: Arc<crate::proxy::monitor::ProxyMonitor>,
+    pub experimental_config: antigravity_shared::proxy::config::ExperimentalConfig,
+}
+
 /// Axum 服务器实例
 pub struct AxumServer {
     shutdown_tx: Option<oneshot::Sender<()>>,
@@ -72,29 +85,21 @@ impl AxumServer {
         *zai = config.zai.clone();
         tracing::info!("z.ai 配置已热更新");
     }
+
     /// 启动 Axum 服务器
     pub async fn start(
-        host: String,
-        port: u16,
-        token_manager: Arc<TokenManager>,
-        custom_mapping: std::collections::HashMap<String, String>,
-        _request_timeout: u64,
-        upstream_proxy: antigravity_shared::utils::http::UpstreamProxyConfig,
-        security_config: crate::proxy::ProxySecurityConfig,
-        zai_config: antigravity_shared::proxy::config::ZaiConfig,
-        monitor: Arc<crate::proxy::monitor::ProxyMonitor>,
-        experimental_config: antigravity_shared::proxy::config::ExperimentalConfig,
+        config: ServerStartConfig,
     ) -> Result<(Self, tokio::task::JoinHandle<()>), String> {
-        let custom_mapping_state = Arc::new(tokio::sync::RwLock::new(custom_mapping));
-        let proxy_state = Arc::new(tokio::sync::RwLock::new(upstream_proxy.clone()));
-        let security_state = Arc::new(RwLock::new(security_config));
-        let zai_state = Arc::new(RwLock::new(zai_config));
+        let custom_mapping_state = Arc::new(tokio::sync::RwLock::new(config.custom_mapping));
+        let proxy_state = Arc::new(tokio::sync::RwLock::new(config.upstream_proxy.clone()));
+        let security_state = Arc::new(RwLock::new(config.security_config));
+        let zai_state = Arc::new(RwLock::new(config.zai_config));
         let provider_rr = Arc::new(AtomicUsize::new(0));
         let zai_vision_mcp_state = Arc::new(crate::proxy::zai_vision_mcp::ZaiVisionMcpState::new());
-        let experimental_state = Arc::new(RwLock::new(experimental_config));
+        let experimental_state = Arc::new(RwLock::new(config.experimental_config));
 
         let state = AppState {
-            token_manager: token_manager.clone(),
+            token_manager: config.token_manager.clone(),
             custom_mapping: custom_mapping_state.clone(),
             request_timeout: 300, // 5分钟超时
             thought_signature_map: Arc::new(tokio::sync::Mutex::new(
@@ -102,12 +107,12 @@ impl AxumServer {
             )),
             upstream_proxy: proxy_state.clone(),
             upstream: Arc::new(crate::proxy::upstream::client::UpstreamClient::new(Some(
-                upstream_proxy.clone(),
+                config.upstream_proxy.clone(),
             ))),
             zai: zai_state.clone(),
             provider_rr: provider_rr.clone(),
             zai_vision_mcp: zai_vision_mcp_state,
-            monitor: monitor.clone(),
+            monitor: config.monitor.clone(),
             experimental: experimental_state,
         };
 
@@ -190,7 +195,7 @@ impl AxumServer {
             .with_state(state);
 
         // 绑定地址
-        let addr = format!("{}:{}", host, port);
+        let addr = format!("{}:{}", config.host, config.port);
         let listener = tokio::net::TcpListener::bind(&addr)
             .await
             .map_err(|e| format!("地址 {} 绑定失败: {}", addr, e))?;

@@ -260,37 +260,34 @@ impl TokenManager {
             let mut target_token: Option<ProxyToken> = None;
 
             // 模式 A: 粘性会话处理 (CacheFirst 或 Balance 且有 session_id)
-            if !rotate
-                && session_id.is_some()
-                && scheduling.mode != SchedulingMode::PerformanceFirst
-            {
-                let sid = session_id.unwrap();
-
-                // 1. 检查会话是否已绑定账号
-                if let Some(bound_id) = self.session_accounts.get(sid).map(|v| v.clone()) {
-                    // 2. 检查绑定的账号是否限流 (使用精准的剩余时间接口)
-                    let reset_sec = self.rate_limit_tracker.get_remaining_wait(&bound_id);
-                    if reset_sec > 0 {
-                        // 【修复 Issue #284】立即解绑并切换账号，不再阻塞等待
-                        // 原因：阻塞等待会导致并发请求时客户端 socket 超时 (UND_ERR_SOCKET)
-                        tracing::warn!(
+            if let Some(sid) = session_id {
+                if !rotate && scheduling.mode != SchedulingMode::PerformanceFirst {
+                    // 1. 检查会话是否已绑定账号
+                    if let Some(bound_id) = self.session_accounts.get(sid).map(|v| v.clone()) {
+                        // 2. 检查绑定的账号是否限流 (使用精准的剩余时间接口)
+                        let reset_sec = self.rate_limit_tracker.get_remaining_wait(&bound_id);
+                        if reset_sec > 0 {
+                            // 【修复 Issue #284】立即解绑并切换账号，不再阻塞等待
+                            // 原因：阻塞等待会导致并发请求时客户端 socket 超时 (UND_ERR_SOCKET)
+                            tracing::warn!(
                             "Session {} bound account {} is rate-limited ({}s remaining). Unbinding and switching to next available account.",
                             sid,
                             bound_id,
                             reset_sec
                         );
-                        self.session_accounts.remove(sid);
-                    } else if !attempted.contains(&bound_id) {
-                        // 3. 账号可用且未被标记为尝试失败，优先复用
-                        if let Some(found) =
-                            tokens_snapshot.iter().find(|t| t.account_id == bound_id)
-                        {
-                            tracing::debug!(
+                            self.session_accounts.remove(sid);
+                        } else if !attempted.contains(&bound_id) {
+                            // 3. 账号可用且未被标记为尝试失败，优先复用
+                            if let Some(found) =
+                                tokens_snapshot.iter().find(|t| t.account_id == bound_id)
+                            {
+                                tracing::debug!(
                                 "Sticky Session: Successfully reusing bound account {} for session {}",
                                 found.email,
                                 sid
                             );
-                            target_token = Some(found.clone());
+                                target_token = Some(found.clone());
+                            }
                         }
                     }
                 }
@@ -499,13 +496,12 @@ impl TokenManager {
                         attempted.insert(token.account_id.clone());
 
                         // 【优化】标记需要清除锁定，避免在循环内加锁
-                        if quota_group != "image_gen" {
-                            if matches!(&last_used_account_id, Some((id, _)) if id == &token.account_id)
-                            {
-                                need_update_last_used =
-                                    Some((String::new(), std::time::Instant::now()));
-                                // 空字符串表示需要清除
-                            }
+                        if quota_group != "image_gen"
+                            && matches!(&last_used_account_id, Some((id, _)) if id == &token.account_id)
+                        {
+                            need_update_last_used =
+                                Some((String::new(), std::time::Instant::now()));
+                            // 空字符串表示需要清除
                         }
                         continue;
                     }
@@ -534,13 +530,12 @@ impl TokenManager {
                         attempted.insert(token.account_id.clone());
 
                         // 【优化】标记需要清除锁定，避免在循环内加锁
-                        if quota_group != "image_gen" {
-                            if matches!(&last_used_account_id, Some((id, _)) if id == &token.account_id)
-                            {
-                                need_update_last_used =
-                                    Some((String::new(), std::time::Instant::now()));
-                                // 空字符串表示需要清除
-                            }
+                        if quota_group != "image_gen"
+                            && matches!(&last_used_account_id, Some((id, _)) if id == &token.account_id)
+                        {
+                            need_update_last_used =
+                                Some((String::new(), std::time::Instant::now()));
+                            // 空字符串表示需要清除
                         }
                         continue;
                     }
@@ -722,12 +717,11 @@ impl TokenManager {
                                     if let Some(reset_time) =
                                         model.get("reset_time").and_then(|r| r.as_str())
                                     {
-                                        if !reset_time.is_empty() {
-                                            if earliest_reset.is_none()
-                                                || reset_time < earliest_reset.unwrap()
-                                            {
-                                                earliest_reset = Some(reset_time);
-                                            }
+                                        if !reset_time.is_empty()
+                                            && (earliest_reset.is_none()
+                                                || reset_time < earliest_reset.unwrap())
+                                        {
+                                            earliest_reset = Some(reset_time);
                                         }
                                     }
                                 }

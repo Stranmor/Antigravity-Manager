@@ -61,7 +61,7 @@ pub async fn handle_chat_completions(
         if attempt >= max_attempts && retry_529_count == 0 {
             break;
         }
-        if retry_529_count > 0 && retry_529_count >= MAX_529_RETRY_ATTEMPTS {
+        if retry_529_count >= MAX_529_RETRY_ATTEMPTS {
             break;
         }
 
@@ -73,10 +73,7 @@ pub async fn handle_chat_completions(
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
         // 将 OpenAI 工具转为 Value 数组以便探测联网
-        let tools_val: Option<Vec<Value>> = openai_req
-            .tools
-            .as_ref()
-            .map(|list| list.iter().cloned().collect());
+        let tools_val: Option<Vec<Value>> = openai_req.tools.as_ref().map(|list| list.to_vec());
         let config = crate::proxy::mappers::common_utils::resolve_request_config(
             &openai_req.model,
             &mapped_model,
@@ -181,7 +178,7 @@ pub async fn handle_chat_completions(
                     let sse_stream = openai_stream.map(|result| -> Result<Bytes, std::io::Error> {
                         match result {
                             Ok(bytes) => Ok(bytes),
-                            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+                            Err(e) => Err(std::io::Error::other(e)),
                         }
                     });
 
@@ -654,10 +651,7 @@ pub async fn handle_completions(
         .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
 
         // 将 OpenAI 工具转为 Value 数组以便探测联网
-        let tools_val: Option<Vec<Value>> = openai_req
-            .tools
-            .as_ref()
-            .map(|list| list.iter().cloned().collect());
+        let tools_val: Option<Vec<Value>> = openai_req.tools.as_ref().map(|list| list.to_vec());
         let config = crate::proxy::mappers::common_utils::resolve_request_config(
             &openai_req.model,
             &mapped_model,

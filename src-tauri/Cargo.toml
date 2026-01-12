@@ -72,8 +72,3 @@ parking_lot = "0.12"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
-
-[[bench]]
-name = "proxy_benches"
-harness = false
-path = "benches/proxy_benches.rs"

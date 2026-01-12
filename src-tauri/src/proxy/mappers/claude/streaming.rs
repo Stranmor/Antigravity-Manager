@@ -34,7 +34,7 @@ fn remap_function_call_args(tool_name: &str, args: &mut serde_json::Value) {
                     if let Some(paths) = obj.remove("paths") {
                         let path_str = if let Some(arr) = paths.as_array() {
                             // Take first element if array
-                            arr.get(0)
+                            arr.first()
                                 .and_then(|v| v.as_str())
                                 .unwrap_or(".")
                                 .to_string()
@@ -69,7 +69,7 @@ fn remap_function_call_args(tool_name: &str, args: &mut serde_json::Value) {
                 if !obj.contains_key("path") {
                     if let Some(paths) = obj.remove("paths") {
                         let path_str = if let Some(arr) = paths.as_array() {
-                            arr.get(0)
+                            arr.first()
                                 .and_then(|v| v.as_str())
                                 .unwrap_or(".")
                                 .to_string()
@@ -130,6 +130,12 @@ pub struct SignatureManager {
     pending: Option<String>,
 }
 
+impl Default for SignatureManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SignatureManager {
     pub fn new() -> Self {
         Self { pending: None }
@@ -168,6 +174,12 @@ pub struct StreamingState {
     last_valid_state: Option<BlockType>,
     // [NEW] Model tracking for signature cache
     pub model_name: Option<String>,
+}
+
+impl Default for StreamingState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StreamingState {
@@ -213,7 +225,7 @@ impl StreamingState {
         let mut message = json!({
             "id": raw_json.get("responseId")
                 .and_then(|v| v.as_str())
-                .unwrap_or_else(|| "msg_unknown"),
+                .unwrap_or("msg_unknown"),
             "type": "message",
             "role": "assistant",
             "content": [],
@@ -410,7 +422,7 @@ impl StreamingState {
             "end_turn"
         };
 
-        let usage = usage_metadata.map(|u| to_claude_usage(u)).unwrap_or(Usage {
+        let usage = usage_metadata.map(to_claude_usage).unwrap_or(Usage {
             input_tokens: 0,
             output_tokens: 0,
             cache_read_input_tokens: None,
@@ -707,7 +719,7 @@ impl<'a> PartProcessor<'a> {
         }
 
         // 非空 text 带签名 - 立即处理
-        if signature.is_some() {
+        if let Some(sig) = signature {
             // 2. 开始新 text 块并发送内容
             chunks.extend(
                 self.state
@@ -729,10 +741,10 @@ impl<'a> PartProcessor<'a> {
                 self.state
                     .emit_delta("thinking_delta", json!({ "thinking": "" })),
             );
-            chunks.push(self.state.emit_delta(
-                "signature_delta",
-                json!({ "signature": signature.unwrap() }),
-            ));
+            chunks.push(
+                self.state
+                    .emit_delta("signature_delta", json!({ "signature": sig })),
+            );
             chunks.extend(self.state.end_block());
 
             return chunks;

@@ -38,7 +38,7 @@ impl SafetyThreshold {
     }
 
     /// Convert to Gemini API threshold string
-    pub fn to_gemini_threshold(&self) -> &'static str {
+    pub fn as_gemini_threshold(&self) -> &'static str {
         match self {
             SafetyThreshold::Off => "OFF",
             SafetyThreshold::BlockLowAndAbove => "BLOCK_LOW_AND_ABOVE",
@@ -52,7 +52,7 @@ impl SafetyThreshold {
 /// Build safety settings based on configuration
 fn build_safety_settings() -> Value {
     let threshold = SafetyThreshold::from_env();
-    let threshold_str = threshold.to_gemini_threshold();
+    let threshold_str = threshold.as_gemini_threshold();
 
     json!([
         { "category": "HARM_CATEGORY_HARASSMENT", "threshold": threshold_str },
@@ -540,7 +540,7 @@ fn build_contents(
     let mut last_thought_signature: Option<String> = None;
 
     let _msg_count = messages.len();
-    for (_i, msg) in messages.iter().enumerate() {
+    for msg in messages {
         let role = if msg.role == "assistant" {
             "model"
         } else {
@@ -551,10 +551,8 @@ fn build_contents(
 
         match &msg.content {
             MessageContent::String(text) => {
-                if text != "(no content)" {
-                    if !text.trim().is_empty() {
-                        parts.push(json!({"text": text.trim()}));
-                    }
+                if text != "(no content)" && !text.trim().is_empty() {
+                    parts.push(json!({"text": text.trim()}));
                 }
             }
             MessageContent::Array(blocks) => {
@@ -637,7 +635,7 @@ fn build_contents(
                                 let cached_family = crate::proxy::SignatureCache::global()
                                     .get_signature_family(sig);
                                 if let Some(family) = cached_family {
-                                    if !is_model_compatible(&family, &mapped_model) {
+                                    if !is_model_compatible(&family, mapped_model) {
                                         tracing::warn!(
                                             "[Thinking-Compatibility] Incompatible signature detected (Family: {}, Target: {}). Dropping signature.",
                                             family,
@@ -713,16 +711,15 @@ fn build_contents(
                                 .or_else(|| {
                                     // [NEW] Try layer 1 cache (Tool ID -> Signature)
                                     crate::proxy::SignatureCache::global().get_tool_signature(id)
-                                        .map(|s| {
+                                        .inspect(|_| {
                                             tracing::info!("[Claude-Request] Recovered signature from cache for tool_id: {}", id);
-                                            s
                                         })
                                 })
                                 .or_else(|| {
                                     let global_sig = get_thought_signature();
-                                    if global_sig.is_some() {
-                                        tracing::info!("[Claude-Request] Using global thought_signature fallback (length: {})", 
-                                            global_sig.as_ref().unwrap().len());
+                                    if let Some(ref sig) = global_sig {
+                                        tracing::info!("[Claude-Request] Using global thought_signature fallback (length: {})",
+                                            sig.len());
                                     }
                                     global_sig
                                 });
@@ -751,15 +748,7 @@ fn build_contents(
                                 serde_json::Value::String(s) => s.clone(),
                                 serde_json::Value::Array(arr) => arr
                                     .iter()
-                                    .filter_map(|block| {
-                                        if let Some(text) =
-                                            block.get("text").and_then(|v| v.as_str())
-                                        {
-                                            Some(text)
-                                        } else {
-                                            None
-                                        }
-                                    })
+                                    .filter_map(|block| block.get("text").and_then(|v| v.as_str()))
                                     .collect::<Vec<_>>()
                                     .join("\n"),
                                 _ => content.to_string(),
@@ -827,7 +816,7 @@ fn build_contents(
             } else {
                 // [Crucial Check] 即使有 thought 块，也必须保证它位于 parts 的首位 (Index 0)
                 // 且必须包含 thought: true 标记
-                let first_is_thought = parts.get(0).map_or(false, |p| {
+                let first_is_thought = parts.first().is_some_and(|p| {
                     (p.get("thought").is_some() || p.get("thoughtSignature").is_some())
                         && p.get("text").is_some() // 对于 v1internal，通常 text + thought: true 才是合规的思维块
                 });

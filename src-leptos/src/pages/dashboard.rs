@@ -318,7 +318,7 @@ pub fn Dashboard() -> impl IntoView {
                                                 class="btn btn--icon btn--sm"
                                                 title="Switch"
                                                 on:click={
-                                                    let cb = on_switch_account.clone();
+                                                    let cb = on_switch_account;
                                                     let id = account.id.clone();
                                                     move |_| cb.run(id.clone())
                                                 }

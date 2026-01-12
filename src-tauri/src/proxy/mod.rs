@@ -22,16 +22,10 @@ pub mod upstream; // 上游客户端
 pub mod zai_vision_mcp; // Built-in Vision MCP server state
 pub mod zai_vision_tools; // Built-in Vision MCP tools (z.ai vision API)
 
-// Restored: AIMD Predictive Rate Limiting System (lost during headless migration 2026-01-12)
-pub mod adaptive_limit; // AIMD per-account limit tracking with TCP-style congestion control
-pub mod health;
-pub mod prometheus; // Prometheus metrics for adaptive rate limiting
-pub mod smart_prober; // Speculative hedging and cheap probing for limit discovery // Account health monitoring and proactive rotation
-
 pub use antigravity_shared::proxy::config;
 pub use antigravity_shared::proxy::config::{ProxyAuthMode, ZaiConfig, ZaiDispatchMode};
 pub use security::ProxySecurityConfig;
-pub use server::AxumServer;
+pub use server::{AxumServer, ServerStartConfig};
 pub use signature_cache::SignatureCache;
 pub use token_manager::TokenManager;
 
