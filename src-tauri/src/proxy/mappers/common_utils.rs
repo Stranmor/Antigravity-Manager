@@ -333,10 +333,12 @@ mod tests {
 
     #[test]
     fn test_online_suffix_force_grounding() {
+        // Web search requests downgrade to gemini-2.5-flash (the only model that supports googleSearch)
         let config = resolve_request_config("gemini-3-flash-online", "gemini-3-flash", &None);
         assert_eq!(config.request_type, "web_search");
         assert!(config.inject_google_search);
-        assert_eq!(config.final_model, "gemini-3-flash");
+        // Final model must be gemini-2.5-flash for web search
+        assert_eq!(config.final_model, "gemini-2.5-flash");
     }
 
     #[test]
