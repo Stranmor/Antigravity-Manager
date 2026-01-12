@@ -5,5 +5,6 @@ pub mod audio;
 pub mod claude;
 pub mod common;
 pub mod gemini;
+pub mod helpers; // Restored: Handler helper functions with adaptive limit integration
 pub mod mcp;
-pub mod openai; // 音频转录处理器 (PR #311)
+pub mod openai;

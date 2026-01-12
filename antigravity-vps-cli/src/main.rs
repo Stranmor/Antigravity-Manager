@@ -1,11 +1,11 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use tracing::{Level, info};
 use tracing_subscriber::FmtSubscriber;
 
 mod ssh_client;
-use ssh_client::SshClient;
+use ssh_client::{SshClientFactory, SshSession};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -53,7 +53,7 @@ async fn main() -> Result<()> {
         .context("setting default subscriber failed")?;
 
     let cli = Cli::parse();
-    let ssh_client_factory = SshClient::new().await?;
+    let ssh_client_factory: SshClientFactory = SshClientFactory::new().await?;
 
     match cli.command {
         // Changed to cli.command to avoid lifetime issue

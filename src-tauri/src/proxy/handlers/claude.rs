@@ -189,14 +189,16 @@ fn extract_nested_error_message(error_text: &str) -> String {
     // Try to parse as Vertex error format
     if let Ok(vertex_err) = serde_json::from_str::<Value>(error_text) {
         // Check for nested message in Vertex format: {"error": {"message": "<escaped json>"}}
-        if let Some(outer_msg) = vertex_err.get("error")
+        if let Some(outer_msg) = vertex_err
+            .get("error")
             .and_then(|e| e.get("message"))
             .and_then(|m| m.as_str())
         {
             // Try to parse the nested JSON inside the message field
             if let Ok(inner) = serde_json::from_str::<Value>(outer_msg) {
                 // Anthropic format: {"error": {"message": "..."}}
-                if let Some(inner_msg) = inner.get("error")
+                if let Some(inner_msg) = inner
+                    .get("error")
                     .and_then(|e| e.get("message"))
                     .and_then(|m| m.as_str())
                 {
@@ -206,16 +208,17 @@ fn extract_nested_error_message(error_text: &str) -> String {
             // If inner parsing fails, use the outer message
             return outer_msg.to_string();
         }
-        
+
         // Direct Anthropic format: {"error": {"message": "..."}}
-        if let Some(msg) = vertex_err.get("error")
+        if let Some(msg) = vertex_err
+            .get("error")
             .and_then(|e| e.get("message"))
             .and_then(|m| m.as_str())
         {
             return msg.to_string();
         }
     }
-    
+
     // Fallback: return original text
     error_text.to_string()
 }
@@ -224,7 +227,7 @@ fn extract_nested_error_message(error_text: &str) -> String {
 fn is_context_length_error(error_text: &str) -> bool {
     let lower = error_text.to_lowercase();
     let extracted = extract_nested_error_message(error_text).to_lowercase();
-    
+
     lower.contains("prompt is too long")
         || lower.contains("context length exceeded")
         || lower.contains("maximum context length")
@@ -239,7 +242,7 @@ fn is_context_length_error(error_text: &str) -> bool {
 /// This format is expected by clients like opencode that use @ai-sdk/anthropic.
 fn create_claude_context_length_error(error_text: &str) -> Response {
     let clean_message = extract_nested_error_message(error_text);
-    
+
     let claude_error = json!({
         "type": "error",
         "error": {
@@ -248,11 +251,8 @@ fn create_claude_context_length_error(error_text: &str) -> Response {
             "message": clean_message
         }
     });
-    
-    (
-        StatusCode::BAD_REQUEST,
-        Json(claude_error)
-    ).into_response()
+
+    (StatusCode::BAD_REQUEST, Json(claude_error)).into_response()
 }
 
 // ===== 统一退避策略模块 =====

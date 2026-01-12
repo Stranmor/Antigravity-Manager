@@ -3,15 +3,15 @@
 //! REST API endpoints that mirror the Tauri IPC commands.
 
 use axum::{
-    Router,
-    routing::{get, post},
     extract::State,
-    response::Json,
     http::StatusCode,
+    response::Json,
+    routing::{get, post},
+    Router,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::state::{AppState, get_model_quota};
+use crate::state::{get_model_quota, AppState};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -44,7 +44,7 @@ struct StatusResponse {
 
 async fn get_status(State(state): State<AppState>) -> Json<StatusResponse> {
     let current = state.get_current_account().ok().flatten();
-    
+
     Json(StatusResponse {
         version: env!("CARGO_PKG_VERSION").to_string(),
         proxy_running: true, // Proxy is always running on same port now
@@ -67,16 +67,16 @@ struct AccountInfo {
     subscription_tier: Option<String>,
 }
 
-async fn list_accounts(State(state): State<AppState>) -> Result<Json<Vec<AccountInfo>>, (StatusCode, String)> {
-    let current_id = state.get_current_account()
-        .ok()
-        .flatten()
-        .map(|a| a.id);
-    
+async fn list_accounts(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<AccountInfo>>, (StatusCode, String)> {
+    let current_id = state.get_current_account().ok().flatten().map(|a| a.id);
+
     match state.list_accounts() {
         Ok(accounts) => {
-            let infos: Vec<AccountInfo> = accounts.into_iter().map(|a| {
-                AccountInfo {
+            let infos: Vec<AccountInfo> = accounts
+                .into_iter()
+                .map(|a| AccountInfo {
                     id: a.id.clone(),
                     email: a.email.clone(),
                     name: a.name.clone(),
@@ -85,30 +85,30 @@ async fn list_accounts(State(state): State<AppState>) -> Result<Json<Vec<Account
                     gemini_quota: get_model_quota(&a, "gemini"),
                     claude_quota: get_model_quota(&a, "claude"),
                     subscription_tier: a.quota.as_ref().and_then(|q| q.subscription_tier.clone()),
-                }
-            }).collect();
+                })
+                .collect();
             Ok(Json(infos))
         }
-        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e))
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
     }
 }
 
-async fn get_current_account(State(state): State<AppState>) -> Result<Json<Option<AccountInfo>>, (StatusCode, String)> {
+async fn get_current_account(
+    State(state): State<AppState>,
+) -> Result<Json<Option<AccountInfo>>, (StatusCode, String)> {
     match state.get_current_account() {
-        Ok(Some(a)) => {
-            Ok(Json(Some(AccountInfo {
-                id: a.id.clone(),
-                email: a.email.clone(),
-                name: a.name.clone(),
-                disabled: a.disabled,
-                is_current: true,
-                gemini_quota: get_model_quota(&a, "gemini"),
-                claude_quota: get_model_quota(&a, "claude"),
-                subscription_tier: a.quota.as_ref().and_then(|q| q.subscription_tier.clone()),
-            })))
-        }
+        Ok(Some(a)) => Ok(Json(Some(AccountInfo {
+            id: a.id.clone(),
+            email: a.email.clone(),
+            name: a.name.clone(),
+            disabled: a.disabled,
+            is_current: true,
+            gemini_quota: get_model_quota(&a, "gemini"),
+            claude_quota: get_model_quota(&a, "claude"),
+            subscription_tier: a.quota.as_ref().and_then(|q| q.subscription_tier.clone()),
+        }))),
         Ok(None) => Ok(Json(None)),
-        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e))
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
     }
 }
 
@@ -123,7 +123,7 @@ async fn switch_account(
 ) -> Result<Json<bool>, (StatusCode, String)> {
     match state.switch_account(&payload.account_id).await {
         Ok(()) => Ok(Json(true)),
-        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e))
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
     }
 }
 
@@ -139,7 +139,7 @@ struct ProxyStatusResponse {
 
 async fn get_proxy_status(State(state): State<AppState>) -> Json<ProxyStatusResponse> {
     let port = state.get_proxy_port();
-    
+
     Json(ProxyStatusResponse {
         running: true, // Always running on same port
         port,
@@ -163,7 +163,9 @@ async fn get_monitor_requests(
     Json(logs)
 }
 
-async fn get_monitor_stats(State(state): State<AppState>) -> Json<antigravity_shared::models::ProxyStats> {
+async fn get_monitor_stats(
+    State(state): State<AppState>,
+) -> Json<antigravity_shared::models::ProxyStats> {
     let stats = state.get_proxy_stats().await;
     Json(stats)
 }

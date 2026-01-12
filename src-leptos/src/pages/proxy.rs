@@ -1,8 +1,8 @@
 //! API Proxy page with full parity
 
+use crate::api::commands;
 use crate::app::AppState;
 use crate::components::{Button, ButtonVariant, CollapsibleCard, Select};
-use crate::api::commands;
 use crate::types::{Protocol, ProxyAuthMode, ZaiDispatchMode};
 use leptos::prelude::*;
 use leptos::task::spawn_local;

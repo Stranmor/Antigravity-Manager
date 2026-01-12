@@ -2,6 +2,7 @@
 
 // pub mod error;
 // pub mod rate_limiter;
+pub mod circuit_breaker; // Restored: Circuit breaker pattern for account failure isolation
 pub mod json_schema;
 pub mod model_mapping;
 pub mod utils;

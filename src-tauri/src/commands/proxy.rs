@@ -60,10 +60,8 @@ pub async fn start_proxy_service(
     {
         let mut monitor_lock = state.monitor.write().await;
         if monitor_lock.is_none() {
-            *monitor_lock = Some(Arc::new(ProxyMonitor::new(
-                1000,
-                Some(Box::new(TauriEventBus::new(app_handle.clone()))),
-            )));
+            let monitor = ProxyMonitor::with_event_bus(Arc::new(TauriEventBus::new(app_handle.clone())));
+            *monitor_lock = Some(Arc::new(monitor));
         }
         // Sync enabled state from config
         if let Some(monitor) = monitor_lock.as_ref() {
@@ -200,7 +198,7 @@ pub async fn get_proxy_logs(
 ) -> Result<Vec<ProxyRequestLog>, String> {
     let monitor_lock = state.monitor.read().await;
     if let Some(monitor) = monitor_lock.as_ref() {
-        Ok(monitor.get_logs(limit.unwrap_or(100)).await)
+        Ok(monitor.get_logs(limit).await)
     } else {
         Ok(Vec::new())
     }
@@ -224,7 +222,7 @@ pub async fn set_proxy_monitor_enabled(
 pub async fn clear_proxy_logs(state: State<'_, ProxyServiceState>) -> Result<(), String> {
     let monitor_lock = state.monitor.read().await;
     if let Some(monitor) = monitor_lock.as_ref() {
-        monitor.clear().await;
+        monitor.clear_logs().await;
     }
     Ok(())
 }

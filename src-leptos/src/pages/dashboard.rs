@@ -1,8 +1,8 @@
 //! Dashboard page with full features
 
+use crate::api::commands;
 use crate::app::AppState;
 use crate::components::{Button, ButtonVariant, StatsCard};
-use crate::api::commands;
 use crate::types::DashboardStats;
 use leptos::prelude::*;
 use leptos::task::spawn_local;

@@ -13,73 +13,84 @@ const API_BASE: &str = "/api";
 /// Make a GET request to the API
 pub async fn api_get<R: DeserializeOwned>(endpoint: &str) -> Result<R, String> {
     let url = format!("{}{}", API_BASE, endpoint);
-    
+
     let opts = RequestInit::new();
     opts.set_method("GET");
-    
+
     let request = Request::new_with_str_and_init(&url, &opts)
         .map_err(|e| format!("Failed to create request: {:?}", e))?;
-    
-    request.headers()
+
+    request
+        .headers()
         .set("Content-Type", "application/json")
         .map_err(|e| format!("Failed to set headers: {:?}", e))?;
-    
+
     let window = web_sys::window().ok_or("No window")?;
     let resp_value = JsFuture::from(window.fetch_with_request(&request))
         .await
         .map_err(|e| format!("Fetch failed: {:?}", e))?;
-    
-    let resp: Response = resp_value.dyn_into()
+
+    let resp: Response = resp_value
+        .dyn_into()
         .map_err(|_| "Response is not a Response")?;
-    
+
     if !resp.ok() {
         return Err(format!("HTTP error: {}", resp.status()));
     }
-    
-    let json = JsFuture::from(resp.json().map_err(|e| format!("JSON parse failed: {:?}", e))?)
-        .await
-        .map_err(|e| format!("JSON future failed: {:?}", e))?;
-    
-    serde_wasm_bindgen::from_value(json)
-        .map_err(|e| format!("Deserialize failed: {}", e))
+
+    let json = JsFuture::from(
+        resp.json()
+            .map_err(|e| format!("JSON parse failed: {:?}", e))?,
+    )
+    .await
+    .map_err(|e| format!("JSON future failed: {:?}", e))?;
+
+    serde_wasm_bindgen::from_value(json).map_err(|e| format!("Deserialize failed: {}", e))
 }
 
 /// Make a POST request to the API
-pub async fn api_post<A: Serialize, R: DeserializeOwned>(endpoint: &str, body: &A) -> Result<R, String> {
+pub async fn api_post<A: Serialize, R: DeserializeOwned>(
+    endpoint: &str,
+    body: &A,
+) -> Result<R, String> {
     let url = format!("{}{}", API_BASE, endpoint);
-    
-    let body_str = serde_json::to_string(body)
-        .map_err(|e| format!("Failed to serialize body: {}", e))?;
-    
+
+    let body_str =
+        serde_json::to_string(body).map_err(|e| format!("Failed to serialize body: {}", e))?;
+
     let opts = RequestInit::new();
     opts.set_method("POST");
     opts.set_body(&JsValue::from_str(&body_str));
-    
+
     let request = Request::new_with_str_and_init(&url, &opts)
         .map_err(|e| format!("Failed to create request: {:?}", e))?;
-    
-    request.headers()
+
+    request
+        .headers()
         .set("Content-Type", "application/json")
         .map_err(|e| format!("Failed to set headers: {:?}", e))?;
-    
+
     let window = web_sys::window().ok_or("No window")?;
     let resp_value = JsFuture::from(window.fetch_with_request(&request))
         .await
         .map_err(|e| format!("Fetch failed: {:?}", e))?;
-    
-    let resp: Response = resp_value.dyn_into()
+
+    let resp: Response = resp_value
+        .dyn_into()
         .map_err(|_| "Response is not a Response")?;
-    
+
     if !resp.ok() {
         return Err(format!("HTTP error: {}", resp.status()));
     }
-    
-    let json = JsFuture::from(resp.json().map_err(|e| format!("JSON parse failed: {:?}", e))?)
-        .await
-        .map_err(|e| format!("JSON future failed: {:?}", e))?;
-    
-    serde_wasm_bindgen::from_value(json)
-        .map_err(|e| format!("Deserialize failed: {}", e))
+
+    let json = JsFuture::from(
+        resp.json()
+            .map_err(|e| format!("JSON parse failed: {:?}", e))?,
+    )
+    .await
+    .map_err(|e| format!("JSON future failed: {:?}", e))?;
+
+    serde_wasm_bindgen::from_value(json).map_err(|e| format!("Deserialize failed: {}", e))
 }
 
 // Re-export common command wrappers
@@ -88,7 +99,7 @@ pub mod commands {
     use crate::types::*;
 
     // ========== Status ==========
-    
+
     #[derive(serde::Deserialize)]
     pub struct StatusResponse {
         pub version: String,
@@ -96,7 +107,7 @@ pub mod commands {
         pub accounts_count: usize,
         pub current_account: Option<String>,
     }
-    
+
     pub async fn get_status() -> Result<StatusResponse, String> {
         api_get("/status").await
     }
@@ -132,8 +143,8 @@ pub mod commands {
     impl ApiAccount {
         /// Convert to full Account type for UI compatibility
         pub fn into_account(self) -> Account {
-            use antigravity_shared::models::{TokenData, QuotaData, ModelQuota};
-            
+            use antigravity_shared::models::{ModelQuota, QuotaData, TokenData};
+
             let mut quota = QuotaData::default();
             if let Some(g) = self.gemini_quota {
                 quota.models.push(ModelQuota {
@@ -157,19 +168,12 @@ pub mod commands {
                 });
             }
             quota.subscription_tier = self.subscription_tier;
-            
+
             Account {
                 id: self.id,
                 email: self.email,
                 name: self.name,
-                token: TokenData::new(
-                    String::new(),
-                    String::new(),
-                    0,
-                    None,
-                    None,
-                    None,
-                ),
+                token: TokenData::new(String::new(), String::new(), 0, None, None, None),
                 quota: Some(quota),
                 disabled: self.disabled,
                 disabled_reason: None,
@@ -195,9 +199,17 @@ pub mod commands {
 
     pub async fn switch_account(account_id: &str) -> Result<(), String> {
         #[derive(serde::Serialize)]
-        struct Req { account_id: String }
-        
-        let _: bool = api_post("/accounts/switch", &Req { account_id: account_id.to_string() }).await?;
+        struct Req {
+            account_id: String,
+        }
+
+        let _: bool = api_post(
+            "/accounts/switch",
+            &Req {
+                account_id: account_id.to_string(),
+            },
+        )
+        .await?;
         Ok(())
     }
 

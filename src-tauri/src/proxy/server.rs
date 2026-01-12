@@ -31,6 +31,11 @@ pub struct AppState {
     pub zai_vision_mcp: Arc<crate::proxy::zai_vision_mcp::ZaiVisionMcpState>,
     pub monitor: Arc<crate::proxy::monitor::ProxyMonitor>,
     pub experimental: Arc<RwLock<antigravity_shared::proxy::config::ExperimentalConfig>>,
+    // Restored: AIMD Predictive Rate Limiting System (2026-01-12)
+    pub adaptive_limits: Arc<crate::proxy::adaptive_limit::AdaptiveLimitManager>,
+    pub smart_prober: Arc<crate::proxy::smart_prober::SmartProber>,
+    pub health_monitor: Arc<crate::proxy::health::HealthMonitor>,
+    pub circuit_breaker: Arc<crate::proxy::common::circuit_breaker::CircuitBreakerManager>,
 }
 
 /// Axum 服务器实例
@@ -93,6 +98,17 @@ impl AxumServer {
         let zai_vision_mcp_state = Arc::new(crate::proxy::zai_vision_mcp::ZaiVisionMcpState::new());
         let experimental_state = Arc::new(RwLock::new(experimental_config));
 
+        // Initialize AIMD Predictive Rate Limiting System (restored 2026-01-12)
+        let adaptive_limits =
+            Arc::new(crate::proxy::adaptive_limit::AdaptiveLimitManager::default());
+        let smart_prober = Arc::new(crate::proxy::smart_prober::SmartProber::new(
+            crate::proxy::smart_prober::SmartProberConfig::default(),
+            adaptive_limits.clone(),
+        ));
+        let health_monitor = crate::proxy::health::HealthMonitor::new();
+        let circuit_breaker =
+            Arc::new(crate::proxy::common::circuit_breaker::CircuitBreakerManager::new());
+
         let state = AppState {
             token_manager: token_manager.clone(),
             custom_mapping: custom_mapping_state.clone(),
@@ -109,6 +125,11 @@ impl AxumServer {
             zai_vision_mcp: zai_vision_mcp_state,
             monitor: monitor.clone(),
             experimental: experimental_state,
+            // AIMD Predictive Rate Limiting
+            adaptive_limits,
+            smart_prober,
+            health_monitor,
+            circuit_breaker,
         };
 
         // 构建路由 - 使用新架构的 handlers！

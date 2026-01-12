@@ -15,10 +15,15 @@ pub async fn handle_detect_model(
     }
 
     // 1. Resolve mapping
-    let mapped_model = crate::proxy::common::model_mapping::resolve_model_route(
+    let mapped_model = match crate::proxy::common::model_mapping::resolve_model_route(
         model_name,
         &*state.custom_mapping.read().await,
-    );
+    ) {
+        Ok(m) => m,
+        Err(e) => {
+            return (StatusCode::BAD_REQUEST, Json(json!({"error": e}))).into_response();
+        }
+    };
 
     // 2. Resolve capabilities
     let config = crate::proxy::mappers::common_utils::resolve_request_config(
@@ -30,7 +35,7 @@ pub async fn handle_detect_model(
     // 3. Construct response
     let mut response = json!({
         "model": model_name,
-        "mapped_model": mapped_model,
+        "mapped_model": &mapped_model,
         "type": config.request_type,
         "features": {
             "has_web_search": config.inject_google_search,

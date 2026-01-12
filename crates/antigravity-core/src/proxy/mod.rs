@@ -35,7 +35,7 @@ pub use antigravity_shared::proxy::config::{ProxyAuthMode, ZaiConfig, ZaiDispatc
 // Re-export core types
 pub use monitor::{ProxyEventBus, ProxyMonitor};
 pub use security::ProxySecurityConfig;
-pub use server::{AxumServer, build_proxy_router};
+pub use server::{build_proxy_router, AxumServer};
 pub use signature_cache::SignatureCache;
 pub use token_manager::TokenManager;
 

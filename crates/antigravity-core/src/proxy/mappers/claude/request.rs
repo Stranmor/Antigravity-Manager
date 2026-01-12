@@ -156,7 +156,16 @@ pub fn transform_claude_request_in(
         );
         WEB_SEARCH_FALLBACK_MODEL.to_string()
     } else {
-        crate::proxy::common::model_mapping::map_claude_model_to_gemini(&claude_req.model)
+        // NO FALLBACK: Unknown model = error
+        match crate::proxy::common::model_mapping::map_claude_model_to_gemini(&claude_req.model) {
+            Some(model) => model,
+            None => {
+                return Err(format!(
+                    "Unknown model: '{}'. No mapping rule found. Supported models: claude-*, gemini-*, gpt-*",
+                    claude_req.model
+                ));
+            }
+        }
     };
 
     // 将 Claude 工具转为 Value 数组以便探测联网

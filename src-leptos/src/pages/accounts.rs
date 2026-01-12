@@ -1,8 +1,8 @@
 //! Accounts page with full parity
 
+use crate::api::commands;
 use crate::app::AppState;
 use crate::components::{AccountCard, Button, ButtonVariant, Modal, ModalType, Pagination};
-use crate::api::commands;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::collections::HashSet;

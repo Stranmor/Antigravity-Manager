@@ -66,6 +66,9 @@ tauri-plugin-autostart = "2.5.1"
 sha2 = "0.10"
 validator = "0.18"
 validator_derive = "0.18"
+metrics = "0.23"
+metrics-exporter-prometheus = "0.15"
+parking_lot = "0.12"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

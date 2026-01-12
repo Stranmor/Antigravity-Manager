@@ -1,5 +1,5 @@
-use crate::proxy::server::AppState;
 use crate::models::ProxyRequestLog;
+use crate::proxy::server::AppState;
 use axum::{
     body::Body,
     extract::{Request, State},

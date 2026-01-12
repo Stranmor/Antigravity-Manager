@@ -18,3 +18,5 @@ tokio-util = { version = "0.7", features = ["io"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 home = "0.5"
+async-ssh2-lite = "0.5.0"
+async-std = "1.13.2"
