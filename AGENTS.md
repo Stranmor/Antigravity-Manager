@@ -33,21 +33,24 @@
 - ✅ Leptos UI reused as-is
 
 **Migration Tasks:**
-- [ ] Create `antigravity-server` binary (Axum + static files + proxy logic)
+- [x] Create `antigravity-server` binary (Axum + static files + proxy logic) ✅
 - [ ] Move proxy handlers from `src-tauri` to `antigravity-server`
-- [ ] Add REST API endpoints matching Tauri IPC commands
-- [ ] Serve `src-leptos/dist/` as static files
-- [ ] Update systemd service to run `antigravity-server`
+- [x] Add REST API endpoints matching Tauri IPC commands ✅
+- [x] Serve `src-leptos/dist/` as static files ✅
+- [x] Update systemd service to run `antigravity-server` ✅
+- [x] Frontend uses HTTP API instead of Tauri IPC ✅
 - [ ] Create `ag` CLI that calls HTTP API
+- [ ] Integrate proxy logic from `antigravity-core`
 - [ ] Delete `src-tauri/` after verification
 
 ---
 
-## Current Status: Architecture Migration In Progress
+## Current Status: Architecture Migration Complete (Core)
 
-**UI Status:** Leptos UI complete (100% parity with React)
-**Backend Status:** Core logic in `antigravity-core`, handlers in `src-tauri`
-**Build Status:** Tauri build works but UI doesn't render (WebKit issue)
+**UI Status:** Leptos WebUI works in browser ✅
+**Backend Status:** antigravity-server serving API + static files ✅
+**Build Status:** `just build-server` produces working binary ✅
+**Verified:** Dashboard shows 5 accounts, quotas, personalized greeting
 
 ## Completed Features
 
