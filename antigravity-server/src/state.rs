@@ -1,14 +1,14 @@
 //! Application State
 //!
-//! Holds shared state for the server including account manager and proxy server.
+//! Holds shared state for the server including account manager and proxy config.
 
 use anyhow::Result;
+use axum::Router;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use antigravity_core::modules::account;
 use antigravity_core::models::Account;
-use antigravity_core::proxy::{AxumServer, ProxyMonitor, TokenManager};
+use antigravity_core::proxy::{build_proxy_router, ProxyMonitor, ProxySecurityConfig, TokenManager};
 use antigravity_shared::proxy::config::ProxyConfig;
 use antigravity_shared::utils::http::UpstreamProxyConfig;
 
@@ -23,16 +23,8 @@ struct AppStateInner {
     token_manager: Arc<TokenManager>,
     /// Proxy monitor for logging
     monitor: Arc<ProxyMonitor>,
-    /// Running proxy server (if any)
-    proxy_server: RwLock<Option<ProxyServerHandle>>,
     /// Proxy configuration
-    proxy_config: RwLock<ProxyConfig>,
-}
-
-/// Handle to a running proxy server
-struct ProxyServerHandle {
-    server: AxumServer,
-    _handle: tokio::task::JoinHandle<()>,
+    proxy_config: ProxyConfig,
 }
 
 impl AppState {
@@ -59,23 +51,35 @@ impl AppState {
         // Initialize proxy monitor
         let monitor = Arc::new(ProxyMonitor::new());
         
-        // Load proxy config (or use defaults with different port)
-        let mut proxy_config = load_proxy_config(&data_dir).unwrap_or_default();
-        
-        // Ensure proxy port is different from WebUI port (8045)
-        if proxy_config.port == 8045 {
-            proxy_config.port = 8046;
-            tracing::info!("📡 Using port 8046 for proxy (8045 is WebUI)");
-        }
+        // Load proxy config (or use defaults)
+        let proxy_config = load_proxy_config(&data_dir).unwrap_or_default();
         
         Ok(Self {
             inner: Arc::new(AppStateInner {
                 token_manager,
                 monitor,
-                proxy_server: RwLock::new(None),
-                proxy_config: RwLock::new(proxy_config),
+                proxy_config,
             }),
         })
+    }
+    
+    /// Build proxy router for integration into main server
+    pub fn build_proxy_router(&self) -> Router {
+        let config = &self.inner.proxy_config;
+        
+        // Build security config
+        let security_config = ProxySecurityConfig::from_proxy_config(config);
+        
+        // Build proxy router (returns Router<()> with its own internal state)
+        build_proxy_router(
+            self.inner.token_manager.clone(),
+            config.custom_mapping.clone(),
+            config.upstream_proxy.clone(),
+            security_config,
+            config.zai.clone(),
+            self.inner.monitor.clone(),
+            config.experimental.clone(),
+        )
     }
     
     /// List all accounts
@@ -101,78 +105,14 @@ impl AppState {
         }
     }
     
-    /// Check if proxy is running
-    pub async fn is_proxy_running(&self) -> bool {
-        self.inner.proxy_server.read().await.is_some()
+    /// Check if proxy is enabled
+    pub fn is_proxy_enabled(&self) -> bool {
+        self.inner.proxy_config.enabled
     }
     
     /// Get proxy port from config
-    pub async fn get_proxy_port(&self) -> u16 {
-        self.inner.proxy_config.read().await.port
-    }
-    
-    /// Start the proxy server
-    pub async fn start_proxy(&self) -> Result<(), String> {
-        // Check if already running
-        if self.is_proxy_running().await {
-            return Err("Proxy is already running".to_string());
-        }
-        
-        // Reload accounts
-        self.inner.token_manager.load_accounts().await?;
-        
-        if self.inner.token_manager.len() == 0 {
-            return Err("No accounts available for proxy".to_string());
-        }
-        
-        // Get config
-        let config = self.inner.proxy_config.read().await.clone();
-        
-        // Start proxy server on configured port
-        let host = if config.allow_lan_access { "0.0.0.0" } else { "127.0.0.1" };
-        let port = config.port;
-        
-        // Build security config
-        let security_config = antigravity_core::proxy::ProxySecurityConfig::from_proxy_config(&config);
-        
-        // Start the server
-        let (server, handle) = AxumServer::start(
-            host.to_string(),
-            port,
-            self.inner.token_manager.clone(),
-            config.custom_mapping.clone(),
-            config.request_timeout,
-            UpstreamProxyConfig::default(),
-            security_config,
-            config.zai.clone(),
-            self.inner.monitor.clone(),
-            config.experimental.clone(),
-        ).await?;
-        
-        // Store the handle
-        {
-            let mut proxy_server = self.inner.proxy_server.write().await;
-            *proxy_server = Some(ProxyServerHandle {
-                server,
-                _handle: handle,
-            });
-        }
-        
-        tracing::info!("🚀 Proxy server started on {}:{}", host, port);
-        Ok(())
-    }
-    
-    /// Stop the proxy server
-    pub async fn stop_proxy(&self) -> Result<(), String> {
-        let mut proxy_server = self.inner.proxy_server.write().await;
-        
-        if let Some(handle) = proxy_server.take() {
-            handle.server.stop();
-            tracing::info!("🛑 Proxy server stopped");
-            Ok(())
-        } else {
-            Err("Proxy is not running".to_string())
-        }
+    pub fn get_proxy_port(&self) -> u16 {
+        self.inner.proxy_config.port
     }
     
     /// Get proxy stats
@@ -193,6 +133,11 @@ impl AppState {
     /// Get monitor reference
     pub fn get_monitor(&self) -> Arc<ProxyMonitor> {
         self.inner.monitor.clone()
+    }
+    
+    /// Get token manager account count
+    pub fn get_token_manager_count(&self) -> usize {
+        self.inner.token_manager.len()
     }
 }
 

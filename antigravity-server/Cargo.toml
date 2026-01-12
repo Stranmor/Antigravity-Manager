@@ -15,9 +15,9 @@ antigravity-core = { path = "../crates/antigravity-core" }
 antigravity-shared = { path = "../crates/antigravity-shared" }
 
 # Web Framework
-axum = { version = "0.8", features = ["macros"] }
-tower = "0.5"
-tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
+axum = { version = "0.7", features = ["macros", "multipart"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["fs", "cors", "trace"] }
 
 # Async Runtime
 tokio = { version = "1", features = ["full"] }

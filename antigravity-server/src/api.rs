@@ -21,10 +21,8 @@ pub fn router() -> Router<AppState> {
         .route("/accounts", get(list_accounts))
         .route("/accounts/current", get(get_current_account))
         .route("/accounts/switch", post(switch_account))
-        // Proxy (placeholders for now)
+        // Proxy
         .route("/proxy/status", get(get_proxy_status))
-        .route("/proxy/start", post(start_proxy))
-        .route("/proxy/stop", post(stop_proxy))
         // Config
         .route("/config", get(get_config))
         .route("/config", post(save_config))
@@ -45,7 +43,7 @@ async fn get_status(State(state): State<AppState>) -> Json<StatusResponse> {
     
     Json(StatusResponse {
         version: env!("CARGO_PKG_VERSION").to_string(),
-        proxy_running: false, // TODO: integrate proxy state
+        proxy_running: true, // Proxy is always running on same port now
         accounts_count: state.get_account_count(),
         current_account: current.map(|a| a.email),
     })
@@ -62,7 +60,6 @@ struct AccountInfo {
     is_current: bool,
     gemini_quota: Option<i32>,
     claude_quota: Option<i32>,
-    image_quota: Option<i32>,
     subscription_tier: Option<String>,
 }
 
@@ -83,7 +80,6 @@ async fn list_accounts(State(state): State<AppState>) -> Result<Json<Vec<Account
                     is_current: current_id.as_ref() == Some(&a.id),
                     gemini_quota: get_model_quota(&a, "gemini"),
                     claude_quota: get_model_quota(&a, "claude"),
-                    image_quota: get_model_quota(&a, "image"),
                     subscription_tier: a.quota.as_ref().and_then(|q| q.subscription_tier.clone()),
                 }
             }).collect();
@@ -95,17 +91,18 @@ async fn list_accounts(State(state): State<AppState>) -> Result<Json<Vec<Account
 
 async fn get_current_account(State(state): State<AppState>) -> Result<Json<Option<AccountInfo>>, (StatusCode, String)> {
     match state.get_current_account() {
-        Ok(Some(a)) => Ok(Json(Some(AccountInfo {
-            id: a.id.clone(),
-            email: a.email.clone(),
-            name: a.name.clone(),
-            disabled: a.disabled,
-            is_current: true,
-            gemini_quota: get_model_quota(&a, "gemini"),
-            claude_quota: get_model_quota(&a, "claude"),
-            image_quota: get_model_quota(&a, "image"),
-            subscription_tier: a.quota.as_ref().and_then(|q| q.subscription_tier.clone()),
-        }))),
+        Ok(Some(a)) => {
+            Ok(Json(Some(AccountInfo {
+                id: a.id.clone(),
+                email: a.email.clone(),
+                name: a.name.clone(),
+                disabled: a.disabled,
+                is_current: true,
+                gemini_quota: get_model_quota(&a, "gemini"),
+                claude_quota: get_model_quota(&a, "claude"),
+                subscription_tier: a.quota.as_ref().and_then(|q| q.subscription_tier.clone()),
+            })))
+        }
         Ok(None) => Ok(Json(None)),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e))
     }
@@ -137,47 +134,14 @@ struct ProxyStatusResponse {
 }
 
 async fn get_proxy_status(State(state): State<AppState>) -> Json<ProxyStatusResponse> {
-    let running = state.is_proxy_running().await;
-    let port = state.get_proxy_port().await;
+    let port = state.get_proxy_port();
     
     Json(ProxyStatusResponse {
-        running,
+        running: true, // Always running on same port
         port,
         base_url: format!("http://127.0.0.1:{}", port),
-        active_accounts: state.get_account_count(),
+        active_accounts: state.get_token_manager_count(),
     })
-}
-
-#[derive(Serialize)]
-struct ProxyStartResponse {
-    success: bool,
-    message: String,
-}
-
-async fn start_proxy(State(state): State<AppState>) -> Result<Json<ProxyStartResponse>, (StatusCode, String)> {
-    match state.start_proxy().await {
-        Ok(()) => Ok(Json(ProxyStartResponse {
-            success: true,
-            message: "Proxy started successfully".to_string(),
-        })),
-        Err(e) => Ok(Json(ProxyStartResponse {
-            success: false,
-            message: e,
-        }))
-    }
-}
-
-async fn stop_proxy(State(state): State<AppState>) -> Result<Json<ProxyStartResponse>, (StatusCode, String)> {
-    match state.stop_proxy().await {
-        Ok(()) => Ok(Json(ProxyStartResponse {
-            success: true,
-            message: "Proxy stopped successfully".to_string(),
-        })),
-        Err(e) => Ok(Json(ProxyStartResponse {
-            success: false,
-            message: e,
-        }))
-    }
 }
 
 // ============ Config (Placeholders) ============
