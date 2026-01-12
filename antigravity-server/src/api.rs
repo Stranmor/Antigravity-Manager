@@ -23,6 +23,10 @@ pub fn router() -> Router<AppState> {
         .route("/accounts/switch", post(switch_account))
         // Proxy
         .route("/proxy/status", get(get_proxy_status))
+        // Monitor
+        .route("/monitor/requests", get(get_monitor_requests))
+        .route("/monitor/stats", get(get_monitor_stats))
+        .route("/monitor/clear", post(clear_monitor_logs))
         // Config
         .route("/config", get(get_config))
         .route("/config", post(save_config))
@@ -142,6 +146,31 @@ async fn get_proxy_status(State(state): State<AppState>) -> Json<ProxyStatusResp
         base_url: format!("http://127.0.0.1:{}", port),
         active_accounts: state.get_token_manager_count(),
     })
+}
+
+// ============ Monitor ============
+
+#[derive(Deserialize)]
+struct MonitorQuery {
+    limit: Option<usize>,
+}
+
+async fn get_monitor_requests(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<MonitorQuery>,
+) -> Json<Vec<antigravity_shared::models::ProxyRequestLog>> {
+    let logs = state.get_proxy_logs(query.limit).await;
+    Json(logs)
+}
+
+async fn get_monitor_stats(State(state): State<AppState>) -> Json<antigravity_shared::models::ProxyStats> {
+    let stats = state.get_proxy_stats().await;
+    Json(stats)
+}
+
+async fn clear_monitor_logs(State(state): State<AppState>) -> Json<bool> {
+    state.clear_proxy_logs().await;
+    Json(true)
 }
 
 // ============ Config (Placeholders) ============

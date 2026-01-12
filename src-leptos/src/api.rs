@@ -270,14 +270,19 @@ pub mod commands {
     }
 
     pub async fn get_proxy_stats() -> Result<ProxyStats, String> {
-        Err("Not implemented".to_string())
+        api_get("/monitor/stats").await
     }
 
-    pub async fn get_proxy_logs(_limit: Option<usize>) -> Result<Vec<ProxyRequestLog>, String> {
-        Ok(vec![])
+    pub async fn get_proxy_logs(limit: Option<usize>) -> Result<Vec<ProxyRequestLog>, String> {
+        let endpoint = match limit {
+            Some(l) => format!("/monitor/requests?limit={}", l),
+            None => "/monitor/requests".to_string(),
+        };
+        api_get(&endpoint).await
     }
 
     pub async fn set_proxy_monitor_enabled(_enabled: bool) -> Result<(), String> {
+        // TODO: Implement monitor enable/disable endpoint if needed
         Ok(())
     }
 
@@ -286,6 +291,7 @@ pub mod commands {
     }
 
     pub async fn clear_proxy_logs() -> Result<(), String> {
+        let _: bool = api_post("/monitor/clear", &serde_json::json!({})).await?;
         Ok(())
     }
 

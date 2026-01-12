@@ -10,7 +10,6 @@ use antigravity_core::modules::account;
 use antigravity_core::models::Account;
 use antigravity_core::proxy::{build_proxy_router, ProxyMonitor, ProxySecurityConfig, TokenManager};
 use antigravity_shared::proxy::config::ProxyConfig;
-use antigravity_shared::utils::http::UpstreamProxyConfig;
 
 /// Shared application state
 #[derive(Clone)]
@@ -105,11 +104,6 @@ impl AppState {
         }
     }
     
-    /// Check if proxy is enabled
-    pub fn is_proxy_enabled(&self) -> bool {
-        self.inner.proxy_config.enabled
-    }
-    
     /// Get proxy port from config
     pub fn get_proxy_port(&self) -> u16 {
         self.inner.proxy_config.port
@@ -128,11 +122,6 @@ impl AppState {
     /// Clear proxy logs
     pub async fn clear_proxy_logs(&self) {
         self.inner.monitor.clear_logs().await;
-    }
-    
-    /// Get monitor reference
-    pub fn get_monitor(&self) -> Arc<ProxyMonitor> {
-        self.inner.monitor.clone()
     }
     
     /// Get token manager account count
