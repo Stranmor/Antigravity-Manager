@@ -69,8 +69,9 @@ pub async fn handle_chat_completions(
         let mapped_model = crate::proxy::common::model_mapping::resolve_model_route(
             &openai_req.model,
             &*state.custom_mapping.read().await,
-        ).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
-        
+        )
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+
         // 将 OpenAI 工具转为 Value 数组以便探测联网
         let tools_val: Option<Vec<Value>> = openai_req
             .tools
@@ -649,8 +650,9 @@ pub async fn handle_completions(
         let mapped_model = crate::proxy::common::model_mapping::resolve_model_route(
             &openai_req.model,
             &*state.custom_mapping.read().await,
-        ).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
-        
+        )
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+
         // 将 OpenAI 工具转为 Value 数组以便探测联网
         let tools_val: Option<Vec<Value>> = openai_req
             .tools

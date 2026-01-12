@@ -60,7 +60,8 @@ pub async fn start_proxy_service(
     {
         let mut monitor_lock = state.monitor.write().await;
         if monitor_lock.is_none() {
-            let monitor = ProxyMonitor::with_event_bus(Arc::new(TauriEventBus::new(app_handle.clone())));
+            let monitor =
+                ProxyMonitor::with_event_bus(Arc::new(TauriEventBus::new(app_handle.clone())));
             *monitor_lock = Some(Arc::new(monitor));
         }
         // Sync enabled state from config

@@ -35,7 +35,6 @@ serde_json = "1"
 
 # HTTP
 reqwest = { version = "0.12", features = ["json", "stream", "socks"] }
-axum = { version = "0.7", features = ["multipart"] }
 hyper = { version = "1", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
 tower = "0.4"
@@ -68,11 +67,6 @@ sha2 = "0.10"
 bytes = "1.5"
 pin-project = "1.1"
 eventsource-stream = "0.2"
-
-# Leptos UI (WASM)
-leptos = { version = "0.7", features = ["csr"] }
-leptos_router = "0.7"
-leptos_meta = "0.7"
 
 [profile.release]
 opt-level = 3

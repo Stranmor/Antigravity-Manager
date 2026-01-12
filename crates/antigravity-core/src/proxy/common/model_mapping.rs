@@ -219,9 +219,6 @@ mod tests {
             Some("gemini-2.5-flash-mini-test".to_string())
         );
         // Unknown model returns None - NO FALLBACK
-        assert_eq!(
-            map_claude_model_to_gemini("unknown-model"),
-            None
-        );
+        assert_eq!(map_claude_model_to_gemini("unknown-model"), None);
     }
 }

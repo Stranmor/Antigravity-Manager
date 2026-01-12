@@ -53,10 +53,9 @@ async fn main() -> Result<()> {
         .context("setting default subscriber failed")?;
 
     let cli = Cli::parse();
-    let ssh_client_factory: SshClientFactory = SshClientFactory::new().await?;
+    let ssh_client_factory = SshClientFactory::new().await?;
 
     match cli.command {
-        // Changed to cli.command to avoid lifetime issue
         Commands::Exec { host, command } => {
             let parts: Vec<&str> = host.split('@').collect();
             let (user, remote_host) = if parts.len() == 2 {
@@ -68,7 +67,7 @@ async fn main() -> Result<()> {
             info!("Connecting to {}@{}", user, remote_host);
             let mut session = ssh_client_factory
                 .connect(user, remote_host.to_string())
-                .await?; // Cloned remote_host
+                .await?;
 
             let cmd_str = command.join(" ");
             info!("Executing command {:?} on host {}", cmd_str, remote_host);
@@ -92,19 +91,20 @@ async fn main() -> Result<()> {
             info!("Connecting to {}@{}", user, remote_host);
             let mut session = ssh_client_factory
                 .connect(user, remote_host.to_string())
-                .await?; // Cloned remote_host
+                .await?;
 
             info!(
                 "Uploading {:?} to {}:{}",
                 local_path, remote_host, remote_path
             );
-            // Temporarily commented out as upload_file is not yet implemented in ssh_client.rs
-            // session
-            //     .upload_file(remote_host, local_path, remote_path)
-            //     .await?;
-            // info!("File uploaded successfully to {}:{}", remote_host, remote_path);
-            anyhow::bail!("Upload command is not yet implemented.");
-            // session.close().await?; // Unreachable
+            session
+                .upload_file(remote_host, &local_path, &remote_path)
+                .await?;
+            info!(
+                "File uploaded successfully to {}:{}",
+                remote_host, remote_path
+            );
+            session.close().await?;
         }
         Commands::Download {
             host,
@@ -121,19 +121,20 @@ async fn main() -> Result<()> {
             info!("Connecting to {}@{}", user, remote_host);
             let mut session = ssh_client_factory
                 .connect(user, remote_host.to_string())
-                .await?; // Cloned remote_host
+                .await?;
 
             info!(
                 "Downloading {}:{} to {:?}",
                 remote_host, remote_path, local_path
             );
-            // Temporarily commented out as download_file is not yet implemented in ssh_client.rs
-            // session
-            //     .download_file(remote_host, remote_path, local_path)
-            //     .await?;
-            // info!("File downloaded successfully from {}:{}", remote_host, remote_path);
-            anyhow::bail!("Download command is not yet implemented.");
-            // session.close().await?; // Unreachable
+            session
+                .download_file(remote_host, &remote_path, &local_path)
+                .await?;
+            info!(
+                "File downloaded successfully from {}:{}",
+                remote_host, remote_path
+            );
+            session.close().await?;
         }
     }
 
