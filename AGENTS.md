@@ -223,3 +223,58 @@ just build-deb    # Linux .deb package
   - Better testability of core modules.
   - Reduced coupling between Tauri and Core.
 - **Verification:** `cargo check --workspace` passes.
+
+## 2026-01-12 - Restored AIMD Predictive Rate Limiting System
+
+**Status:** Completed ✅
+**Issue:** System was accidentally deleted during Tauri → Headless migration (commit 7279853e)
+
+### Restored Modules
+
+```
+src-tauri/src/proxy/
+├── adaptive_limit.rs   # AIMD controller + per-account trackers
+├── smart_prober.rs     # Speculative hedging strategies  
+├── health.rs           # Account health monitoring + auto-recovery
+├── prometheus.rs       # Prometheus metrics for observability
+├── common/
+│   └── circuit_breaker.rs  # Fast-fail pattern for failing accounts
+└── handlers/
+    └── helpers.rs      # Integration functions for handlers
+```
+
+### How It Works
+
+**AIMD (Additive Increase, Multiplicative Decrease):**
+- Tracks *confirmed limit* per account (requests/minute)
+- **Working threshold** = 85% of confirmed limit (safety margin)
+- On sustained success above threshold: +5% limit expansion
+- On 429 error: ×0.7 limit contraction (multiplicative decrease)
+
+**Probe Strategies (based on usage ratio):**
+- `< 70%` → **None**: Normal operation
+- `70-85%` → **CheapProbe**: Fire background 1-token request
+- `85-95%` → **DelayedHedge**: Secondary request after P95 latency
+- `> 95%` → **ImmediateHedge**: Parallel request immediately
+
+**Circuit Breaker States:**
+- **Closed**: Normal operation, requests pass through
+- **Open**: Account failing, requests fail-fast (60s timeout)
+- **HalfOpen**: Testing recovery with limited requests
+
+### Integration Points
+
+Handlers call into `AppState` fields:
+```rust
+state.adaptive_limits.usage_ratio(account_id)  // Get current usage
+state.smart_prober.should_allow(account_id)    // Check if allowed
+state.health_monitor.record_error(...)         // Track failures
+state.circuit_breaker.should_allow(...)        // Fast-fail check
+```
+
+### Metrics (Prometheus)
+
+- `antigravity_adaptive_probes_total{strategy}` - Probes by strategy
+- `antigravity_aimd_rewards_total` - Limit expansions
+- `antigravity_aimd_penalties_total` - Limit contractions
+- `antigravity_hedge_wins_total` - Hedge request wins
