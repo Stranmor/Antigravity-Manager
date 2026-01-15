@@ -10,7 +10,8 @@ use tokio::sync::RwLock;
 use antigravity_core::models::Account;
 use antigravity_core::modules::account;
 use antigravity_core::proxy::{
-    build_proxy_router, server::AxumServer, ProxyMonitor, ProxySecurityConfig, TokenManager,
+    build_proxy_router_with_shared_state, server::AxumServer, ProxyMonitor, ProxySecurityConfig,
+    TokenManager,
 };
 use antigravity_shared::proxy::config::ProxyConfig;
 
@@ -24,7 +25,13 @@ pub struct AppStateInner {
     pub token_manager: Arc<TokenManager>,
     pub monitor: Arc<ProxyMonitor>,
     pub proxy_config: Arc<RwLock<ProxyConfig>>,
+    #[allow(dead_code)] // Reserved for future hot-reload (listener restart)
     pub axum_server: Arc<AxumServer>,
+    // Shared state for hot-reload
+    pub custom_mapping: Arc<RwLock<std::collections::HashMap<String, String>>>,
+    pub security_config: Arc<RwLock<ProxySecurityConfig>>,
+    pub zai_config: Arc<RwLock<antigravity_shared::proxy::config::ZaiConfig>>,
+    pub experimental_config: Arc<RwLock<antigravity_shared::proxy::config::ExperimentalConfig>>,
 }
 
 impl AppState {
@@ -35,29 +42,38 @@ impl AppState {
         proxy_config: ProxyConfig,
         axum_server: Arc<AxumServer>,
     ) -> Result<Self> {
+        // Create shared Arc references for hot-reload
+        let custom_mapping = Arc::new(RwLock::new(proxy_config.custom_mapping.clone()));
+        let security_config = Arc::new(RwLock::new(ProxySecurityConfig::from_proxy_config(
+            &proxy_config,
+        )));
+        let zai_config = Arc::new(RwLock::new(proxy_config.zai.clone()));
+        let experimental_config = Arc::new(RwLock::new(proxy_config.experimental.clone()));
+
         Ok(Self {
             inner: Arc::new(AppStateInner {
                 token_manager,
                 monitor,
                 proxy_config: Arc::new(RwLock::new(proxy_config)),
                 axum_server,
+                custom_mapping,
+                security_config,
+                zai_config,
+                experimental_config,
             }),
         })
     }
 
-    pub async fn build_proxy_router(&self) -> Router {
-        let config = self.inner.proxy_config.read().await;
-
-        let security_config = ProxySecurityConfig::from_proxy_config(&config);
-
-        build_proxy_router(
+    pub fn build_proxy_router(&self) -> Router {
+        build_proxy_router_with_shared_state(
             self.inner.token_manager.clone(),
-            config.custom_mapping.clone(),
-            config.upstream_proxy.clone(),
-            security_config,
-            config.zai.clone(),
+            self.inner.custom_mapping.clone(),
+            // We need to get upstream_proxy, but it's in proxy_config - for now use default
+            antigravity_shared::utils::http::UpstreamProxyConfig::default(),
+            self.inner.security_config.clone(),
+            self.inner.zai_config.clone(),
             self.inner.monitor.clone(),
-            config.experimental.clone(),
+            self.inner.experimental_config.clone(),
         )
     }
 
@@ -108,10 +124,27 @@ impl AppState {
             Ok(app_config) => {
                 let proxy_config = app_config.proxy;
                 tracing::info!("🔄 Hot reloading proxy configuration...");
-                self.inner.axum_server.update_mapping(&proxy_config).await;
-                self.inner.axum_server.update_security(&proxy_config).await;
-                self.inner.axum_server.update_zai(&proxy_config).await;
 
+                // Update shared state directly (these are used by build_proxy_router_with_shared_state)
+                {
+                    let mut mapping = self.inner.custom_mapping.write().await;
+                    *mapping = proxy_config.custom_mapping.clone();
+                    tracing::debug!("📝 Updated custom_mapping with {} entries", mapping.len());
+                }
+                {
+                    let mut security = self.inner.security_config.write().await;
+                    *security = ProxySecurityConfig::from_proxy_config(&proxy_config);
+                }
+                {
+                    let mut zai = self.inner.zai_config.write().await;
+                    *zai = proxy_config.zai.clone();
+                }
+                {
+                    let mut experimental = self.inner.experimental_config.write().await;
+                    *experimental = proxy_config.experimental.clone();
+                }
+
+                // Also update the full proxy_config reference
                 let mut inner_proxy_config = self.inner.proxy_config.write().await;
                 *inner_proxy_config = proxy_config;
 

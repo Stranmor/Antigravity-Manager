@@ -10,7 +10,8 @@ members = [
     "crates/antigravity-core",
     "crates/antigravity-shared",
     "src-leptos",
-    "src-tauri",
+    # NOTE: src-tauri is excluded from workspace - it's a read-only upstream reference
+    # Use ./scripts/sync-upstream.sh to sync proxy code to antigravity-core
     "antigravity-vps-cli",
     "antigravity-server",
 ]

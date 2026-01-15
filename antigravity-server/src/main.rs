@@ -94,8 +94,8 @@ async fn main() -> Result<()> {
 }
 
 async fn build_router(state: AppState, _axum_server: Arc<AxumServer>) -> Router {
-    // Get proxy router from state (has its own state already applied)
-    let proxy_router = state.build_proxy_router().await;
+    // Get proxy router from state (uses shared Arc for hot-reload)
+    let proxy_router = state.build_proxy_router();
 
     // Static files for WebUI (Leptos dist)
     let static_dir =

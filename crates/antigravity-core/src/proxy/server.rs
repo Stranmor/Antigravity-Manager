@@ -389,6 +389,114 @@ pub fn build_proxy_router(
         .with_state(state)
 }
 
+/// Build proxy router with shared state references for hot-reload support.
+/// Unlike `build_proxy_router`, this version accepts pre-created Arc references
+/// so that external code can update the mapping at runtime.
+pub fn build_proxy_router_with_shared_state(
+    token_manager: Arc<TokenManager>,
+    custom_mapping: Arc<tokio::sync::RwLock<std::collections::HashMap<String, String>>>,
+    upstream_proxy: antigravity_shared::utils::http::UpstreamProxyConfig,
+    security_config: Arc<RwLock<crate::proxy::ProxySecurityConfig>>,
+    zai_config: Arc<RwLock<antigravity_shared::proxy::config::ZaiConfig>>,
+    monitor: Arc<crate::proxy::monitor::ProxyMonitor>,
+    experimental_config: Arc<RwLock<antigravity_shared::proxy::config::ExperimentalConfig>>,
+) -> Router<()> {
+    let proxy_state = Arc::new(tokio::sync::RwLock::new(upstream_proxy.clone()));
+    let provider_rr = Arc::new(AtomicUsize::new(0));
+    let zai_vision_mcp_state = Arc::new(crate::proxy::zai_vision_mcp::ZaiVisionMcpState::new());
+
+    let state = AppState {
+        token_manager,
+        custom_mapping: custom_mapping.clone(),
+        request_timeout: 300,
+        thought_signature_map: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+        upstream_proxy: proxy_state,
+        upstream: Arc::new(crate::proxy::upstream::client::UpstreamClient::new(Some(
+            upstream_proxy,
+        ))),
+        zai: zai_config.clone(),
+        provider_rr,
+        zai_vision_mcp: zai_vision_mcp_state,
+        monitor,
+        experimental: experimental_config.clone(),
+    };
+
+    use crate::proxy::handlers;
+
+    Router::new()
+        // OpenAI Protocol
+        .route("/v1/models", get(handlers::openai::handle_list_models))
+        .route(
+            "/v1/chat/completions",
+            post(handlers::openai::handle_chat_completions),
+        )
+        .route(
+            "/v1/completions",
+            post(handlers::openai::handle_completions),
+        )
+        .route("/v1/responses", post(handlers::openai::handle_completions))
+        .route(
+            "/v1/images/generations",
+            post(handlers::openai::handle_images_generations),
+        )
+        .route(
+            "/v1/images/edits",
+            post(handlers::openai::handle_images_edits),
+        )
+        .route(
+            "/v1/audio/transcriptions",
+            post(handlers::audio::handle_audio_transcription),
+        )
+        // Claude Protocol
+        .route("/v1/messages", post(handlers::claude::handle_messages))
+        .route(
+            "/v1/messages/count_tokens",
+            post(handlers::claude::handle_count_tokens),
+        )
+        .route(
+            "/v1/models/claude",
+            get(handlers::claude::handle_list_models),
+        )
+        // z.ai MCP
+        .route(
+            "/mcp/web_search_prime/mcp",
+            any(handlers::mcp::handle_web_search_prime),
+        )
+        .route("/mcp/web_reader/mcp", any(handlers::mcp::handle_web_reader))
+        .route(
+            "/mcp/zai-mcp-server/mcp",
+            any(handlers::mcp::handle_zai_mcp_server),
+        )
+        // Gemini Protocol
+        .route("/v1beta/models", get(handlers::gemini::handle_list_models))
+        .route(
+            "/v1beta/models/:model",
+            get(handlers::gemini::handle_get_model).post(handlers::gemini::handle_generate),
+        )
+        .route(
+            "/v1beta/models/:model/countTokens",
+            post(handlers::gemini::handle_count_tokens),
+        )
+        // Utility
+        .route(
+            "/v1/models/detect",
+            post(handlers::common::handle_detect_model),
+        )
+        .route("/v1/api/event_logging/batch", post(silent_ok_handler))
+        .route("/v1/api/event_logging", post(silent_ok_handler))
+        .layer(DefaultBodyLimit::max(100 * 1024 * 1024))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::proxy::middleware::monitor::monitor_middleware,
+        ))
+        .layer(TraceLayer::new_for_http())
+        .layer(axum::middleware::from_fn_with_state(
+            security_config,
+            crate::proxy::middleware::auth_middleware,
+        ))
+        .with_state(state)
+}
+
 // ===== API 处理器 (旧代码已移除，由 src/proxy/handlers/* 接管) =====
 
 /// 健康检查处理器
