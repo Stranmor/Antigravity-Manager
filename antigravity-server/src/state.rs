@@ -10,8 +10,8 @@ use tokio::sync::RwLock;
 use antigravity_core::models::Account;
 use antigravity_core::modules::account;
 use antigravity_core::proxy::{
-    build_proxy_router_with_shared_state, server::AxumServer, ProxyMonitor, ProxySecurityConfig,
-    TokenManager,
+    build_proxy_router_with_shared_state, server::AxumServer, AdaptiveLimitTracker,
+    CircuitBreakerManager, HealthMonitor, ProxyMonitor, ProxySecurityConfig, TokenManager,
 };
 use antigravity_shared::proxy::config::ProxyConfig;
 
@@ -32,6 +32,14 @@ pub struct AppStateInner {
     pub security_config: Arc<RwLock<ProxySecurityConfig>>,
     pub zai_config: Arc<RwLock<antigravity_shared::proxy::config::ZaiConfig>>,
     pub experimental_config: Arc<RwLock<antigravity_shared::proxy::config::ExperimentalConfig>>,
+    // AIMD Predictive Rate Limiting System
+    // TODO: Wire these into handlers for pre-request/post-request feedback
+    #[allow(dead_code)]
+    pub adaptive_limits: Arc<AdaptiveLimitTracker>,
+    #[allow(dead_code)]
+    pub health_monitor: Arc<HealthMonitor>,
+    #[allow(dead_code)]
+    pub circuit_breaker: Arc<CircuitBreakerManager>,
 }
 
 impl AppState {
@@ -50,6 +58,19 @@ impl AppState {
         let zai_config = Arc::new(RwLock::new(proxy_config.zai.clone()));
         let experimental_config = Arc::new(RwLock::new(proxy_config.experimental.clone()));
 
+        // Initialize AIMD Predictive Rate Limiting System
+        let adaptive_limits = Arc::new(AdaptiveLimitTracker::new(
+            0.85, // safety_margin: 85% of confirmed limit is working threshold
+            antigravity_core::proxy::AIMDController::default(),
+        ));
+        let health_monitor = HealthMonitor::new();
+        let circuit_breaker = Arc::new(CircuitBreakerManager::new());
+
+        // Start health monitor recovery task
+        health_monitor.start_recovery_task();
+
+        tracing::info!("🎯 AIMD rate limiting system initialized");
+
         Ok(Self {
             inner: Arc::new(AppStateInner {
                 token_manager,
@@ -60,6 +81,9 @@ impl AppState {
                 security_config,
                 zai_config,
                 experimental_config,
+                adaptive_limits,
+                health_monitor,
+                circuit_breaker,
             }),
         })
     }
@@ -154,6 +178,22 @@ impl AppState {
                 tracing::error!("❌ Failed to hot reload proxy configuration: {}", e);
             }
         }
+    }
+
+    // AIMD accessors (reserved for future handler integration)
+    #[allow(dead_code)]
+    pub fn adaptive_limits(&self) -> &Arc<AdaptiveLimitTracker> {
+        &self.inner.adaptive_limits
+    }
+
+    #[allow(dead_code)]
+    pub fn health_monitor(&self) -> &Arc<HealthMonitor> {
+        &self.inner.health_monitor
+    }
+
+    #[allow(dead_code)]
+    pub fn circuit_breaker(&self) -> &Arc<CircuitBreakerManager> {
+        &self.inner.circuit_breaker
     }
 }
 
